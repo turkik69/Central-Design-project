@@ -198,12 +198,19 @@
 <div id="root"></div>
 
 <!-- ============ Firebase + التطبيق ============ -->
+<script>
+// مُظهِر الأخطاء على الشاشة بدل البياض الصامت
+window.addEventListener('error',(e)=>{
+  const r=document.getElementById('root');
+  if(r && !r.dataset.ok){
+    r.innerHTML='<div style="max-width:560px;margin:60px auto;padding:24px;font-family:Tajawal,sans-serif;'+
+      'background:#fff;border:1px solid #f0cfc8;border-radius:14px;color:#b3402f;direction:rtl;text-align:right">'+
+      '<b style="font-size:16px">تعذّر تشغيل التطبيق</b><p style="margin-top:8px;color:#555;font-size:13px;line-height:1.7">'+
+      (e.message||'خطأ غير معروف')+'</p></div>';
+  }
+});
+</script>
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, writeBatch }
-  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
 /* ════════════════════════════════════════════════════════════════
    ❶  ضعي مفاتيح مشروع Firebase الخاص بكِ هنا فقط
    احصلي عليها من: console.firebase.google.com ← إعدادات المشروع ← تطبيق ويب
@@ -222,10 +229,18 @@ const APP_ID = "muscat-design-app";
 
 const CONFIGURED = !firebaseConfig.apiKey.startsWith("ضعي");
 let db=null, auth=null;
-if (CONFIGURED){
-  const app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
+// دوال Firebase تُحمَّل ديناميكياً حتى لا يتعطل التطبيق لو فشل تحميل المكتبة
+let FB={};
+async function loadFirebase(){
+  const [appMod,authMod,fsMod]=await Promise.all([
+    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"),
+    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"),
+    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js")
+  ]);
+  FB={...authMod,...fsMod};
+  const app=appMod.initializeApp(firebaseConfig);
+  auth=authMod.getAuth(app);
+  db=fsMod.getFirestore(app);
 }
 
 const $ = (h)=>{const t=document.createElement('template');t.innerHTML=h.trim();return t.content.firstChild;};
@@ -237,8 +252,8 @@ const state = {
   search:'', isNewUser:false, authError:'', loading:true
 };
 const ADMIN = { user:'turki69', pass:'abuyassmin69' };
-const colRef = ()=> collection(db,'artifacts',APP_ID,'public','data','projects');
-const usersRef = ()=> collection(db,'artifacts',APP_ID,'public','data','users');
+const colRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','projects');
+const usersRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','users');
 
 const STATUS_STYLE = {
   'مكتمل':['var(--ok)','var(--ok-bg)'],
@@ -252,16 +267,22 @@ const SEC_STYLE = {
   'قيد الانتظار':['var(--wait)','var(--wait-bg)']
 };
 
-/* ---- المصادقة على Firebase (مجهول) ---- */
-function initFirebase(){
+/* ---- الإقلاع: نرسم الواجهة فوراً ثم نحمّل Firebase ---- */
+async function initFirebase(){
   if(!CONFIGURED){state.fbReady=true;state.loading=false;render();return;}
-  signInAnonymously(auth).catch(e=>console.error("مصادقة:",e));
-  onAuthStateChanged(auth,(u)=>{
-    if(u){state.fbReady=true; subscribeProjects();}
-  });
+  state.loading=false; render();            // ارسمي شاشة الدخول فوراً
+  try{
+    await loadFirebase();
+    FB.signInAnonymously(auth).catch(e=>console.error("مصادقة:",e));
+    FB.onAuthStateChanged(auth,(u)=>{ if(u){state.fbReady=true; subscribeProjects();} });
+  }catch(e){
+    console.error("تحميل Firebase:",e);
+    state.authError='تعذّر الاتصال بقاعدة البيانات. تحقّقي من الإنترنت ومن صحة مفاتيح Firebase.';
+    render();
+  }
 }
 function subscribeProjects(){
-  onSnapshot(colRef(),(snap)=>{
+  FB.onSnapshot(colRef(),(snap)=>{
     const data = snap.docs.map(d=>({id:d.id,...d.data()}));
     data.sort((a,b)=> new Date(b.createdAt) - new Date(a.createdAt));
     state.projects=data; applyFilter(); state.loading=false; render();
@@ -294,13 +315,13 @@ async function handleAuth(form){
     if(state.isNewUser){
       const name=(fd.get('name')||'').trim();
       const dept=fd.get('dept'); const jobTitle=fd.get('jobTitle');
-      const dup=await getDocs(query(usersRef(),where("username","==",username)));
+      const dup=await FB.getDocs(FB.query(usersRef(),FB.where("username","==",username)));
       if(!dup.empty){state.authError='اسم المستخدم محجوز مسبقاً، اختاري اسماً آخر.';state.loading=false;render();return;}
       const newUser={username,password,name,role:'engineer',dept,jobTitle,profilePic:''};
-      await addDoc(usersRef(),newUser);
+      await FB.addDoc(usersRef(),newUser);
       state.appUser=newUser;
     }else{
-      const qs=await getDocs(query(usersRef(),where("username","==",username),where("password","==",password)));
+      const qs=await FB.getDocs(FB.query(usersRef(),FB.where("username","==",username),FB.where("password","==",password)));
       if(qs.empty){state.authError='اسم المستخدم أو الرقم السري غير صحيح.';}
       else{state.appUser=qs.docs[0].data();}
     }
@@ -340,7 +361,7 @@ function handleExcelImport(file){
         }
       }
       if(cur&&cur.name) out.push(cur);
-      for(const p of out) await addDoc(colRef(),p);
+      for(const p of out) await FB.addDoc(colRef(),p);
       state.loading=false;render();
       alert(`تم استيراد ${out.length} مشروع بنجاح.`);
     }catch(e){console.error(e);state.loading=false;render();alert('تعذّرت قراءة ملف الإكسل.');}
@@ -351,8 +372,8 @@ async function clearAll(){
   if(!confirm("تحذير: سيتم مسح كل المشاريع نهائياً ولا يمكن التراجع. متابعة؟")) return;
   state.loading=true;render();
   try{
-    const snap=await getDocs(query(colRef()));
-    const batch=writeBatch(db);
+    const snap=await FB.getDocs(FB.query(colRef()));
+    const batch=FB.writeBatch(db);
     snap.forEach(d=>batch.delete(d.ref));
     await batch.commit();
     alert("تم مسح جميع المشاريع.");
@@ -361,11 +382,11 @@ async function clearAll(){
 }
 async function saveProject(data,editingId){
   const payload={...data,lastUpdatedBy:state.appUser.name,lastUpdatedAt:new Date().toLocaleString('ar-OM')};
-  if(editingId){await updateDoc(doc(db,'artifacts',APP_ID,'public','data','projects',editingId),payload);}
-  else{await addDoc(colRef(),{...payload,createdAt:new Date().toISOString()});}
+  if(editingId){await FB.updateDoc(FB.doc(db,'artifacts',APP_ID,'public','data','projects',editingId),payload);}
+  else{await FB.addDoc(colRef(),{...payload,createdAt:new Date().toISOString()});}
 }
 async function deleteProject(id){
-  await deleteDoc(doc(db,'artifacts',APP_ID,'public','data','projects',id));
+  await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','projects',id));
 }
 
 /* ════════════ أيقونات SVG ════════════ */
@@ -389,8 +410,9 @@ const I={
 /* ════════════ العرض ════════════ */
 function render(){
   root.innerHTML='';
-  if(!state.appUser){root.appendChild(renderAuth());return;}
-  root.appendChild(renderApp());
+  if(!state.appUser){root.appendChild(renderAuth());}
+  else{root.appendChild(renderApp());}
+  root.dataset.ok='1';
 }
 
 function renderAuth(){
@@ -677,11 +699,11 @@ function openProfile(){
     }
     if(CONFIGURED){
       try{
-        const qs=await getDocs(query(usersRef(),where("username","==",u.username)));
+        const qs=await FB.getDocs(FB.query(usersRef(),FB.where("username","==",u.username)));
         if(!qs.empty){
-          const ref=doc(db,'artifacts',APP_ID,'public','data','users',qs.docs[0].id);
+          const ref=FB.doc(db,'artifacts',APP_ID,'public','data','users',qs.docs[0].id);
           const upd={}; if(np)upd.password=np; if(newPic)upd.profilePic=newPic;
-          if(Object.keys(upd).length) await updateDoc(ref,upd);
+          if(Object.keys(upd).length) await FB.updateDoc(ref,upd);
           state.appUser={...state.appUser,...upd};
         }
       }catch(err){console.error(err);}
@@ -696,8 +718,8 @@ function openProfile(){
 }
 
 /* ---- إقلاع ---- */
-initFirebase();
-render();
+render();          // ارسمي الواجهة فوراً
+initFirebase();    // ثم حمّلي قاعدة البيانات في الخلفية
 </script>
 </body>
 </html>

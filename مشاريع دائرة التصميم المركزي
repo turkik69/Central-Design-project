@@ -1,0 +1,839 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Building2, MapPin, Calendar, CheckCircle, Clock, AlertCircle,
+  Plus, Edit, Trash2, LogOut, Save, X, Search, Upload, User, Image as ImageIcon, Settings
+} from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { 
+  getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged 
+} from 'firebase/auth';
+import { 
+  getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, writeBatch 
+} from 'firebase/firestore';
+
+// --- إعدادات Firebase ---
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'muscat-design-app';
+
+export default function App() {
+  const [fbUser, setFbUser] = useState(null);
+  const [appUser, setAppUser] = useState(null);
+  const [projects, setProjects] = useState([]);
+  const [filteredProjects, setFilteredProjects] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [authError, setAuthError] = useState('');
+  
+  // حالات التسجيل والملف الشخصي
+  const [isNewUser, setIsNewUser] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // --- تحميل مكتبة Excel برمجياً ---
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    script.async = true;
+    document.body.appendChild(script);
+  }, []);
+
+  // --- تهيئة المصادقة ---
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (error) {
+        console.error("خطأ في المصادقة:", error);
+      }
+    };
+    initAuth();
+    
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setFbUser(user);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // --- جلب بيانات المشاريع ---
+  useEffect(() => {
+    if (!fbUser) return;
+    
+    const projectsRef = collection(db, 'artifacts', appId, 'public', 'data', 'projects');
+    const unsubscribe = onSnapshot(projectsRef, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // الترتيب حسب الأحدث
+      data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      setProjects(data);
+      setFilteredProjects(data);
+      setIsLoading(false);
+    }, (error) => {
+      console.error("خطأ في جلب المشاريع:", error);
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [fbUser]);
+
+  // --- البحث في المشاريع ---
+  useEffect(() => {
+    if (searchTerm.trim() === '') {
+      setFilteredProjects(projects);
+    } else {
+      const lowerSearch = searchTerm.toLowerCase();
+      const filtered = projects.filter(p => 
+        (p.name && p.name.toLowerCase().includes(lowerSearch)) || 
+        (p.requestingEntity && p.requestingEntity.toLowerCase().includes(lowerSearch)) ||
+        (p.type && p.type.toLowerCase().includes(lowerSearch))
+      );
+      setFilteredProjects(filtered);
+    }
+  }, [searchTerm, projects]);
+
+  // --- مسح جميع المشاريع (للمشرف فقط) ---
+  const handleClearAllProjects = async () => {
+    if (!window.confirm("تحذير خطير: هل أنت متأكد تماماً من مسح كافة المشاريع المسجلة في النظام؟ لا يمكن التراجع عن هذه الخطوة.")) {
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const projectsRef = collection(db, 'artifacts', appId, 'public', 'data', 'projects');
+      const q = query(projectsRef);
+      const querySnapshot = await getDocs(q);
+      
+      const batch = writeBatch(db);
+      querySnapshot.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+      
+      await batch.commit();
+      setIsLoading(false);
+      alert("تم مسح جميع المشاريع بنجاح.");
+    } catch (error) {
+      console.error("خطأ في مسح المشاريع:", error);
+      setIsLoading(false);
+      alert("حدث خطأ أثناء محاولة المسح.");
+    }
+  };
+
+  // --- استيراد ذكي من الإكسل المخصص ---
+  const handleExcelImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setIsLoading(true);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target.result;
+        const wb = window.XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0]; // نأخذ الورقة الأولى
+        const ws = wb.Sheets[wsname];
+        const data = window.XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+        let currentProject = null;
+        const importedProjects = [];
+        const nowString = new Date().toLocaleString('ar-OM');
+
+        for (let i = 0; i < data.length; i++) {
+          const row = data[i];
+          if (!row || row.length === 0) continue;
+
+          // الأعمدة المتوقعة بناءً على ملف الدائرة
+          const col1 = String(row[0] || '').trim();
+          const col2 = String(row[1] || '').trim();
+          const col3 = String(row[2] || '').trim(); // الجهة
+          const textToCheck = col2 || col1;
+
+          if (!textToCheck) continue;
+
+          // تخطي الترويسات
+          if (textToCheck.includes('دائرة') || textToCheck.includes('تتبع المشاريع') || textToCheck.includes('اسم المشروع') || textToCheck.includes('تاريخ تحديث')) {
+            continue;
+          }
+
+          // إذا كان السطر يخص المهندسين التابعين للمشروع الحالي
+          if (textToCheck.includes('المعماري -')) {
+            if (currentProject) {
+              currentProject.architectural.engineer = textToCheck.replace('المعماري -', '').trim();
+              if (col3 && col3 !== '-') currentProject.requestingEntity = col3;
+            }
+          } else if (textToCheck.includes('الانشائي -')) {
+            if (currentProject) {
+              currentProject.structural.engineer = textToCheck.replace('الانشائي -', '').trim();
+            }
+          } else if (textToCheck.includes('الخدمات -')) {
+            if (currentProject) {
+              currentProject.services.engineer = textToCheck.replace('الخدمات -', '').trim();
+            }
+          } 
+          // إذا لم يكن ترويسة أو مهندس، وكان نصاً، فهو على الأغلب اسم مشروع جديد
+          else if (textToCheck.length > 3 && !textToCheck.match(/^[0-9]+$/)) {
+            // حفظ المشروع السابق
+            if (currentProject && currentProject.name) {
+              importedProjects.push(currentProject);
+            }
+            // بدء مشروع جديد
+            currentProject = {
+              name: textToCheck,
+              type: 'أخرى',
+              customType: 'استيراد من الإكسل',
+              requestingEntity: col3 && col3 !== '-' ? col3 : 'غير محدد',
+              overallStatus: 'قيد التصميم',
+              area: '', cost: '', startDate: '', endDate: '',
+              architectural: { engineer: '', status: 'قيد الانتظار', notes: '' },
+              structural: { engineer: '', status: 'قيد الانتظار', notes: '' },
+              services: { engineer: '', status: 'قيد الانتظار', notes: '' },
+              lastUpdatedBy: appUser.name,
+              lastUpdatedAt: nowString,
+              createdAt: new Date().toISOString()
+            };
+          }
+        }
+        
+        // حفظ آخر مشروع
+        if (currentProject && currentProject.name) {
+          importedProjects.push(currentProject);
+        }
+
+        // رفع المشاريع المستخرجة لقاعدة البيانات
+        const projectsRef = collection(db, 'artifacts', appId, 'public', 'data', 'projects');
+        for (const proj of importedProjects) {
+          await addDoc(projectsRef, proj);
+        }
+
+        setIsLoading(false);
+        setSearchTerm(''); 
+        setFilteredProjects([...filteredProjects]); 
+        
+        // مسح الحقل ليتمكن من رفع نفس الملف مرة أخرى إذا أراد
+        if (fileInputRef.current) fileInputRef.current.value = '';
+
+      } catch (err) {
+        console.error("خطأ في قراءة ملف الإكسل:", err);
+        setIsLoading(false);
+        alert("حدث خطأ أثناء قراءة ملف الإكسل.");
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  // --- تسجيل الدخول وإنشاء الحساب ---
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setAuthError('');
+    
+    const formData = new FormData(e.target);
+    const username = formData.get('username')?.trim().toLowerCase();
+    const password = formData.get('password')?.trim();
+
+    // حساب المشرف الثابت (مع تجاهل حالة الأحرف للرقم السري أيضاً لتفادي الأخطاء)
+    if (username === 'turki69' && password.toLowerCase() === 'abuyassmin69') {
+      setAppUser({ role: 'admin', name: 'تركي (المشرف العام)', username, profilePic: '' });
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
+      
+      if (isNewUser) {
+        // إنشاء حساب جديد
+        const name = formData.get('name')?.trim();
+        const dept = formData.get('dept');
+        const jobTitle = formData.get('jobTitle');
+        
+        // التحقق من عدم وجود المستخدم
+        const q = query(usersRef, where("username", "==", username));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          setAuthError('اسم المستخدم هذا محجوز مسبقاً، اختر اسماً آخر.');
+          setIsLoading(false);
+          return;
+        }
+
+        const newUser = { username, password, name, role: 'engineer', dept, jobTitle, profilePic: '' };
+        await addDoc(usersRef, newUser);
+        setAppUser(newUser);
+      } else {
+        // تسجيل دخول مهندس موجود
+        const q = query(usersRef, where("username", "==", username), where("password", "==", password));
+        const querySnapshot = await getDocs(q);
+        
+        if (querySnapshot.empty) {
+          setAuthError('اسم المستخدم أو الرقم السري غير صحيح.');
+        } else {
+          setAppUser(querySnapshot.docs[0].data());
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      setAuthError('حدث خطأ في الاتصال، حاول مرة أخرى.');
+    }
+    
+    setIsLoading(false);
+  };
+
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const newPassword = formData.get('newPassword');
+    
+    try {
+      const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
+      const q = query(usersRef, where("username", "==", appUser.username));
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const userDoc = querySnapshot.docs[0];
+        const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', userDoc.id);
+        
+        const updates = {};
+        if (newPassword) updates.password = newPassword;
+        if (appUser.profilePic) updates.profilePic = appUser.profilePic;
+        
+        await updateDoc(userRef, updates);
+        setAppUser(prev => ({...prev, ...updates}));
+        setShowProfileModal(false);
+      }
+    } catch (err) {
+      console.error("خطأ في تحديث الملف الشخصي", err);
+    }
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setAppUser(prev => ({...prev, profilePic: e.target.result}));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleLogout = () => {
+    setAppUser(null);
+    setIsNewUser(false);
+    setAuthError('');
+  };
+
+  // --- واجهة تسجيل الدخول ---
+  if (!appUser) {
+    return (
+      <div dir="rtl" className="min-h-screen relative flex flex-col justify-center items-center p-4 font-sans">
+        {/* خلفية مبنى البلدية شفافة */}
+        <div 
+          className="absolute inset-0 z-0 opacity-20 bg-cover bg-center bg-no-repeat"
+          style={{ backgroundImage: "url('https://upload.wikimedia.org/wikipedia/commons/e/e5/Muscat_Municipality_Building.jpg')" }}
+        />
+        <div className="absolute inset-0 bg-emerald-900/10 z-0" />
+
+        <div className="bg-white/95 backdrop-blur-md p-8 rounded-2xl shadow-2xl w-full max-w-md border-t-4 border-emerald-600 z-10 relative">
+          <div className="text-center mb-6">
+            <img src="https://mm.gov.om/images/logo.png" alt="شعار بلدية مسقط" className="h-20 mx-auto mb-4 object-contain" />
+            <h1 className="text-2xl font-bold text-gray-800">مشاريع التصميم المركزي</h1>
+            <p className="text-gray-500 mt-2">المديرية العامة للشؤون الفنية</p>
+          </div>
+          
+          {authError && (
+            <div className="bg-red-100 text-red-700 p-3 rounded-lg text-sm mb-4 border border-red-200">
+              {authError}
+            </div>
+          )}
+
+          <form onSubmit={handleAuth} className="space-y-4">
+            {isNewUser && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">الاسم الكامل</label>
+                  <input type="text" name="name" required className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none" />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">المسمى الوظيفي</label>
+                  <select name="jobTitle" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none">
+                    <option value="مهندس معماري">مهندس معماري</option>
+                    <option value="مهندس إنشائي">مهندس إنشائي</option>
+                    <option value="مهندس تصميم خدمات">مهندس تصميم خدمات</option>
+                    <option value="رئيس القسم المعماري">رئيس القسم المعماري</option>
+                    <option value="رئيس القسم الإنشائي">رئيس القسم الإنشائي</option>
+                    <option value="رئيس قسم تصميم الخدمات">رئيس قسم تصميم الخدمات</option>
+                    <option value="مدير الدائرة">مدير الدائرة</option>
+                    <option value="تنسيق ومتابعة">تنسيق ومتابعة</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">القسم المختص للعملية الفنية</label>
+                  <select name="dept" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-gray-600 bg-gray-50">
+                    <option value="architectural">القسم المعماري</option>
+                    <option value="structural">القسم الإنشائي</option>
+                    <option value="services">قسم تصميم الخدمات</option>
+                  </select>
+                </div>
+              </>
+            )}
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">اسم المستخدم</label>
+              <input type="text" name="username" required dir="ltr" placeholder="أدخل اسم المستخدم" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-left" />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">الرقم السري</label>
+              <input type="password" name="password" required dir="ltr" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-left" />
+            </div>
+            
+            <button type="submit" disabled={isLoading} className="w-full bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-700 transition flex justify-center items-center mt-2">
+              {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> : (isNewUser ? 'إنشاء الحساب' : 'تسجيل الدخول')}
+            </button>
+          </form>
+
+          <div className="mt-5 text-center">
+            <button 
+              onClick={() => { setIsNewUser(!isNewUser); setAuthError(''); }}
+              className="text-sm text-emerald-600 hover:text-emerald-800 font-medium"
+            >
+              {isNewUser ? 'لدي حساب بالفعل؟ تسجيل الدخول' : 'مستخدم جديد؟ إنشاء حساب أول مرة'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- واجهة التطبيق الرئيسية ---
+  return (
+    <div dir="rtl" className="min-h-screen bg-gray-50 font-sans">
+      {/* الشريط العلوي */}
+      <header className="bg-emerald-700 text-white shadow-md sticky top-0 z-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div className="flex items-center space-x-4 space-x-reverse">
+            <div className="bg-white p-1 rounded-md">
+              <img src="https://mm.gov.om/images/logo.png" alt="شعار" className="h-10 object-contain" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold">التصميم المركزي</h1>
+            </div>
+          </div>
+          
+          {/* شريط البحث */}
+          <div className="flex-grow max-w-md w-full relative">
+            <input 
+              type="text" 
+              placeholder="ابحث عن مشروع أو مديرية..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 rounded-full text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-300 bg-emerald-50"
+            />
+            <Search className="w-5 h-5 text-emerald-600 absolute left-3 top-2.5" />
+          </div>
+
+          <div className="flex items-center space-x-4 space-x-reverse">
+            <div className="text-right hidden sm:block flex-col justify-center items-end">
+              <p className="text-sm font-semibold">{appUser.name}</p>
+              <p className="text-xs text-emerald-200">
+                {appUser.role === 'admin' ? 'مشرف عام' : (appUser.jobTitle || 'مهندس مصمم')}
+              </p>
+            </div>
+            
+            {/* الصورة الشخصية */}
+            <div className="w-10 h-10 rounded-full bg-emerald-600 border-2 border-emerald-400 overflow-hidden flex items-center justify-center">
+              {appUser.profilePic ? (
+                <img src={appUser.profilePic} alt="الملف الشخصي" className="w-full h-full object-cover" />
+              ) : (
+                <User className="w-6 h-6 text-white" />
+              )}
+            </div>
+
+            <button onClick={() => setShowProfileModal(true)} className="p-2 hover:bg-emerald-600 rounded-full transition" title="إعدادات الحساب">
+              <Settings className="w-5 h-5" />
+            </button>
+            <button onClick={handleLogout} className="p-2 hover:bg-emerald-600 rounded-full text-red-200 hover:text-white transition" title="تسجيل الخروج">
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* المحتوى الرئيسي */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        {/* شريط الأدوات */}
+        <div className="flex flex-wrap justify-between items-center mb-8 gap-4">
+          <h2 className="text-2xl font-bold text-gray-800">قائمة المشاريع ({filteredProjects.length})</h2>
+          <div className="flex flex-wrap gap-3">
+            {appUser.role === 'admin' && (
+              <>
+                <button 
+                  onClick={handleClearAllProjects}
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 space-x-reverse shadow-sm transition"
+                  title="مسح جميع المشاريع من النظام"
+                >
+                  <Trash2 className="w-5 h-5" />
+                  <span className="hidden sm:inline">مسح الكل</span>
+                </button>
+
+                <input 
+                  type="file" 
+                  accept=".xlsx, .xls" 
+                  ref={fileInputRef}
+                  onChange={handleExcelImport}
+                  className="hidden" 
+                />
+                <button 
+                  onClick={() => fileInputRef.current.click()}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 space-x-reverse shadow-sm transition"
+                >
+                  <Upload className="w-5 h-5" />
+                  <span className="hidden sm:inline">استيراد من Excel</span>
+                </button>
+              </>
+            )}
+            
+            <button 
+              onClick={() => { setEditingProject(null); setIsModalOpen(true); }}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 space-x-reverse shadow-sm transition"
+            >
+              <Plus className="w-5 h-5" />
+              <span className="hidden sm:inline">إضافة مشروع جديد</span>
+            </button>
+          </div>
+        </div>
+
+        {/* عرض المشاريع */}
+        {isLoading ? (
+          <div className="flex justify-center items-center py-20">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-700"></div>
+          </div>
+        ) : filteredProjects.length === 0 ? (
+          <div className="text-center py-20 bg-white rounded-xl shadow-sm border border-gray-200">
+            <Building2 className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+            <h3 className="text-xl font-medium text-gray-600">لا توجد مشاريع لعرضها</h3>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredProjects.map((project) => (
+              <ProjectCard 
+                key={project.id} 
+                project={project} 
+                appUser={appUser}
+                onEdit={() => { setEditingProject(project); setIsModalOpen(true); }}
+                onDelete={async () => {
+                  const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'projects', project.id);
+                  await deleteDoc(docRef);
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </main>
+
+      {/* نافذة إضافة/تعديل مشروع */}
+      {isModalOpen && (
+        <ProjectModal 
+          project={editingProject} 
+          appUser={appUser} 
+          onClose={() => { setIsModalOpen(false); setEditingProject(null); }}
+          onSave={async (projectData) => {
+            const projectsRef = collection(db, 'artifacts', appId, 'public', 'data', 'projects');
+            const dataToSave = {
+              ...projectData,
+              lastUpdatedBy: appUser.name,
+              lastUpdatedAt: new Date().toLocaleString('ar-OM')
+            };
+
+            if (editingProject?.id) {
+              const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'projects', editingProject.id);
+              await updateDoc(docRef, dataToSave);
+            } else {
+              await addDoc(projectsRef, { ...dataToSave, createdAt: new Date().toISOString() });
+            }
+            setIsModalOpen(false);
+          }}
+        />
+      )}
+
+      {/* نافذة الملف الشخصي */}
+      {showProfileModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-lg font-bold mb-4 text-emerald-800">إعدادات الحساب</h3>
+            <form onSubmit={handleUpdateProfile} className="space-y-4">
+              <div className="flex flex-col items-center mb-4">
+                <div className="w-24 h-24 rounded-full bg-gray-100 border-2 border-emerald-500 overflow-hidden mb-2">
+                  {appUser.profilePic ? (
+                    <img src={appUser.profilePic} alt="الصورة" className="w-full h-full object-cover" />
+                  ) : (
+                    <User className="w-12 h-12 m-auto text-gray-400 mt-5" />
+                  )}
+                </div>
+                <label className="cursor-pointer text-sm text-emerald-600 hover:text-emerald-800 flex items-center">
+                  <ImageIcon className="w-4 h-4 ml-1" /> تغيير الصورة
+                  <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">الرقم السري الجديد (اختياري)</label>
+                <input type="password" name="newPassword" placeholder="للتغيير فقط" dir="ltr" className="w-full px-3 py-2 border rounded-lg focus:ring-emerald-500 text-left" />
+              </div>
+
+              <div className="flex justify-end gap-2 mt-6">
+                <button type="button" onClick={() => setShowProfileModal(false)} className="px-4 py-2 border rounded-lg">إلغاء</button>
+                <button type="submit" className="px-4 py-2 bg-emerald-600 text-white rounded-lg">حفظ</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==========================================
+// مكون بطاقة المشروع
+// ==========================================
+function ProjectCard({ project, appUser, onEdit, onDelete }) {
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'مكتمل': return 'bg-green-100 text-green-800 border-green-200';
+      case 'قيد التصميم': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'متوقف الى اشعار اخر': return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 'الغي المشروع': return 'bg-red-100 text-red-800 border-red-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition duration-300 flex flex-col relative">
+      <div className="bg-emerald-50 border-b border-emerald-100 p-4">
+        <div className="flex justify-between items-start mb-2">
+          <span className="text-xs font-semibold text-emerald-600 bg-emerald-100 px-2 py-1 rounded-full">
+            {project.customType || project.type || 'مشروع'}
+          </span>
+          <div className={`text-[10px] px-2 py-1 rounded-full border font-bold ${getStatusColor(project.overallStatus)}`}>
+            {project.overallStatus || 'قيد التصميم'}
+          </div>
+        </div>
+        <h3 className="text-lg font-bold text-gray-800 mb-1 leading-tight">{project.name}</h3>
+        <p className="text-sm text-gray-600 flex items-center">
+          <MapPin className="w-4 h-4 ml-1 text-gray-400" /> {project.requestingEntity}
+        </p>
+      </div>
+
+      <div className="p-4 flex-grow">
+        <div className="grid grid-cols-2 gap-3 mb-4 text-xs border-b border-gray-100 pb-3">
+          <div><span className="text-gray-500">المساحة:</span> <span className="font-bold">{project.area || '---'}</span></div>
+          <div><span className="text-gray-500">التكلفة:</span> <span className="font-bold">{project.cost || '---'}</span></div>
+          <div><span className="text-gray-500 flex"><Calendar className="w-3 h-3 ml-1"/> الاستلام:</span> <span className="font-bold">{project.startDate || '---'}</span></div>
+          <div><span className="text-gray-500 flex"><Calendar className="w-3 h-3 ml-1"/> التسليم:</span> <span className="font-bold">{project.endDate || '---'}</span></div>
+        </div>
+
+        <div className="space-y-2">
+          <SectionStatus title="المعماري" data={project.architectural} />
+          <SectionStatus title="الإنشائي" data={project.structural} />
+          <SectionStatus title="الخدمات" data={project.services} />
+        </div>
+      </div>
+
+      <div className="bg-gray-50 px-3 py-2 border-t border-gray-100 flex justify-between items-center">
+        <div className="text-[10px] text-gray-400 leading-tight">
+          حدثه: {project.lastUpdatedBy || 'النظام'}<br/>
+          {project.lastUpdatedAt || ''}
+        </div>
+        
+        <div className="flex gap-2">
+          <button onClick={onEdit} className="text-emerald-600 hover:bg-emerald-100 p-1.5 rounded transition" title="تحديث البيانات">
+            <Edit className="w-4 h-4" />
+          </button>
+          
+          {appUser.role === 'admin' && (
+            <div className="relative">
+              <button onClick={() => setShowConfirm(!showConfirm)} className="text-red-500 hover:bg-red-100 p-1.5 rounded transition" title="حذف">
+                <Trash2 className="w-4 h-4" />
+              </button>
+              {showConfirm && (
+                <div className="absolute bottom-8 left-0 bg-white border border-red-200 p-2 rounded shadow-lg w-32 z-10">
+                  <p className="text-xs text-center mb-2 font-bold text-red-600">متأكد من الحذف؟</p>
+                  <div className="flex justify-between gap-1">
+                    <button onClick={onDelete} className="bg-red-500 text-white text-xs px-2 py-1 rounded flex-1">نعم</button>
+                    <button onClick={() => setShowConfirm(false)} className="bg-gray-200 text-gray-700 text-xs px-2 py-1 rounded flex-1">لا</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectionStatus({ title, data }) {
+  const isComplete = data?.status === 'مكتمل';
+  const isInProgress = data?.status === 'قيد العمل';
+  return (
+    <div className="flex justify-between items-center p-2 rounded bg-gray-50/50 border border-gray-100">
+      <div className="flex items-center">
+        {isComplete ? <CheckCircle className="w-3.5 h-3.5 text-green-500 ml-1.5" /> : 
+         isInProgress ? <Clock className="w-3.5 h-3.5 text-blue-500 ml-1.5" /> : 
+         <AlertCircle className="w-3.5 h-3.5 text-gray-300 ml-1.5" />}
+        <div>
+          <p className="text-[11px] font-bold text-gray-700">{title}</p>
+          <p className="text-[9px] text-gray-500 truncate w-24">{data?.engineer || '---'}</p>
+        </div>
+      </div>
+      <span className={`text-[9px] px-1.5 py-0.5 rounded ${isComplete ? 'bg-green-100 text-green-700' : isInProgress ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'}`}>
+        {data?.status || 'انتظار'}
+      </span>
+    </div>
+  );
+}
+
+// ==========================================
+// نافذة التعديل / الإضافة
+// ==========================================
+function ProjectModal({ project, appUser, onClose, onSave }) {
+  const initialData = project || {
+    name: '', type: 'حديقة', customType: '', requestingEntity: 'مسقط', 
+    area: '', cost: '', overallStatus: 'قيد التصميم', startDate: '', endDate: '',
+    architectural: { engineer: '', status: 'قيد الانتظار', notes: '' },
+    structural: { engineer: '', status: 'قيد الانتظار', notes: '' },
+    services: { engineer: '', status: 'قيد الانتظار', notes: '' }
+  };
+
+  const [formData, setFormData] = useState(initialData);
+
+  const handleChange = (e, section = null) => {
+    const { name, value } = e.target;
+    if (section) {
+      setFormData(prev => ({ ...prev, [section]: { ...prev[section], [name]: value } }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto" dir="rtl">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-emerald-700 text-white px-6 py-4 flex justify-between items-center z-10">
+          <h2 className="text-lg font-bold">{project ? 'تحديث المشروع' : 'إضافة مشروع جديد'}</h2>
+          <button onClick={onClose} className="hover:bg-emerald-600 p-1 rounded-full"><X className="w-5 h-5" /></button>
+        </div>
+
+        <form onSubmit={(e) => { e.preventDefault(); onSave(formData); }} className="p-6 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">اسم المشروع</label>
+              <input type="text" name="name" required value={formData.name} onChange={handleChange} className="w-full px-3 py-2 border rounded focus:ring-emerald-500 text-sm" />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">الجهة الطالبة</label>
+              <select name="requestingEntity" value={formData.requestingEntity} onChange={handleChange} className="w-full px-3 py-2 border rounded focus:ring-emerald-500 text-sm">
+                {[
+                  'مسقط', 'مطرح', 'بوشر', 'السيب', 'العامرات', 'قريات',
+                  'المديرية العامة للشؤون الصحية',
+                  'المديرية العامة للتخطيط والاستثمار',
+                  'المديرية العامة للمشاريع والتشجير',
+                  'جهة أخرى...'
+                ].map(opt => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">الوضع العام</label>
+              <select name="overallStatus" value={formData.overallStatus} onChange={handleChange} className="w-full px-3 py-2 border rounded focus:ring-emerald-500 text-sm font-bold">
+                <option value="قيد التصميم">قيد التصميم</option>
+                <option value="مكتمل">مكتمل</option>
+                <option value="متوقف الى اشعار اخر">متوقف الى اشعار اخر</option>
+                <option value="الغي المشروع">الغي المشروع</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">النوع</label>
+              <select name="type" value={formData.type} onChange={handleChange} className="w-full px-3 py-2 border rounded focus:ring-emerald-500 text-sm">
+                <option value="حديقة">حديقة</option>
+                <option value="ممشى">ممشى</option>
+                <option value="مبنى">مبنى</option>
+                <option value="أخرى">أخرى (كتابة يدوية)</option>
+              </select>
+              {formData.type === 'أخرى' && (
+                <input type="text" name="customType" placeholder="اكتب نوع المشروع..." value={formData.customType} onChange={handleChange} className="w-full mt-2 px-3 py-2 border border-emerald-300 bg-emerald-50 rounded text-sm" />
+              )}
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">المساحة</label>
+              <input type="text" name="area" value={formData.area} onChange={handleChange} className="w-full px-3 py-2 border rounded focus:ring-emerald-500 text-sm" />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">التكلفة (ر.ع)</label>
+              <input type="text" name="cost" value={formData.cost} onChange={handleChange} className="w-full px-3 py-2 border rounded focus:ring-emerald-500 text-sm" />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">الاستلام</label>
+              <input type="date" name="startDate" value={formData.startDate} onChange={handleChange} className="w-full px-3 py-2 border rounded focus:ring-emerald-500 text-sm" />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">التسليم</label>
+              <input type="date" name="endDate" value={formData.endDate} onChange={handleChange} className="w-full px-3 py-2 border rounded focus:ring-emerald-500 text-sm" />
+            </div>
+          </div>
+
+          <hr className="border-gray-200" />
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <DepartmentCard title="القسم المعماري" section="architectural" data={formData.architectural} onChange={handleChange} />
+            <DepartmentCard title="القسم الإنشائي" section="structural" data={formData.structural} onChange={handleChange} />
+            <DepartmentCard title="قسم الخدمات" section="services" data={formData.services} onChange={handleChange} />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <button type="button" onClick={onClose} className="px-5 py-2 border rounded-lg text-sm font-bold">إلغاء</button>
+            <button type="submit" className="px-5 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold flex items-center">
+              <Save className="w-4 h-4 ml-2" /> حفظ التغييرات
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function DepartmentCard({ title, section, data, onChange }) {
+  return (
+    <div className="p-3 bg-gray-50 border rounded-lg">
+      <h4 className="font-bold text-emerald-800 text-sm mb-3 border-b border-gray-200 pb-1">{title}</h4>
+      <div className="space-y-2">
+        <input type="text" name="engineer" value={data.engineer || ''} onChange={(e) => onChange(e, section)} placeholder="اسم المهندس" className="w-full px-2 py-1.5 text-xs border rounded" />
+        <select name="status" value={data.status || 'قيد الانتظار'} onChange={(e) => onChange(e, section)} className="w-full px-2 py-1.5 text-xs border rounded">
+          <option value="قيد الانتظار">قيد الانتظار</option>
+          <option value="قيد العمل">قيد العمل</option>
+          <option value="مكتمل">مكتمل</option>
+        </select>
+        <textarea name="notes" value={data.notes || ''} onChange={(e) => onChange(e, section)} rows="2" placeholder="ملاحظات..." className="w-full px-2 py-1.5 text-xs border rounded resize-none"></textarea>
+      </div>
+    </div>
+  );
+}

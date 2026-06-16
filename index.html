@@ -258,11 +258,63 @@ const root = document.getElementById('root');
 /* ---- الحالة ---- */
 const state = {
   fbReady:false, appUser:null, projects:[], filtered:[],
-  search:'', isNewUser:false, authError:'', loading:true
+  search:'', isNewUser:false, authError:'', loading:true,
+  customOpts:{type:[],entity:[],jobTitle:[],dept:[]},   // بنود يضيفها المشرف
+  stats:[]   // إحصاءات نشاط المستخدمين
 };
 const ADMIN = { user:'turki69', pass:'abuyassmin69' };
 const colRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','projects');
 const usersRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','users');
+const optsRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','options');
+const statsRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','stats');
+
+/* ---- تتبّع نشاط المستخدمين (لقياس تبنّي النظام) ---- */
+function statsDoc(username){
+  return FB.doc(db,'artifacts',APP_ID,'public','data','stats', username);
+}
+/* يسجّل حدثاً: دخول، إنشاء مشروع، أو تحديث مشروع */
+async function logActivity(kind){
+  if(!CONFIGURED || !state.appUser || !state.appUser.username) return;
+  const u=state.appUser;
+  const now=new Date().toISOString();
+  try{
+    const ref=statsDoc(u.username);
+    let cur={};
+    try{ const snap=await FB.getDoc(ref); if(snap.exists()) cur=snap.data(); }catch(e){}
+    const data={
+      username:u.username,
+      name:u.name||u.username,
+      role:u.role||'engineer',
+      dept:u.dept||'',
+      jobTitle:u.jobTitle||'',
+      logins:(cur.logins||0)+(kind==='login'?1:0),
+      creates:(cur.creates||0)+(kind==='create'?1:0),
+      updates:(cur.updates||0)+(kind==='update'?1:0),
+      lastLogin:(kind==='login')?now:(cur.lastLogin||null),
+      lastActivity:now,
+      firstSeen:cur.firstSeen||now
+    };
+    await FB.setDoc(ref,data);
+  }catch(e){console.error("تسجيل النشاط:",e);}
+}
+
+/* القوائم الأساسية الثابتة */
+const BASE_OPTS = {
+  type:['حديقة','ممشى','مبنى','أخرى'],
+  entity:['مسقط','مطرح','بوشر','السيب','العامرات','قريات',
+    'المديرية العامة للشؤون الصحية','المديرية العامة للتخطيط والاستثمار',
+    'المديرية العامة للمشاريع والتشجير','جهة أخرى…'],
+  jobTitle:['مهندس معماري','مهندس إنشائي','مهندس تصميم خدمات',
+    'رئيس القسم المعماري','رئيس القسم الإنشائي','رئيس قسم تصميم الخدمات',
+    'مدير الدائرة','تنسيق ومتابعة'],
+  dept:[]   // الأقسام لها قيم/تسميات خاصة، تُدار بقائمة منفصلة
+};
+const OPT_LABELS = {type:'أنواع المشاريع',entity:'الجهات الطالبة',jobTitle:'المسميات الوظيفية',dept:'الأقسام الفنية'};
+/* دمج الأساسي مع المخصّص (بدون تكرار) */
+function opts(key){
+  const extra=(state.customOpts[key]||[]).map(o=>o.value);
+  return [...BASE_OPTS[key], ...extra.filter(v=>!BASE_OPTS[key].includes(v))];
+}
 
 const STATUS_STYLE = {
   'مكتمل':['var(--ok)','var(--ok-bg)'],
@@ -283,10 +335,10 @@ async function initFirebase(){
   try{
     await loadFirebase();
     FB.signInAnonymously(auth).catch(e=>console.error("مصادقة:",e));
-    FB.onAuthStateChanged(auth,(u)=>{ if(u){state.fbReady=true; subscribeProjects();} });
+    FB.onAuthStateChanged(auth,(u)=>{ if(u){state.fbReady=true; subscribeProjects(); subscribeOptions(); subscribeStats();} });
   }catch(e){
     console.error("تحميل Firebase:",e);
-    state.authError='تعذّر الاتصال بقاعدة البيانات. تحقّقي من الإنترنت ومن صحة مفاتيح Firebase.';
+    state.authError='تعذّر الاتصال بقاعدة البيانات. تحقّق من الإنترنت ومن صحة مفاتيح Firebase.';
     render();
   }
 }
@@ -297,6 +349,36 @@ function subscribeProjects(){
     state.projects=data; applyFilter(); state.loading=false; render();
   },(e)=>{console.error("جلب المشاريع:",e);state.loading=false;render();});
 }
+function subscribeOptions(){
+  FB.onSnapshot(optsRef(),(snap)=>{
+    const grouped={type:[],entity:[],jobTitle:[],dept:[]};
+    snap.docs.forEach(d=>{
+      const o={id:d.id,...d.data()};
+      if(grouped[o.list]) grouped[o.list].push(o);
+    });
+    state.customOpts=grouped;
+    if(listsModalOpen){ refreshListsModal(); }   // حدّث النافذة المفتوحة بدل هدمها
+    else { render(); }
+  },(e)=>{console.error("جلب القوائم:",e);});
+}
+function subscribeStats(){
+  FB.onSnapshot(statsRef(),(snap)=>{
+    state.stats=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(statsModalOpen){ refreshStatsModal(); }
+  },(e)=>{console.error("جلب الإحصاءات:",e);});
+}
+async function addOption(list,value){
+  value=(value||'').trim(); if(!value) return;
+  // امنع التكرار مع الأساسي أو المخصّص
+  const exists = BASE_OPTS[list].includes(value) || (state.customOpts[list]||[]).some(o=>o.value===value);
+  if(exists){alert('هذا البند موجود مسبقاً.');return;}
+  try{ await FB.addDoc(optsRef(),{list,value,createdAt:new Date().toISOString()}); }
+  catch(e){console.error(e);alert('تعذّر إضافة البند.');}
+}
+async function deleteOption(id){
+  try{ await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','options',id)); }
+  catch(e){console.error(e);alert('تعذّر حذف البند.');}
+}
 function applyFilter(){
   const s=state.search.trim().toLowerCase();
   state.filtered = !s ? state.projects : state.projects.filter(p=>
@@ -306,6 +388,23 @@ function applyFilter(){
 }
 
 /* ════════════ تسجيل الدخول ════════════ */
+/* ---- تذكّر الجلسة على هذا الجهاز ---- */
+const SESSION_KEY='cdp_session_v1';
+const LAST_USER_KEY='cdp_last_user_v1';
+function saveSession(user){
+  try{ localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+       if(user&&user.username) localStorage.setItem(LAST_USER_KEY, user.username); }catch(e){}
+}
+function loadSession(){
+  try{ const s=localStorage.getItem(SESSION_KEY); return s?JSON.parse(s):null; }catch(e){ return null; }
+}
+function clearSession(){
+  try{ localStorage.removeItem(SESSION_KEY); }catch(e){}   // نُبقي اسم المستخدم
+}
+function loadLastUser(){
+  try{ return localStorage.getItem(LAST_USER_KEY)||''; }catch(e){ return ''; }
+}
+
 async function handleAuth(form){
   state.authError='';state.loading=true;render();
   const fd=new FormData(form);
@@ -314,6 +413,7 @@ async function handleAuth(form){
 
   if(username===ADMIN.user && password.toLowerCase()===ADMIN.pass){
     state.appUser={role:'admin',name:'تركي (المشرف العام)',username,profilePic:''};
+    saveSession(state.appUser);
     state.loading=false;render();return;
   }
   if(!CONFIGURED){
@@ -325,19 +425,21 @@ async function handleAuth(form){
       const name=(fd.get('name')||'').trim();
       const dept=fd.get('dept'); const jobTitle=fd.get('jobTitle');
       const dup=await FB.getDocs(FB.query(usersRef(),FB.where("username","==",username)));
-      if(!dup.empty){state.authError='اسم المستخدم محجوز مسبقاً، اختاري اسماً آخر.';state.loading=false;render();return;}
+      if(!dup.empty){state.authError='اسم المستخدم محجوز مسبقاً، اختر اسماً آخر.';state.loading=false;render();return;}
       const newUser={username,password,name,role:'engineer',dept,jobTitle,profilePic:''};
       await FB.addDoc(usersRef(),newUser);
       state.appUser=newUser;
+      saveSession(newUser);
+      logActivity('login');
     }else{
       const qs=await FB.getDocs(FB.query(usersRef(),FB.where("username","==",username),FB.where("password","==",password)));
       if(qs.empty){state.authError='اسم المستخدم أو الرقم السري غير صحيح.';}
-      else{state.appUser=qs.docs[0].data();}
+      else{state.appUser=qs.docs[0].data();saveSession(state.appUser);logActivity('login');}
     }
-  }catch(e){console.error(e);state.authError='تعذّر الاتصال، حاولي مرة أخرى.';}
+  }catch(e){console.error(e);state.authError='تعذّر الاتصال، حاول مرة أخرى.';}
   state.loading=false;render();
 }
-function logout(){state.appUser=null;state.isNewUser=false;state.authError='';render();}
+function logout(){clearSession();state.appUser=null;state.isNewUser=false;state.authError='';render();}
 
 /* ════════════ استيراد Excel ════════════ */
 function handleExcelImport(file){
@@ -391,8 +493,8 @@ async function clearAll(){
 }
 async function saveProject(data,editingId){
   const payload={...data,lastUpdatedBy:state.appUser.name,lastUpdatedAt:new Date().toLocaleString('ar-OM')};
-  if(editingId){await FB.updateDoc(FB.doc(db,'artifacts',APP_ID,'public','data','projects',editingId),payload);}
-  else{await FB.addDoc(colRef(),{...payload,createdAt:new Date().toISOString()});}
+  if(editingId){await FB.updateDoc(FB.doc(db,'artifacts',APP_ID,'public','data','projects',editingId),payload);logActivity('update');}
+  else{await FB.addDoc(colRef(),{...payload,createdAt:new Date().toISOString()});logActivity('create');}
 }
 async function deleteProject(id){
   await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','projects',id));
@@ -413,7 +515,9 @@ const I={
   close:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6 6 18M6 6l12 12"/></svg>',
   save:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>',
   build:'<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#d9cdb6" stroke-width="1.6"><rect x="4" y="2" width="16" height="20" rx="1"/><path d="M9 22v-4h6v4M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/></svg>',
-  img:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>'
+  img:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>',
+  lists:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
+  chart:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 3v18h18M8 17V9m5 8V5m5 12v-6"/></svg>'
 };
 
 /* ════════════ العرض ════════════ */
@@ -426,6 +530,7 @@ function render(){
 
 function renderAuth(){
   const isNew=state.isNewUser;
+  const lastUser=loadLastUser();
   const wrap=$(`<div class="auth-wrap" style="background-image:url('${BG_BUILDING}')"><div class="auth-overlay"></div></div>`);
   const card=$(`<div class="auth-card">
     <div class="auth-logo">
@@ -441,23 +546,21 @@ function renderAuth(){
     <div class="field"><label>الاسم الكامل</label><input type="text" name="name" required></div>
     <div class="field"><label>المسمى الوظيفي</label>
       <select name="jobTitle">
-        <option>مهندس معماري</option><option>مهندس إنشائي</option><option>مهندس تصميم خدمات</option>
-        <option>رئيس القسم المعماري</option><option>رئيس القسم الإنشائي</option><option>رئيس قسم تصميم الخدمات</option>
-        <option>مدير الدائرة</option><option>تنسيق ومتابعة</option>
+        ${opts('jobTitle').map(o=>`<option>${o}</option>`).join('')}
       </select></div>
     <div class="field"><label>القسم الفني المختص</label>
       <select name="dept"><option value="architectural">القسم المعماري</option>
         <option value="structural">القسم الإنشائي</option><option value="services">قسم تصميم الخدمات</option></select></div>
   `:``)+`
-    <div class="field"><label>اسم المستخدم</label><input class="ltr" type="text" name="username" required placeholder="username"></div>
-    <div class="field"><label>الرقم السري</label><input class="ltr" type="password" name="password" required></div>
+    <div class="field"><label>اسم المستخدم</label><input class="ltr" type="text" name="username" required placeholder="username" value="${isNew?'':lastUser}"></div>
+    <div class="field"><label>الرقم السري</label><input class="ltr" type="password" name="password" required ${(!isNew&&lastUser)?'autofocus':''}></div>
     <button class="btn-primary" type="submit" ${state.loading?'disabled':''}>
       ${state.loading?'<div class="spinner"></div>':(isNew?'إنشاء الحساب':'تسجيل الدخول')}
     </button>`;
   form.onsubmit=(e)=>{e.preventDefault();handleAuth(form);};
   card.appendChild(form);
 
-  const sw=$(`<button class="switch-link">${isNew?'لديكِ حساب؟ تسجيل الدخول':'مستخدمة جديدة؟ إنشاء حساب'}</button>`);
+  const sw=$(`<button class="switch-link">${isNew?'لديك حساب؟ تسجيل الدخول':'مستخدم جديد؟ إنشاء حساب'}</button>`);
   sw.onclick=()=>{state.isNewUser=!state.isNewUser;state.authError='';render();};
   card.appendChild(sw);
 
@@ -472,7 +575,7 @@ function renderApp(){
   const header=$(`<header class="topbar"><div class="topbar-inner">
     <div class="brand"><div class="brand-crest"><img src="${LOGO_WHITE}" alt="بلدية مسقط"></div>
       <div><h1>التصميم المركزي</h1><div class="crumb">بلدية مسقط · الشؤون الفنية</div></div></div>
-    <div class="search">${I.search}<input type="text" placeholder="ابحثي عن مشروع أو جهة طالبة…" value="${state.search}"></div>
+    <div class="search">${I.search}<input type="text" placeholder="ابحث عن مشروع أو جهة طالبة…" value="${state.search}"></div>
     <div class="user-box">
       <div class="user-meta"><div class="nm">${u.name}</div><div class="rl">${u.role==='admin'?'مشرف عام':(u.jobTitle||'مهندس مصمم')}</div></div>
       <div class="avatar">${u.profilePic?`<img src="${u.profilePic}">`:I.user}</div>
@@ -501,6 +604,8 @@ function renderApp(){
       ${u.role==='admin'?`
         <button class="btn btn-del" id="btnClear">${I.trash}<span class="lbl">مسح الكل</span></button>
         <button class="btn btn-xl" id="btnXl">${I.upload}<span class="lbl">استيراد Excel</span></button>
+        <button class="btn btn-ghost" id="btnLists">${I.lists}<span class="lbl">إدارة القوائم</span></button>
+        <button class="btn btn-ghost" id="btnStats">${I.chart}<span class="lbl">إحصاءات النشاط</span></button>
         <input type="file" id="xlFile" accept=".xlsx,.xls" class="hidden">`:''}
       <button class="btn btn-add" id="btnAdd">${I.plus}<span class="lbl">إضافة مشروع</span></button>
     </div></div>`);
@@ -509,6 +614,8 @@ function renderApp(){
     toolbar.querySelector('#btnXl').onclick=()=>xl.click();
     xl.onchange=(e)=>{handleExcelImport(e.target.files[0]); e.target.value='';};
     toolbar.querySelector('#btnClear').onclick=clearAll;
+    toolbar.querySelector('#btnLists').onclick=openListsModal;
+    toolbar.querySelector('#btnStats').onclick=openStatsModal;
   }
   toolbar.querySelector('#btnAdd').onclick=()=>openProjectModal(null);
   main.appendChild(toolbar);
@@ -529,7 +636,7 @@ function updateGrid(){
   if(state.loading){host.appendChild($(`<div class="loading"><div class="spinner"></div></div>`));return;}
   if(!state.filtered.length){
     host.appendChild($(`<div class="empty">${I.build}<h3 style="margin-top:12px;font-size:18px;color:#5e574a">لا توجد مشاريع لعرضها</h3>
-      <p style="margin-top:5px">أضيفي أول مشروع بالضغط على «إضافة مشروع».</p></div>`));
+      <p style="margin-top:5px">أضِف أول مشروع بالضغط على «إضافة مشروع».</p></div>`));
     return;
   }
   const grid=document.createElement('div');grid.className='grid';
@@ -603,9 +710,6 @@ function openProjectModal(project){
     structural:{engineer:'',status:'قيد الانتظار',notes:''},
     services:{engineer:'',status:'قيد الانتظار',notes:''}
   };
-  const entities=['مسقط','مطرح','بوشر','السيب','العامرات','قريات',
-    'المديرية العامة للشؤون الصحية','المديرية العامة للتخطيط والاستثمار',
-    'المديرية العامة للمشاريع والتشجير','جهة أخرى…'];
   const opt=(arr,sel)=>arr.map(o=>`<option ${o===sel?'selected':''}>${o}</option>`).join('');
 
   const overlay=$(`<div class="overlay"></div>`);
@@ -615,11 +719,11 @@ function openProjectModal(project){
   form.innerHTML=`
     <div class="form-grid">
       <div><label class="lbl-sm">اسم المشروع</label><input class="inp" name="name" required value="${data.name}"></div>
-      <div><label class="lbl-sm">الجهة الطالبة</label><select class="inp" name="requestingEntity">${opt(entities,data.requestingEntity)}</select></div>
+      <div><label class="lbl-sm">الجهة الطالبة</label><select class="inp" name="requestingEntity">${opt(opts('entity'),data.requestingEntity)}</select></div>
       <div><label class="lbl-sm">الوضع العام</label><select class="inp" name="overallStatus" style="font-weight:700">
         ${opt(['قيد التصميم','مكتمل','متوقف الى اشعار اخر','الغي المشروع'],data.overallStatus)}</select></div>
-      <div><label class="lbl-sm">النوع</label><select class="inp" name="type">${opt(['حديقة','ممشى','مبنى','أخرى'],data.type)}</select>
-        <input class="inp ${data.type==='أخرى'?'':'hidden'}" name="customType" id="ct" placeholder="اكتبي نوع المشروع…" value="${data.customType||''}" style="margin-top:8px"></div>
+      <div><label class="lbl-sm">النوع</label><select class="inp" name="type">${opt(opts('type'),data.type)}</select>
+        <input class="inp ${data.type==='أخرى'?'':'hidden'}" name="customType" id="ct" placeholder="اكتب نوع المشروع…" value="${data.customType||''}" style="margin-top:8px"></div>
       <div><label class="lbl-sm">المساحة</label><input class="inp" name="area" value="${data.area||''}"></div>
       <div><label class="lbl-sm">التكلفة (ر.ع)</label><input class="inp" name="cost" value="${data.cost||''}"></div>
       <div><label class="lbl-sm">تاريخ الاستلام</label><input class="inp" type="date" name="startDate" value="${data.startDate||''}"></div>
@@ -651,7 +755,7 @@ function openProjectModal(project){
       structural:{engineer:get('str_engineer'),status:get('str_status'),notes:get('str_notes')},
       services:{engineer:get('srv_engineer'),status:get('srv_status'),notes:get('srv_notes')}
     };
-    if(!CONFIGURED){alert('قاعدة البيانات غير مُعدّة بعد — أضيفي مفاتيح Firebase أولاً لحفظ المشاريع.');return;}
+    if(!CONFIGURED){alert('قاعدة البيانات غير مُعدّة بعد — أضِف مفاتيح Firebase أولاً لحفظ المشاريع.');return;}
     overlay.remove();
     await saveProject(payload, project?.id);
   };
@@ -670,6 +774,150 @@ function deptCard(title,prefixKey,d){
     <select class="inp" name="${pf}_status">${sOpt}</select>
     <textarea class="inp" name="${pf}_notes" rows="2" placeholder="ملاحظات…" style="resize:none">${d.notes||''}</textarea>
   </div>`;
+}
+
+/* ════════════ لوحة إحصاءات النشاط (للمشرف) ════════════ */
+let statsModalOpen=false;
+function fmtDate(iso){
+  if(!iso) return '—';
+  try{ return new Date(iso).toLocaleString('ar-OM',{dateStyle:'medium',timeStyle:'short'}); }
+  catch(e){ return '—'; }
+}
+function daysSince(iso){
+  if(!iso) return null;
+  return Math.floor((Date.now()-new Date(iso).getTime())/86400000);
+}
+function openStatsModal(){
+  if(document.getElementById('statsOverlay')) return;
+  statsModalOpen=true;
+  const overlay=$(`<div class="overlay" id="statsOverlay"></div>`);
+  const modal=$(`<div class="modal"><div class="modal-head"><h2>إحصاءات نشاط المهندسين</h2>
+    <button class="icon-btn" id="x">${I.close}</button></div></div>`);
+  const body=document.createElement('div');body.className='modal-body';
+  modal.appendChild(body);overlay.appendChild(modal);
+
+  function fill(){
+    // المهندسون فقط (نستبعد المشرف)
+    const rows=state.stats.filter(s=>s.role!=='admin')
+      .sort((a,b)=> (b.updates+b.creates)-(a.updates+a.creates));
+    const totalUpdates=rows.reduce((s,r)=>s+(r.updates||0)+(r.creates||0),0);
+    const activeCount=rows.filter(r=>{const d=daysSince(r.lastActivity);return d!==null&&d<=7;}).length;
+
+    let html=`
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:20px">
+        <div style="background:var(--oasis-50);border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center">
+          <div style="font-size:26px;font-weight:800;color:var(--oasis-700);font-family:'Cairo'">${rows.length}</div>
+          <div style="font-size:12px;color:var(--muted)">إجمالي المهندسين</div></div>
+        <div style="background:var(--ok-bg);border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center">
+          <div style="font-size:26px;font-weight:800;color:var(--ok);font-family:'Cairo'">${activeCount}</div>
+          <div style="font-size:12px;color:var(--muted)">نشط آخر ٧ أيام</div></div>
+        <div style="background:var(--work-bg);border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center">
+          <div style="font-size:26px;font-weight:800;color:var(--work);font-family:'Cairo'">${totalUpdates}</div>
+          <div style="font-size:12px;color:var(--muted)">إجمالي التحديثات</div></div>
+      </div>`;
+
+    if(!rows.length){
+      html+=`<div style="text-align:center;padding:40px 20px;color:var(--muted)">
+        لم يسجّل أي مهندس دخوله بعد. ستظهر الإحصاءات هنا فور بدء الفريق باستخدام النظام.</div>`;
+    }else{
+      html+=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="text-align:right;color:var(--muted);border-bottom:2px solid var(--line)">
+          <th style="padding:9px 6px">المهندس</th>
+          <th style="padding:9px 6px">الدخول</th>
+          <th style="padding:9px 6px">مشاريع أنشأها</th>
+          <th style="padding:9px 6px">تحديثات</th>
+          <th style="padding:9px 6px">آخر نشاط</th>
+        </tr></thead><tbody>`;
+      rows.forEach(r=>{
+        const d=daysSince(r.lastActivity);
+        const fresh = d!==null && d<=7;
+        const dot = fresh?'var(--ok)':(d!==null&&d<=30?'var(--stop)':'var(--wait)');
+        const work=(r.updates||0)+(r.creates||0);
+        html+=`<tr style="border-bottom:1px solid var(--line)">
+          <td style="padding:10px 6px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="width:8px;height:8px;border-radius:50%;background:${dot};flex-shrink:0"></span>
+              <div><div style="font-weight:700">${r.name||r.username}</div>
+              <div style="font-size:11px;color:var(--muted)">${r.jobTitle||''}</div></div>
+            </div></td>
+          <td style="padding:10px 6px;text-align:center">${r.logins||0}</td>
+          <td style="padding:10px 6px;text-align:center">${r.creates||0}</td>
+          <td style="padding:10px 6px;text-align:center;font-weight:700;color:${work>0?'var(--oasis-700)':'var(--muted)'}">${work}</td>
+          <td style="padding:10px 6px;font-size:12px;color:var(--muted)">${fmtDate(r.lastActivity)}</td>
+        </tr>`;
+      });
+      html+=`</tbody></table></div>
+      <p style="font-size:11px;color:var(--muted);margin-top:14px;line-height:1.7">
+        النقطة الخضراء: نشط خلال آخر ٧ أيام · البرتقالية: خلال شهر · الرمادية: أقدم.
+        الأرقام تقيس الالتزام الفعلي بتحديث المشاريع في النظام الجديد.</p>`;
+    }
+    body.innerHTML=html;
+  }
+  fill();
+  overlay._refresh=fill;
+  modal.querySelector('#x').onclick=()=>{statsModalOpen=false;overlay.remove();};
+  overlay.onclick=(e)=>{if(e.target===overlay){statsModalOpen=false;overlay.remove();}};
+  root.appendChild(overlay);
+}
+function refreshStatsModal(){
+  const ov=document.getElementById('statsOverlay');
+  if(ov&&ov._refresh) ov._refresh();
+}
+
+/* ════════════ نافذة إدارة القوائم (للمشرف) ════════════ */
+let listsModalOpen=false;
+function openListsModal(){
+  if(document.getElementById('listsOverlay')) return;
+  listsModalOpen=true;
+  const overlay=$(`<div class="overlay" id="listsOverlay"></div>`);
+  const modal=$(`<div class="modal modal-sm"><div class="modal-head"><h2>إدارة القوائم</h2>
+    <button class="icon-btn" id="x">${I.close}</button></div></div>`);
+  const body=document.createElement('div');body.className='modal-body';
+  modal.appendChild(body);overlay.appendChild(modal);
+
+  function fill(){
+    const keys=['type','entity','jobTitle'];
+    body.innerHTML=`<p style="font-size:13px;color:var(--muted);margin-bottom:16px">
+      أضف بنوداً جديدة لأي قائمة، وستظهر فوراً لكل المستخدمين. البنود الأساسية لا يمكن حذفها؛ يمكنك حذف ما تضيفه فقط.</p>`;
+    keys.forEach(key=>{
+      const sec=document.createElement('div');
+      sec.style.cssText='margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid var(--line)';
+      const custom=(state.customOpts[key]||[]);
+      sec.innerHTML=`<h4 style="font-size:14px;color:var(--oasis-700);margin-bottom:9px">${OPT_LABELS[key]}</h4>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+          ${BASE_OPTS[key].map(v=>`<span style="font-size:12px;background:var(--sand-100);color:var(--muted);padding:4px 10px;border-radius:14px">${v}</span>`).join('')}
+          ${custom.map(o=>`<span style="font-size:12px;background:var(--oasis-50);color:var(--oasis-700);padding:4px 6px 4px 10px;border-radius:14px;display:inline-flex;align-items:center;gap:6px">${o.value}
+            <button data-del="${o.id}" title="حذف" style="color:var(--danger);font-weight:800;line-height:1;font-size:14px">×</button></span>`).join('')}
+        </div>
+        <div style="display:flex;gap:7px">
+          <input class="inp" data-inp="${key}" placeholder="بند جديد…" style="flex:1">
+          <button class="btn btn-add" data-add="${key}" style="padding:8px 14px">${I.plus}</button>
+        </div>`;
+      body.appendChild(sec);
+    });
+    body.querySelectorAll('[data-add]').forEach(btn=>{
+      btn.onclick=async()=>{
+        const key=btn.getAttribute('data-add');
+        const inp=body.querySelector(`[data-inp="${key}"]`);
+        const val=inp.value; inp.value='';
+        await addOption(key,val);
+      };
+    });
+    body.querySelectorAll('[data-del]').forEach(btn=>{
+      btn.onclick=async()=>{ if(confirm('حذف هذا البند؟')) await deleteOption(btn.getAttribute('data-del')); };
+    });
+  }
+  fill();
+  overlay._refresh=fill;   // ليتم تحديثه عند تغيّر القوائم
+
+  modal.querySelector('#x').onclick=()=>{listsModalOpen=false;overlay.remove();};
+  overlay.onclick=(e)=>{if(e.target===overlay){listsModalOpen=false;overlay.remove();}};
+  root.appendChild(overlay);
+}
+/* عند وصول تحديث للقوائم، حدّث النافذة إن كانت مفتوحة بدل إغلاقها */
+function refreshListsModal(){
+  const ov=document.getElementById('listsOverlay');
+  if(ov&&ov._refresh) ov._refresh();
 }
 
 /* ════════════ نافذة الملف الشخصي ════════════ */
@@ -703,7 +951,7 @@ function openProfile(){
     e.preventDefault();
     const np=new FormData(form).get('newPassword');
     if(u.role==='admin'){ // المشرف ثابت محلياً
-      if(newPic){state.appUser.profilePic=newPic;}
+      if(newPic){state.appUser.profilePic=newPic;saveSession(state.appUser);}
       overlay.remove();render();return;
     }
     if(CONFIGURED){
@@ -714,6 +962,7 @@ function openProfile(){
           const upd={}; if(np)upd.password=np; if(newPic)upd.profilePic=newPic;
           if(Object.keys(upd).length) await FB.updateDoc(ref,upd);
           state.appUser={...state.appUser,...upd};
+          saveSession(state.appUser);
         }
       }catch(err){console.error(err);}
     }
@@ -727,6 +976,8 @@ function openProfile(){
 }
 
 /* ---- إقلاع ---- */
+const savedUser=loadSession();      // استعادة جلسة هذا الجهاز إن وُجدت
+if(savedUser){state.appUser=savedUser;}
 render();          // ارسمي الواجهة فوراً
 initFirebase();    // ثم حمّلي قاعدة البيانات في الخلفية
 </script>

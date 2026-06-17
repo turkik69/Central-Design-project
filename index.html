@@ -170,6 +170,7 @@
   .sec-col{flex-direction:column;align-items:stretch}
   .sec-row{display:flex;justify-content:space-between;align-items:center}
   .sec-dates{font-size:10.5px;color:var(--muted);margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)}
+  .sec-rate{font-size:11px;color:var(--clay-dark);margin-top:5px;font-weight:700}
   .sec-l{display:flex;align-items:center;gap:8px}
   .sec-l .ttl{font-size:12px;font-weight:700}
   .sec-l .eng{font-size:10px;color:var(--muted)}
@@ -713,12 +714,14 @@ function secRow(title,data){
   const [c,bg]=SEC_STYLE[st]||SEC_STYLE['قيد الانتظار'];
   const sd=data?.startDate, ed=data?.endDate;
   const dateLine = (sd||ed) ? `<div class="sec-dates">استلام: ${sd||'—'} · تسليم: ${ed||'—'}</div>` : '';
+  const avg=ratingAvg(data?.eval);
+  const rateLine = (avg && canViewEval()) ? `<div class="sec-rate">تقييم رئيس القسم: <b>${avg}</b> <span style="color:var(--stop)">★</span></div>` : '';
   return `<div class="sec sec-col"><div class="sec-row">
       <div class="sec-l">
         <span class="dot" style="background:${c}"></span>
         <div><div class="ttl">${title}</div><div class="eng">${data?.engineer||'لم يُسنَد'}</div></div>
       </div><span class="sec-badge" style="color:${c};background:${bg}">${st}</span>
-    </div>${dateLine}</div>`;
+    </div>${dateLine}${rateLine}</div>`;
 }
 
 function renderCard(p){
@@ -815,13 +818,25 @@ function openProjectModal(project){
     e.preventDefault();
     const fd=new FormData(form);
     const get=(n)=>fd.get(n)||'';
+    // يبني تقييم القسم: من النموذج إن كان المستخدم مخوّلاً، وإلا يبقي القديم
+    const buildEval=(pf,key)=>{
+      if(canEvaluate(key)){
+        return {
+          work:get(pf+'_ev_work'), engineer:get(pf+'_ev_engineer'),
+          done:get(pf+'_ev_done'), delay:get(pf+'_ev_delay'),
+          notes:get(pf+'_ev_notes'),
+          by:state.appUser.name, at:new Date().toLocaleString('ar-OM')
+        };
+      }
+      return (data[key] && data[key].eval) ? data[key].eval : {};
+    };
     const payload={
       name:get('name'),type:get('type'),customType:get('customType'),
       requestingEntity:get('requestingEntity'),overallStatus:get('overallStatus'),
       area:get('area'),cost:get('cost'),startDate:get('startDate'),endDate:get('endDate'),
-      architectural:{engineer:get('arch_engineer'),status:get('arch_status'),notes:get('arch_notes'),startDate:get('arch_startDate'),endDate:get('arch_endDate')},
-      structural:{engineer:get('str_engineer'),status:get('str_status'),notes:get('str_notes'),startDate:get('str_startDate'),endDate:get('str_endDate')},
-      services:{engineer:get('srv_engineer'),status:get('srv_status'),notes:get('srv_notes'),startDate:get('srv_startDate'),endDate:get('srv_endDate')}
+      architectural:{engineer:get('arch_engineer'),status:get('arch_status'),notes:get('arch_notes'),startDate:get('arch_startDate'),endDate:get('arch_endDate'),eval:buildEval('arch','architectural')},
+      structural:{engineer:get('str_engineer'),status:get('str_status'),notes:get('str_notes'),startDate:get('str_startDate'),endDate:get('str_endDate'),eval:buildEval('str','structural')},
+      services:{engineer:get('srv_engineer'),status:get('srv_status'),notes:get('srv_notes'),startDate:get('srv_startDate'),endDate:get('srv_endDate'),eval:buildEval('srv','services')}
     };
     if(!CONFIGURED){alert('قاعدة البيانات غير مُعدّة بعد — أضِف مفاتيح Firebase أولاً لحفظ المشاريع.');return;}
     overlay.remove();
@@ -834,9 +849,54 @@ function openProjectModal(project){
   overlay.onclick=(e)=>{if(e.target===overlay)overlay.remove();};
   root.appendChild(overlay);
 }
+/* هل يحق للمستخدم الحالي تقييم هذا القسم؟ (المشرف أو رئيس القسم نفسه) */
+function canEvaluate(prefixKey){
+  const u=state.appUser; if(!u) return false;
+  if(u.role==='admin') return true;
+  const jt=u.jobTitle||'';
+  const headTitles={architectural:'رئيس القسم المعماري',structural:'رئيس القسم الإنشائي',services:'رئيس قسم تصميم الخدمات'};
+  return jt===headTitles[prefixKey];
+}
+/* هل يحق له رؤية التقييم؟ (المشرف + مدير الدائرة + أي رئيس قسم) */
+function canViewEval(){
+  const u=state.appUser; if(!u) return false;
+  if(u.role==='admin') return true;
+  const jt=u.jobTitle||'';
+  return jt==='مدير الدائرة' || jt.indexOf('رئيس')!==-1;
+}
+const RATE_FIELDS=[
+  ['work','وضع العمل'],
+  ['engineer','المهندس'],
+  ['done','الإنجاز'],
+  ['delay','الالتزام بالوقت']
+];
+/* نجوم تقييم ١–٥ */
+function starSelect(name,val){
+  let opts='<option value="">—</option>';
+  for(let i=1;i<=5;i++) opts+=`<option value="${i}" ${String(val)===String(i)?'selected':''}>${i} ${'★'.repeat(i)}</option>`;
+  return `<select class="inp" name="${name}" style="font-size:12px">${opts}</select>`;
+}
+
 function deptCard(title,prefixKey,d){
   const pf={architectural:'arch',structural:'str',services:'srv'}[prefixKey];
   const sOpt=['قيد الانتظار','قيد العمل','مكتمل'].map(o=>`<option ${o===(d.status||'قيد الانتظار')?'selected':''}>${o}</option>`).join('');
+  const ev=d.eval||{};
+  const mayRate=canEvaluate(prefixKey);
+  let rateBlock='';
+  if(mayRate){
+    rateBlock=`<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)">
+      <div style="font-size:12px;font-weight:700;color:var(--clay-dark);margin-bottom:7px">تقييم رئيس القسم (١–٥)</div>
+      ${RATE_FIELDS.map(([k,lbl])=>`<label class="lbl-sm" style="margin-bottom:3px">${lbl}</label>${starSelect(pf+'_ev_'+k,ev[k])}`).join('')}
+      <textarea class="inp" name="${pf}_ev_notes" rows="2" placeholder="ملاحظات رئيس القسم…" style="resize:none;margin-top:6px">${ev.notes||''}</textarea>
+    </div>`;
+  }else if(canViewEval() && d.eval && (d.eval.work||d.eval.engineer||d.eval.done||d.eval.delay||d.eval.notes)){
+    // عرض التقييم للقراءة فقط (مدير الدائرة + رؤساء الأقسام + المشرف)
+    const avg=ratingAvg(d.eval);
+    rateBlock=`<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);font-size:12px">
+      <div style="font-weight:700;color:var(--clay-dark);margin-bottom:5px">تقييم رئيس القسم: ${avg?avg+' ★':'—'}</div>
+      ${d.eval.notes?`<div style="color:var(--muted)">${d.eval.notes}</div>`:''}
+    </div>`;
+  }
   return `<div class="dept"><h4>${title}</h4>
     <input class="inp" name="${pf}_engineer" placeholder="اسم المهندس" value="${d.engineer||''}">
     <select class="inp" name="${pf}_status">${sOpt}</select>
@@ -845,7 +905,15 @@ function deptCard(title,prefixKey,d){
     <label class="lbl-sm">تاريخ التسليم</label>
     <input class="inp" type="date" name="${pf}_endDate" value="${d.endDate||''}">
     <textarea class="inp" name="${pf}_notes" rows="2" placeholder="ملاحظات…" style="resize:none;margin-top:4px">${d.notes||''}</textarea>
+    ${rateBlock}
   </div>`;
+}
+/* متوسط التقييم */
+function ratingAvg(ev){
+  if(!ev) return null;
+  const vals=['work','engineer','done','delay'].map(k=>Number(ev[k])).filter(n=>n>=1&&n<=5);
+  if(!vals.length) return null;
+  return (vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1);
 }
 
 /* ════════════ نافذة إدارة المستخدمين (للمشرف) ════════════ */
@@ -870,7 +938,8 @@ function openUsersModal(){
         <div><label class="lbl-sm">القسم الفني</label><select class="inp" id="nu_dept">
           <option value="architectural">القسم المعماري</option>
           <option value="structural">القسم الإنشائي</option>
-          <option value="services">قسم تصميم الخدمات</option></select></div>
+          <option value="services">قسم تصميم الخدمات</option>
+          <option value="administration">الإدارة</option></select></div>
         <div><label class="lbl-sm">اسم المستخدم</label><input class="inp ltr" id="nu_user" placeholder="username"></div>
         <div><label class="lbl-sm">الرقم السري</label><input class="inp ltr" id="nu_pass" value="${DEFAULT_PASSWORD}" placeholder="******"></div>
       </div>

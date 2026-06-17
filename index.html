@@ -260,7 +260,8 @@ const state = {
   fbReady:false, appUser:null, projects:[], filtered:[],
   search:'', isNewUser:false, authError:'', loading:true,
   customOpts:{type:[],entity:[],jobTitle:[],dept:[]},   // بنود يضيفها المشرف
-  stats:[]   // إحصاءات نشاط المستخدمين
+  stats:[],   // إحصاءات نشاط المستخدمين
+  users:[]    // قائمة المستخدمين (للمشرف)
 };
 const ADMIN = { user:'turki69', pass:'abuyassmin69' };
 const colRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','projects');
@@ -335,7 +336,7 @@ async function initFirebase(){
   try{
     await loadFirebase();
     FB.signInAnonymously(auth).catch(e=>console.error("مصادقة:",e));
-    FB.onAuthStateChanged(auth,(u)=>{ if(u){state.fbReady=true; subscribeProjects(); subscribeOptions(); subscribeStats();} });
+    FB.onAuthStateChanged(auth,(u)=>{ if(u){state.fbReady=true; subscribeProjects(); subscribeOptions(); subscribeStats(); subscribeUsers();} });
   }catch(e){
     console.error("تحميل Firebase:",e);
     state.authError='تعذّر الاتصال بقاعدة البيانات. تحقّق من الإنترنت ومن صحة مفاتيح Firebase.';
@@ -366,6 +367,29 @@ function subscribeStats(){
     state.stats=snap.docs.map(d=>({id:d.id,...d.data()}));
     if(statsModalOpen){ refreshStatsModal(); }
   },(e)=>{console.error("جلب الإحصاءات:",e);});
+}
+function subscribeUsers(){
+  FB.onSnapshot(usersRef(),(snap)=>{
+    state.users=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(usersModalOpen){ refreshUsersModal(); }
+  },(e)=>{console.error("جلب المستخدمين:",e);});
+}
+async function createUser(u){
+  const username=(u.username||'').trim().toLowerCase();
+  const password=(u.password||'').trim();
+  const name=(u.name||'').trim();
+  if(!username||!password||!name){ alert('يرجى تعبئة الاسم واسم المستخدم والرقم السري.'); return false; }
+  if(username===ADMIN.user){ alert('اسم المستخدم محجوز.'); return false; }
+  try{
+    const dup=await FB.getDocs(FB.query(usersRef(),FB.where("username","==",username)));
+    if(!dup.empty){ alert('اسم المستخدم محجوز مسبقاً، اختر اسماً آخر.'); return false; }
+    await FB.addDoc(usersRef(),{username,password,name,role:'engineer',dept:u.dept||'architectural',jobTitle:u.jobTitle||'',profilePic:''});
+    return true;
+  }catch(e){ console.error(e); alert('تعذّر إنشاء الحساب.'); return false; }
+}
+async function deleteUser(id){
+  try{ await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','users',id)); }
+  catch(e){ console.error(e); alert('تعذّر حذف المستخدم.'); }
 }
 async function addOption(list,value){
   value=(value||'').trim(); if(!value) return;
@@ -421,25 +445,13 @@ async function handleAuth(form){
     state.loading=false;render();return;
   }
   try{
-    if(state.isNewUser){
-      const name=(fd.get('name')||'').trim();
-      const dept=fd.get('dept'); const jobTitle=fd.get('jobTitle');
-      const dup=await FB.getDocs(FB.query(usersRef(),FB.where("username","==",username)));
-      if(!dup.empty){state.authError='اسم المستخدم محجوز مسبقاً، اختر اسماً آخر.';state.loading=false;render();return;}
-      const newUser={username,password,name,role:'engineer',dept,jobTitle,profilePic:''};
-      await FB.addDoc(usersRef(),newUser);
-      state.appUser=newUser;
-      saveSession(newUser);
-      logActivity('login');
-    }else{
-      const qs=await FB.getDocs(FB.query(usersRef(),FB.where("username","==",username),FB.where("password","==",password)));
-      if(qs.empty){state.authError='اسم المستخدم أو الرقم السري غير صحيح.';}
-      else{state.appUser=qs.docs[0].data();saveSession(state.appUser);logActivity('login');}
-    }
+    const qs=await FB.getDocs(FB.query(usersRef(),FB.where("username","==",username),FB.where("password","==",password)));
+    if(qs.empty){state.authError='اسم المستخدم أو الرقم السري غير صحيح.';}
+    else{state.appUser=qs.docs[0].data();saveSession(state.appUser);logActivity('login');}
   }catch(e){console.error(e);state.authError='تعذّر الاتصال، حاول مرة أخرى.';}
   state.loading=false;render();
 }
-function logout(){clearSession();state.appUser=null;state.isNewUser=false;state.authError='';render();}
+function logout(){clearSession();state.appUser=null;state.authError='';render();}
 
 /* ════════════ استيراد Excel ════════════ */
 function handleExcelImport(file){
@@ -517,7 +529,8 @@ const I={
   build:'<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#d9cdb6" stroke-width="1.6"><rect x="4" y="2" width="16" height="20" rx="1"/><path d="M9 22v-4h6v4M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/></svg>',
   img:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>',
   lists:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
-  chart:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 3v18h18M8 17V9m5 8V5m5 12v-6"/></svg>'
+  chart:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 3v18h18M8 17V9m5 8V5m5 12v-6"/></svg>',
+  users:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
 };
 
 /* ════════════ العرض ════════════ */
@@ -529,7 +542,6 @@ function render(){
 }
 
 function renderAuth(){
-  const isNew=state.isNewUser;
   const lastUser=loadLastUser();
   const wrap=$(`<div class="auth-wrap" style="background-image:url('${BG_BUILDING}')"><div class="auth-overlay"></div></div>`);
   const card=$(`<div class="auth-card">
@@ -542,27 +554,17 @@ function renderAuth(){
   if(state.authError) card.appendChild($(`<div class="err">${state.authError}</div>`));
 
   const form=document.createElement('form');
-  form.innerHTML = (isNew?`
-    <div class="field"><label>الاسم الكامل</label><input type="text" name="name" required></div>
-    <div class="field"><label>المسمى الوظيفي</label>
-      <select name="jobTitle">
-        ${opts('jobTitle').map(o=>`<option>${o}</option>`).join('')}
-      </select></div>
-    <div class="field"><label>القسم الفني المختص</label>
-      <select name="dept"><option value="architectural">القسم المعماري</option>
-        <option value="structural">القسم الإنشائي</option><option value="services">قسم تصميم الخدمات</option></select></div>
-  `:``)+`
-    <div class="field"><label>اسم المستخدم</label><input class="ltr" type="text" name="username" required placeholder="username" value="${isNew?'':lastUser}"></div>
-    <div class="field"><label>الرقم السري</label><input class="ltr" type="password" name="password" required ${(!isNew&&lastUser)?'autofocus':''}></div>
+  form.innerHTML = `
+    <div class="field"><label>اسم المستخدم</label><input class="ltr" type="text" name="username" required placeholder="username" value="${lastUser}"></div>
+    <div class="field"><label>الرقم السري</label><input class="ltr" type="password" name="password" required ${lastUser?'autofocus':''}></div>
     <button class="btn-primary" type="submit" ${state.loading?'disabled':''}>
-      ${state.loading?'<div class="spinner"></div>':(isNew?'إنشاء الحساب':'تسجيل الدخول')}
+      ${state.loading?'<div class="spinner"></div>':'تسجيل الدخول'}
     </button>`;
   form.onsubmit=(e)=>{e.preventDefault();handleAuth(form);};
   card.appendChild(form);
 
-  const sw=$(`<button class="switch-link">${isNew?'لديك حساب؟ تسجيل الدخول':'مستخدم جديد؟ إنشاء حساب'}</button>`);
-  sw.onclick=()=>{state.isNewUser=!state.isNewUser;state.authError='';render();};
-  card.appendChild(sw);
+  card.appendChild($(`<div style="text-align:center;margin-top:18px;font-size:12px;color:var(--muted)">
+    للحصول على حساب، تواصل مع المشرف العام.</div>`));
 
   wrap.appendChild(card);
   return wrap;
@@ -606,6 +608,7 @@ function renderApp(){
         <button class="btn btn-xl" id="btnXl">${I.upload}<span class="lbl">استيراد Excel</span></button>
         <button class="btn btn-ghost" id="btnLists">${I.lists}<span class="lbl">إدارة القوائم</span></button>
         <button class="btn btn-ghost" id="btnStats">${I.chart}<span class="lbl">إحصاءات النشاط</span></button>
+        <button class="btn btn-ghost" id="btnUsers">${I.users}<span class="lbl">إدارة المستخدمين</span></button>
         <input type="file" id="xlFile" accept=".xlsx,.xls" class="hidden">`:''}
       <button class="btn btn-add" id="btnAdd">${I.plus}<span class="lbl">إضافة مشروع</span></button>
     </div></div>`);
@@ -616,6 +619,7 @@ function renderApp(){
     toolbar.querySelector('#btnClear').onclick=clearAll;
     toolbar.querySelector('#btnLists').onclick=openListsModal;
     toolbar.querySelector('#btnStats').onclick=openStatsModal;
+    toolbar.querySelector('#btnUsers').onclick=openUsersModal;
   }
   toolbar.querySelector('#btnAdd').onclick=()=>openProjectModal(null);
   main.appendChild(toolbar);
@@ -776,6 +780,78 @@ function deptCard(title,prefixKey,d){
   </div>`;
 }
 
+/* ════════════ نافذة إدارة المستخدمين (للمشرف) ════════════ */
+let usersModalOpen=false;
+function openUsersModal(){
+  if(document.getElementById('usersOverlay')) return;
+  usersModalOpen=true;
+  const overlay=$(`<div class="overlay" id="usersOverlay"></div>`);
+  const modal=$(`<div class="modal"><div class="modal-head"><h2>إدارة المستخدمين</h2>
+    <button class="icon-btn" id="x">${I.close}</button></div></div>`);
+  const body=document.createElement('div');body.className='modal-body';
+  modal.appendChild(body);overlay.appendChild(modal);
+
+  function fill(){
+    const jobOpts=opts('jobTitle').map(o=>`<option>${o}</option>`).join('');
+    const list=state.users.filter(u=>u.role!=='admin');
+    body.innerHTML=`
+      <h4 style="font-size:14px;color:var(--oasis-700);margin-bottom:12px">إنشاء حساب جديد</h4>
+      <div class="form-grid">
+        <div><label class="lbl-sm">الاسم الكامل</label><input class="inp" id="nu_name" placeholder="مثال: محمد العامري"></div>
+        <div><label class="lbl-sm">المسمى الوظيفي</label><select class="inp" id="nu_job">${jobOpts}</select></div>
+        <div><label class="lbl-sm">القسم الفني</label><select class="inp" id="nu_dept">
+          <option value="architectural">القسم المعماري</option>
+          <option value="structural">القسم الإنشائي</option>
+          <option value="services">قسم تصميم الخدمات</option></select></div>
+        <div><label class="lbl-sm">اسم المستخدم</label><input class="inp ltr" id="nu_user" placeholder="username"></div>
+        <div><label class="lbl-sm">الرقم السري</label><input class="inp ltr" id="nu_pass" placeholder="******"></div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:14px">
+        <button class="btn btn-add" id="nu_create">${I.plus} إنشاء الحساب</button>
+      </div>
+      <div class="divider"></div>
+      <h4 style="font-size:14px;color:var(--oasis-700);margin-bottom:12px">الحسابات الحالية (${list.length})</h4>
+      ${list.length? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="text-align:right;color:var(--muted);border-bottom:2px solid var(--line)">
+          <th style="padding:8px 6px">الاسم</th><th style="padding:8px 6px">اسم المستخدم</th>
+          <th style="padding:8px 6px">المسمى</th><th style="padding:8px 6px"></th></tr></thead><tbody>
+        ${list.map(u=>`<tr style="border-bottom:1px solid var(--line)">
+          <td style="padding:9px 6px;font-weight:700">${u.name||'—'}</td>
+          <td style="padding:9px 6px" class="ltr">${u.username||'—'}</td>
+          <td style="padding:9px 6px;color:var(--muted)">${u.jobTitle||'—'}</td>
+          <td style="padding:9px 6px;text-align:left"><button class="act act-del" data-deluser="${u.id}" title="حذف الحساب">${I.trash}</button></td>
+        </tr>`).join('')}
+        </tbody></table></div>`
+        : `<div style="color:var(--muted);font-size:13px;padding:10px 0">لا توجد حسابات بعد. أنشئ أول حساب من الأعلى.</div>`}`;
+
+    body.querySelector('#nu_create').onclick=async()=>{
+      const ok=await createUser({
+        name:body.querySelector('#nu_name').value,
+        jobTitle:body.querySelector('#nu_job').value,
+        dept:body.querySelector('#nu_dept').value,
+        username:body.querySelector('#nu_user').value,
+        password:body.querySelector('#nu_pass').value
+      });
+      if(ok){ // امسح الحقول؛ القائمة ستتحدث تلقائياً
+        ['nu_name','nu_user','nu_pass'].forEach(id=>{const el=body.querySelector('#'+id); if(el) el.value='';});
+        alert('تم إنشاء الحساب بنجاح.');
+      }
+    };
+    body.querySelectorAll('[data-deluser]').forEach(btn=>{
+      btn.onclick=async()=>{ if(confirm('حذف هذا الحساب نهائياً؟')) await deleteUser(btn.getAttribute('data-deluser')); };
+    });
+  }
+  fill();
+  overlay._refresh=fill;
+  modal.querySelector('#x').onclick=()=>{usersModalOpen=false;overlay.remove();};
+  overlay.onclick=(e)=>{if(e.target===overlay){usersModalOpen=false;overlay.remove();}};
+  root.appendChild(overlay);
+}
+function refreshUsersModal(){
+  const ov=document.getElementById('usersOverlay');
+  if(ov&&ov._refresh) ov._refresh();
+}
+
 /* ════════════ لوحة إحصاءات النشاط (للمشرف) ════════════ */
 let statsModalOpen=false;
 function fmtDate(iso){
@@ -934,8 +1010,15 @@ function openProfile(){
       <label style="cursor:pointer;color:var(--oasis-600);font-size:13px;font-weight:600;margin-top:10px;display:flex;align-items:center;gap:5px">
         ${I.img} تغيير الصورة <input type="file" accept="image/*" id="imgUp" class="hidden"></label>
     </div>
-    <div class="field"><label class="lbl-sm">الرقم السري الجديد (اختياري)</label>
-      <input class="inp ltr" type="password" name="newPassword" placeholder="للتغيير فقط"></div>
+    ${u.role!=='admin'?`
+    <div style="background:var(--sand-50);border:1px solid var(--line);border-radius:11px;padding:13px;margin-bottom:14px">
+      <h4 style="font-size:13px;color:var(--oasis-700);margin-bottom:10px">تغيير الرقم السري</h4>
+      <div class="field"><label class="lbl-sm">الرقم السري الجديد</label>
+        <input class="inp ltr" type="password" name="newPassword" placeholder="اتركه فارغاً إن لم ترد التغيير"></div>
+      <div class="field" style="margin-bottom:0"><label class="lbl-sm">تأكيد الرقم السري</label>
+        <input class="inp ltr" type="password" name="newPassword2" placeholder="أعد كتابة الرقم نفسه"></div>
+      <div id="pwMsg" style="font-size:12px;margin-top:8px;display:none"></div>
+    </div>`:''}
     <div class="modal-foot">
       <button type="button" class="btn btn-ghost" id="cancel">إلغاء</button>
       <button type="submit" class="btn btn-add">حفظ</button>
@@ -949,11 +1032,23 @@ function openProfile(){
   };
   form.onsubmit=async(e)=>{
     e.preventDefault();
-    const np=new FormData(form).get('newPassword');
-    if(u.role==='admin'){ // المشرف ثابت محلياً
+    const fd=new FormData(form);
+    const np=(fd.get('newPassword')||'').trim();
+    const np2=(fd.get('newPassword2')||'').trim();
+    const msg=form.querySelector('#pwMsg');
+    const showMsg=(t,color)=>{ if(msg){msg.style.display='block';msg.style.color=color;msg.textContent=t;} };
+
+    if(u.role==='admin'){ // المشرف ثابت محلياً (لا يغيّر رمزه من هنا)
       if(newPic){state.appUser.profilePic=newPic;saveSession(state.appUser);}
       overlay.remove();render();return;
     }
+
+    // التحقق من الرقم السري إن أراد المهندس تغييره
+    if(np || np2){
+      if(np.length<4){ showMsg('الرقم السري يجب أن يكون ٤ خانات على الأقل.','var(--danger)'); return; }
+      if(np!==np2){ showMsg('الرقمان غير متطابقين، تأكد من إعادة الكتابة.','var(--danger)'); return; }
+    }
+
     if(CONFIGURED){
       try{
         const qs=await FB.getDocs(FB.query(usersRef(),FB.where("username","==",u.username)));
@@ -964,9 +1059,10 @@ function openProfile(){
           state.appUser={...state.appUser,...upd};
           saveSession(state.appUser);
         }
-      }catch(err){console.error(err);}
+      }catch(err){console.error(err); showMsg('تعذّر الحفظ، حاول مرة أخرى.','var(--danger)'); return;}
     }
     overlay.remove();render();
+    if(np) setTimeout(()=>alert('تم تغيير الرقم السري بنجاح. استخدمه في الدخول القادم.'),50);
   };
   modal.querySelector('#x').onclick=()=>overlay.remove();
   form.querySelector('#cancel').onclick=()=>overlay.remove();

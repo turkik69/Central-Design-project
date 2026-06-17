@@ -1047,9 +1047,11 @@ function openReportsModal(){
       : `<option value="">لا توجد بيانات</option>`;
 
     // جمع البيانات للشهر المحدد، لكل قسم
+    const canExport = (state.appUser.role==='admin') || ((state.appUser.jobTitle||'')==='تنسيق ومتابعة');
     let html=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
         <label class="lbl-sm" style="margin:0">الشهر:</label>
         <select class="inp" id="repMonth" style="width:auto;min-width:160px">${monthOpts}</select>
+        ${canExport?`<button class="btn btn-add" id="repExport" style="padding:8px 14px;margin-right:auto">${I.upload} تصدير Excel</button>`:''}
       </div>`;
 
     if(!months.length){
@@ -1110,12 +1112,37 @@ function openReportsModal(){
   function bindMonth(){
     const sel=body.querySelector('#repMonth');
     if(sel) sel.onchange=()=>{ selMonth=sel.value; fill(); };
+    const exp=body.querySelector('#repExport');
+    if(exp) exp.onclick=()=>{ if(overlay._exportExcel) overlay._exportExcel(); };
   }
   fill();
   overlay._refresh=fill;
   modal.querySelector('#x').onclick=()=>{reportsModalOpen=false;overlay.remove();};
   overlay.onclick=(e)=>{if(e.target===overlay){reportsModalOpen=false;overlay.remove();}};
   root.appendChild(overlay);
+
+  // تصدير تقرير الإنجاز للشهر المحدد إلى Excel
+  overlay._exportExcel=()=>{
+    if(!window.XLSX){alert('تعذّر تحميل أداة Excel، حاول لاحقاً.');return;}
+    const rows=[['القسم','اسم المشروع','المهندس','الجهة الطالبة','تاريخ الاستلام','تاريخ التسليم','الحالة']];
+    let count=0;
+    DEPT_MAP.forEach(([key,label])=>{
+      state.projects
+        .filter(p=>ym(p[key]?.endDate)===selMonth && p[key]?.status==='مكتمل')
+        .forEach(p=>{
+          count++;
+          rows.push([label, p.name||'', p[key]?.engineer||'', p.requestingEntity||'',
+            p[key]?.startDate||'', p[key]?.endDate||'', p[key]?.status||'']);
+        });
+    });
+    if(count===0){alert('لا توجد مشاريع منجزة في هذا الشهر للتصدير.');return;}
+    const ws=window.XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols']=[{wch:18},{wch:30},{wch:20},{wch:24},{wch:14},{wch:14},{wch:12}];
+    if(!ws['!views']) ws['!views']=[{RTL:true}];   // اتجاه عربي يمين-يسار
+    const wb=window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb,ws,'تقرير الإنجاز');
+    window.XLSX.writeFile(wb,`تقرير_الإنجاز_${selMonth}.xlsx`);
+  };
 }
 
 /* ════════════ لوحة إحصاءات النشاط (للمشرف) ════════════ */

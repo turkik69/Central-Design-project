@@ -145,6 +145,14 @@
 
   /* ====== بطاقات المشاريع ====== */
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:18px}
+  .done-section{margin-top:26px}
+  .done-toggle{width:100%;display:flex;justify-content:space-between;align-items:center;background:#fff;border:1px solid var(--line);border-radius:13px;padding:14px 18px;font-family:'Cairo';font-weight:700;font-size:15px;color:var(--oasis-700);transition:.15s;box-shadow:var(--shadow)}
+  .done-toggle:hover{background:var(--sand-50)}
+  .done-count{background:var(--ok-bg);color:var(--ok);font-size:12px;font-weight:700;padding:2px 11px;border-radius:20px;font-family:'Tajawal'}
+  .done-arrow{display:flex;transition:transform .2s;color:var(--muted)}
+  .done-arrow.open{transform:rotate(180deg)}
+  .done-body{display:none;margin-top:16px}
+  .done-body.open{display:block}
   .card{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--shadow);transition:transform .15s,box-shadow .15s}
   .card:hover{transform:translateY(-2px);box-shadow:0 12px 30px -14px rgba(42,38,32,.3)}
   .card-head{padding:15px 16px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,var(--sand-50),#fff)}
@@ -158,6 +166,9 @@
   .meta-grid .k{color:var(--muted)}
   .meta-grid .v{font-weight:700}
   .sec{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-radius:9px;background:var(--sand-50);border:1px solid var(--line);margin-bottom:7px}
+  .sec-col{flex-direction:column;align-items:stretch}
+  .sec-row{display:flex;justify-content:space-between;align-items:center}
+  .sec-dates{font-size:10.5px;color:var(--muted);margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)}
   .sec-l{display:flex;align-items:center;gap:8px}
   .sec-l .ttl{font-size:12px;font-weight:700}
   .sec-l .eng{font-size:10px;color:var(--muted)}
@@ -346,7 +357,7 @@ async function initFirebase(){
 function subscribeProjects(){
   FB.onSnapshot(colRef(),(snap)=>{
     const data = snap.docs.map(d=>({id:d.id,...d.data()}));
-    data.sort((a,b)=> new Date(b.createdAt) - new Date(a.createdAt));
+    data.sort((a,b)=> new Date(b.updatedAtTS||b.createdAt||0) - new Date(a.updatedAtTS||a.createdAt||0));
     state.projects=data; applyFilter(); state.loading=false; render();
   },(e)=>{console.error("جلب المشاريع:",e);state.loading=false;render();});
 }
@@ -511,9 +522,10 @@ async function clearAll(){
   state.loading=false;render();
 }
 async function saveProject(data,editingId){
-  const payload={...data,lastUpdatedBy:state.appUser.name,lastUpdatedAt:new Date().toLocaleString('ar-OM')};
+  const nowISO=new Date().toISOString();
+  const payload={...data,lastUpdatedBy:state.appUser.name,lastUpdatedAt:new Date().toLocaleString('ar-OM'),updatedAtTS:nowISO};
   if(editingId){await FB.updateDoc(FB.doc(db,'artifacts',APP_ID,'public','data','projects',editingId),payload);logActivity('update');}
-  else{await FB.addDoc(colRef(),{...payload,createdAt:new Date().toISOString()});logActivity('create');}
+  else{await FB.addDoc(colRef(),{...payload,createdAt:nowISO});logActivity('create');}
 }
 async function deleteProject(id){
   await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','projects',id));
@@ -538,7 +550,9 @@ const I={
   lists:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
   chart:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 3v18h18M8 17V9m5 8V5m5 12v-6"/></svg>',
   users:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
-  key:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12.6 10.6a6 6 0 1 0-3 3L14 18l2 2 3-3-2-2 1-1 2 2 3-3-7.4-2.4Z"/><circle cx="6.5" cy="14.5" r="1"/></svg>'
+  key:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12.6 10.6a6 6 0 1 0-3 3L14 18l2 2 3-3-2-2 1-1 2 2 3-3-7.4-2.4Z"/><circle cx="6.5" cy="14.5" r="1"/></svg>',
+  check:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>',
+  chevron:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg>'
 };
 
 /* ════════════ العرض ════════════ */
@@ -608,8 +622,9 @@ function renderApp(){
     </div>`));
   }
 
+  const activeCount=state.filtered.filter(p=>p.overallStatus!=='مكتمل').length;
   const toolbar=$(`<div class="toolbar">
-    <h2>قائمة المشاريع <span>(${state.filtered.length})</span></h2>
+    <h2>المشاريع النشطة <span>(${activeCount})</span></h2>
     <div class="tb-actions">
       ${u.role==='admin'?`
         <button class="btn btn-del" id="btnClear">${I.trash}<span class="lbl">مسح الكل</span></button>
@@ -641,28 +656,68 @@ function renderApp(){
   return frag;
 }
 
+let completedOpen=false;   // حالة طي قائمة المشاريع المنتهية
 function updateGrid(){
   const host=document.getElementById('gridHost');
   if(!host) return;
   host.innerHTML='';
   if(state.loading){host.appendChild($(`<div class="loading"><div class="spinner"></div></div>`));return;}
+
+  // فصل المشاريع المنتهية (مكتمل) عن النشطة
+  const active=state.filtered.filter(p=>p.overallStatus!=='مكتمل');
+  const done=state.filtered.filter(p=>p.overallStatus==='مكتمل');
+
   if(!state.filtered.length){
     host.appendChild($(`<div class="empty">${I.build}<h3 style="margin-top:12px;font-size:18px;color:#5e574a">لا توجد مشاريع لعرضها</h3>
       <p style="margin-top:5px">أضِف أول مشروع بالضغط على «إضافة مشروع».</p></div>`));
     return;
   }
-  const grid=document.createElement('div');grid.className='grid';
-  state.filtered.forEach(p=>grid.appendChild(renderCard(p)));
-  host.appendChild(grid);
+
+  // المشاريع النشطة
+  if(active.length){
+    const grid=document.createElement('div');grid.className='grid';
+    active.forEach(p=>grid.appendChild(renderCard(p)));
+    host.appendChild(grid);
+  }else{
+    host.appendChild($(`<div class="empty" style="padding:40px 20px">${I.build}
+      <p style="margin-top:10px;color:var(--muted)">لا توجد مشاريع نشطة حالياً.</p></div>`));
+  }
+
+  // قسم المشاريع المنتهية القابل للطي
+  if(done.length){
+    const wrap=document.createElement('div');
+    wrap.className='done-section';
+    wrap.innerHTML=`
+      <button class="done-toggle" id="doneToggle">
+        <span style="display:flex;align-items:center;gap:9px">
+          ${I.check} المشاريع المنتهية
+          <span class="done-count">${done.length}</span>
+        </span>
+        <span class="done-arrow ${completedOpen?'open':''}">${I.chevron}</span>
+      </button>
+      <div class="done-body ${completedOpen?'open':''}" id="doneBody"></div>`;
+    host.appendChild(wrap);
+    const body=wrap.querySelector('#doneBody');
+    if(completedOpen){
+      const grid=document.createElement('div');grid.className='grid';
+      done.forEach(p=>grid.appendChild(renderCard(p)));
+      body.appendChild(grid);
+    }
+    wrap.querySelector('#doneToggle').onclick=()=>{ completedOpen=!completedOpen; updateGrid(); };
+  }
 }
 
 function secRow(title,data){
   const st=data?.status||'قيد الانتظار';
   const [c,bg]=SEC_STYLE[st]||SEC_STYLE['قيد الانتظار'];
-  return `<div class="sec"><div class="sec-l">
-      <span class="dot" style="background:${c}"></span>
-      <div><div class="ttl">${title}</div><div class="eng">${data?.engineer||'لم يُسنَد'}</div></div>
-    </div><span class="sec-badge" style="color:${c};background:${bg}">${st}</span></div>`;
+  const sd=data?.startDate, ed=data?.endDate;
+  const dateLine = (sd||ed) ? `<div class="sec-dates">استلام: ${sd||'—'} · تسليم: ${ed||'—'}</div>` : '';
+  return `<div class="sec sec-col"><div class="sec-row">
+      <div class="sec-l">
+        <span class="dot" style="background:${c}"></span>
+        <div><div class="ttl">${title}</div><div class="eng">${data?.engineer||'لم يُسنَد'}</div></div>
+      </div><span class="sec-badge" style="color:${c};background:${bg}">${st}</span>
+    </div>${dateLine}</div>`;
 }
 
 function renderCard(p){
@@ -763,9 +818,9 @@ function openProjectModal(project){
       name:get('name'),type:get('type'),customType:get('customType'),
       requestingEntity:get('requestingEntity'),overallStatus:get('overallStatus'),
       area:get('area'),cost:get('cost'),startDate:get('startDate'),endDate:get('endDate'),
-      architectural:{engineer:get('arch_engineer'),status:get('arch_status'),notes:get('arch_notes')},
-      structural:{engineer:get('str_engineer'),status:get('str_status'),notes:get('str_notes')},
-      services:{engineer:get('srv_engineer'),status:get('srv_status'),notes:get('srv_notes')}
+      architectural:{engineer:get('arch_engineer'),status:get('arch_status'),notes:get('arch_notes'),startDate:get('arch_startDate'),endDate:get('arch_endDate')},
+      structural:{engineer:get('str_engineer'),status:get('str_status'),notes:get('str_notes'),startDate:get('str_startDate'),endDate:get('str_endDate')},
+      services:{engineer:get('srv_engineer'),status:get('srv_status'),notes:get('srv_notes'),startDate:get('srv_startDate'),endDate:get('srv_endDate')}
     };
     if(!CONFIGURED){alert('قاعدة البيانات غير مُعدّة بعد — أضِف مفاتيح Firebase أولاً لحفظ المشاريع.');return;}
     overlay.remove();
@@ -784,7 +839,11 @@ function deptCard(title,prefixKey,d){
   return `<div class="dept"><h4>${title}</h4>
     <input class="inp" name="${pf}_engineer" placeholder="اسم المهندس" value="${d.engineer||''}">
     <select class="inp" name="${pf}_status">${sOpt}</select>
-    <textarea class="inp" name="${pf}_notes" rows="2" placeholder="ملاحظات…" style="resize:none">${d.notes||''}</textarea>
+    <label class="lbl-sm" style="margin-top:4px">تاريخ الاستلام</label>
+    <input class="inp" type="date" name="${pf}_startDate" value="${d.startDate||''}">
+    <label class="lbl-sm">تاريخ التسليم</label>
+    <input class="inp" type="date" name="${pf}_endDate" value="${d.endDate||''}">
+    <textarea class="inp" name="${pf}_notes" rows="2" placeholder="ملاحظات…" style="resize:none;margin-top:4px">${d.notes||''}</textarea>
   </div>`;
 }
 

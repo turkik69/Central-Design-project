@@ -721,7 +721,7 @@ function secRow(title,data){
   const st=data?.status||'قيد الانتظار';
   const [c,bg]=SEC_STYLE[st]||SEC_STYLE['قيد الانتظار'];
   const sd=data?.startDate, ed=data?.endDate;
-  const dateLine = (sd||ed) ? `<div class="sec-dates">استلام: ${sd||'—'} · تسليم: ${ed||'—'}</div>` : '';
+  const dateLine = (sd||ed) ? `<div class="sec-dates">استلام: ${sd||'—'} · تسليم متوقع: ${ed||'—'}</div>` : '';
   const avg=ratingAvg(data?.eval);
   const rateLine = (avg && canViewEval()) ? `<div class="sec-rate">تقييم رئيس القسم: <b>${avg}</b> <span style="color:var(--stop)">★</span></div>` : '';
   return `<div class="sec sec-col"><div class="sec-row">
@@ -838,13 +838,19 @@ function openProjectModal(project){
       }
       return (data[key] && data[key].eval) ? data[key].eval : {};
     };
+    // التواريخ: المهندس العادي لا يستطيع تغيير تاريخ له قيمة محفوظة (يُبقى الأصل)
+    const dateVal=(pf,key,field)=>{
+      const orig=(data[key]&&data[key][field])?data[key][field]:'';
+      if(canEvaluate(key)) return get(pf+'_'+field);   // المشرف/رئيس القسم يعدّل بحرية
+      return orig ? orig : get(pf+'_'+field);            // غير المخوّل: أول إدخال فقط
+    };
     const payload={
       name:get('name'),type:get('type'),customType:get('customType'),
       requestingEntity:get('requestingEntity'),overallStatus:get('overallStatus'),
       area:get('area'),cost:get('cost'),startDate:get('startDate'),endDate:get('endDate'),
-      architectural:{engineer:get('arch_engineer'),status:get('arch_status'),notes:get('arch_notes'),startDate:get('arch_startDate'),endDate:get('arch_endDate'),eval:buildEval('arch','architectural')},
-      structural:{engineer:get('str_engineer'),status:get('str_status'),notes:get('str_notes'),startDate:get('str_startDate'),endDate:get('str_endDate'),eval:buildEval('str','structural')},
-      services:{engineer:get('srv_engineer'),status:get('srv_status'),notes:get('srv_notes'),startDate:get('srv_startDate'),endDate:get('srv_endDate'),eval:buildEval('srv','services')}
+      architectural:{engineer:get('arch_engineer'),status:get('arch_status'),notes:get('arch_notes'),startDate:dateVal('arch','architectural','startDate'),endDate:dateVal('arch','architectural','endDate'),eval:buildEval('arch','architectural')},
+      structural:{engineer:get('str_engineer'),status:get('str_status'),notes:get('str_notes'),startDate:dateVal('str','structural','startDate'),endDate:dateVal('str','structural','endDate'),eval:buildEval('str','structural')},
+      services:{engineer:get('srv_engineer'),status:get('srv_status'),notes:get('srv_notes'),startDate:dateVal('srv','services','startDate'),endDate:dateVal('srv','services','endDate'),eval:buildEval('srv','services')}
     };
     if(!CONFIGURED){alert('قاعدة البيانات غير مُعدّة بعد — أضِف مفاتيح Firebase أولاً لحفظ المشاريع.');return;}
     overlay.remove();
@@ -911,13 +917,18 @@ function deptCard(title,prefixKey,d){
       ${d.eval.notes?`<div style="color:var(--muted)">${d.eval.notes}</div>`:''}
     </div>`;
   }
+  // قفل التواريخ: المهندس العادي لا يعدّل تاريخاً له قيمة محفوظة (إدخال مرة واحدة)
+  const mayEditDates=canEvaluate(prefixKey);   // المشرف أو رئيس القسم
+  const lockStart = !mayEditDates && !!d.startDate;
+  const lockEnd   = !mayEditDates && !!d.endDate;
+  const lockNote='<span style="color:var(--stop)" title="مقفل — لا يعدّله إلا المشرف أو رئيس القسم"> 🔒</span>';
   return `<div class="dept"><h4>${title}</h4>
     <input class="inp" name="${pf}_engineer" placeholder="اسم المهندس" value="${d.engineer||''}">
     <select class="inp" name="${pf}_status">${sOpt}</select>
-    <label class="lbl-sm" style="margin-top:4px">تاريخ الاستلام</label>
-    <input class="inp" type="date" name="${pf}_startDate" value="${d.startDate||''}">
-    <label class="lbl-sm">تاريخ التسليم</label>
-    <input class="inp" type="date" name="${pf}_endDate" value="${d.endDate||''}">
+    <label class="lbl-sm" style="margin-top:4px">تاريخ الاستلام${lockStart?lockNote:''}</label>
+    <input class="inp" type="date" name="${pf}_startDate" value="${d.startDate||''}" ${lockStart?'readonly disabled style="background:var(--sand-100);color:var(--muted)"':''}>
+    <label class="lbl-sm">تاريخ التسليم المتوقع${lockEnd?lockNote:''}</label>
+    <input class="inp" type="date" name="${pf}_endDate" value="${d.endDate||''}" ${lockEnd?'readonly disabled style="background:var(--sand-100);color:var(--muted)"':''}>
     <textarea class="inp" name="${pf}_notes" rows="2" placeholder="ملاحظات…" style="resize:none;margin-top:4px">${d.notes||''}</textarea>
     ${rateBlock}
   </div>`;

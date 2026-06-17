@@ -552,6 +552,7 @@ const I={
   lists:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
   chart:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 3v18h18M8 17V9m5 8V5m5 12v-6"/></svg>',
   report:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg>',
+  backup:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5"/></svg>',
   users:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
   key:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12.6 10.6a6 6 0 1 0-3 3L14 18l2 2 3-3-2-2 1-1 2 2 3-3-7.4-2.4Z"/><circle cx="6.5" cy="14.5" r="1"/></svg>',
   check:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>',
@@ -635,6 +636,7 @@ function renderApp(){
         <button class="btn btn-ghost" id="btnLists">${I.lists}<span class="lbl">إدارة القوائم</span></button>
         <button class="btn btn-ghost" id="btnStats">${I.chart}<span class="lbl">إحصاءات النشاط</span></button>
         <button class="btn btn-ghost" id="btnUsers">${I.users}<span class="lbl">إدارة المستخدمين</span></button>
+        <button class="btn btn-ghost" id="btnBackup">${I.backup}<span class="lbl">نسخة احتياطية</span></button>
         <input type="file" id="xlFile" accept=".xlsx,.xls" class="hidden">`:''}
       ${canViewReports()?`<button class="btn btn-ghost" id="btnReports">${I.report}<span class="lbl">التقارير الشهرية</span></button>`:''}
       <button class="btn btn-add" id="btnAdd">${I.plus}<span class="lbl">إضافة مشروع</span></button>
@@ -647,6 +649,7 @@ function renderApp(){
     toolbar.querySelector('#btnLists').onclick=openListsModal;
     toolbar.querySelector('#btnStats').onclick=openStatsModal;
     toolbar.querySelector('#btnUsers').onclick=openUsersModal;
+    toolbar.querySelector('#btnBackup').onclick=openBackupModal;
   }
   if(canViewReports()){
     const rb=toolbar.querySelector('#btnReports'); if(rb) rb.onclick=openReportsModal;
@@ -1009,6 +1012,106 @@ function openUsersModal(){
 function refreshUsersModal(){
   const ov=document.getElementById('usersOverlay');
   if(ov&&ov._refresh) ov._refresh();
+}
+
+/* ════════════ النسخ الاحتياطي (للمشرف) ════════════ */
+async function exportBackup(){
+  if(!CONFIGURED){alert('قاعدة البيانات غير مُعدّة.');return;}
+  try{
+    const cols=['projects','users','options','stats'];
+    const backup={ _app:'central-design', _version:1, _exportedAt:new Date().toISOString(), data:{} };
+    for(const c of cols){
+      const snap=await FB.getDocs(FB.collection(db,'artifacts',APP_ID,'public','data',c));
+      backup.data[c]=snap.docs.map(d=>({id:d.id,...d.data()}));
+    }
+    const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    const stamp=new Date().toISOString().slice(0,10);
+    a.href=url; a.download=`نسخة_احتياطية_${stamp}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    const counts=Object.entries(backup.data).map(([k,v])=>`${k}: ${v.length}`).join(' · ');
+    alert(`تم تصدير النسخة الاحتياطية بنجاح.\n(${counts})`);
+  }catch(e){console.error(e);alert('تعذّر التصدير، حاول مرة أخرى.');}
+}
+async function importBackup(file,mode){
+  if(!CONFIGURED||!file) return;
+  try{
+    const text=await file.text();
+    const backup=JSON.parse(text);
+    if(!backup||!backup.data){alert('الملف غير صالح كنسخة احتياطية.');return;}
+    const cols=['projects','users','options','stats'];
+
+    // وضع الاستبدال: امسح القائم أولاً
+    if(mode==='replace'){
+      for(const c of cols){
+        const snap=await FB.getDocs(FB.collection(db,'artifacts',APP_ID,'public','data',c));
+        const batch=FB.writeBatch(db);
+        snap.forEach(d=>batch.delete(d.ref));
+        await batch.commit();
+      }
+    }
+    // اكتب البيانات من النسخة (مع الحفاظ على المعرّفات)
+    let total=0;
+    for(const c of cols){
+      const items=backup.data[c]||[];
+      for(const it of items){
+        const {id,...rest}=it;
+        const ref = id ? FB.doc(db,'artifacts',APP_ID,'public','data',c,id)
+                       : FB.doc(FB.collection(db,'artifacts',APP_ID,'public','data',c));
+        await FB.setDoc(ref,rest);
+        total++;
+      }
+    }
+    alert(`تمت الاستعادة بنجاح (${total} سجل). سيُحدَّث العرض تلقائياً.`);
+  }catch(e){console.error(e);alert('تعذّرت الاستعادة. تأكد أن الملف نسخة احتياطية صحيحة.');}
+}
+
+function openBackupModal(){
+  if(document.getElementById('backupOverlay')) return;
+  const overlay=$(`<div class="overlay" id="backupOverlay"></div>`);
+  const modal=$(`<div class="modal modal-sm"><div class="modal-head"><h2>النسخة الاحتياطية</h2>
+    <button class="icon-btn" id="x">${I.close}</button></div></div>`);
+  const body=document.createElement('div');body.className='modal-body';
+  body.innerHTML=`
+    <h4 style="font-size:14px;color:var(--oasis-700);margin-bottom:8px">حفظ نسخة احتياطية</h4>
+    <p style="font-size:12.5px;color:var(--muted);line-height:1.7;margin-bottom:12px">
+      يصدّر ملفاً واحداً يحتوي كل البيانات: المشاريع، الحسابات، التقييمات، القوائم، والإحصاءات. احفظه في مكان آمن دورياً.</p>
+    <button class="btn btn-add" id="bk_export" style="width:100%;justify-content:center">${I.backup} تصدير نسخة احتياطية الآن</button>
+
+    <div class="divider"></div>
+
+    <h4 style="font-size:14px;color:var(--oasis-700);margin-bottom:8px">استعادة من نسخة</h4>
+    <div style="background:var(--cancel-bg);border:1px solid #f0cfc8;color:var(--cancel);border-radius:10px;padding:11px;font-size:12.5px;line-height:1.7;margin-bottom:12px">
+      تنبيه: الاستعادة عملية حسّاسة. اختر طريقة الاستعادة بعناية.</div>
+    <label class="lbl-sm">طريقة الاستعادة</label>
+    <select class="inp" id="bk_mode" style="margin-bottom:12px">
+      <option value="merge">دمج: إضافة/تحديث السجلات من الملف مع الإبقاء على الموجود</option>
+      <option value="replace">استبدال كامل: مسح كل البيانات الحالية ثم استعادة الملف</option>
+    </select>
+    <button class="btn btn-ghost" id="bk_import_btn" style="width:100%;justify-content:center">${I.upload} اختر ملف النسخة واستعد</button>
+    <input type="file" id="bk_file" accept=".json,application/json" class="hidden">`;
+
+  body.querySelector('#bk_export').onclick=()=>exportBackup();
+  const fileInp=body.querySelector('#bk_file');
+  body.querySelector('#bk_import_btn').onclick=()=>fileInp.click();
+  fileInp.onchange=async(e)=>{
+    const f=e.target.files[0]; e.target.value='';
+    if(!f) return;
+    const mode=body.querySelector('#bk_mode').value;
+    const warn = mode==='replace'
+      ? 'سيتم مسح كل البيانات الحالية نهائياً ثم استبدالها بمحتوى الملف. هل أنت متأكد؟'
+      : 'سيتم دمج بيانات الملف مع الحالية (تحديث المتطابق وإضافة الجديد). متابعة؟';
+    if(!confirm(warn)) return;
+    overlay.remove();
+    await importBackup(f,mode);
+  };
+
+  modal.querySelector('#x').onclick=()=>overlay.remove();
+  modal.appendChild(body);overlay.appendChild(modal);
+  overlay.onclick=(e)=>{if(e.target===overlay)overlay.remove();};
+  root.appendChild(overlay);
 }
 
 /* ════════════ التقارير الشهرية ════════════ */

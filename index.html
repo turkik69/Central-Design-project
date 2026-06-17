@@ -391,6 +391,13 @@ async function deleteUser(id){
   try{ await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','users',id)); }
   catch(e){ console.error(e); alert('تعذّر حذف المستخدم.'); }
 }
+const DEFAULT_PASSWORD='1234';   // الرمز الافتراضي عند إعادة التعيين
+async function resetUserPassword(id){
+  try{
+    await FB.updateDoc(FB.doc(db,'artifacts',APP_ID,'public','data','users',id),{password:DEFAULT_PASSWORD});
+    return true;
+  }catch(e){ console.error(e); alert('تعذّر إعادة تعيين الرمز.'); return false; }
+}
 async function addOption(list,value){
   value=(value||'').trim(); if(!value) return;
   // امنع التكرار مع الأساسي أو المخصّص
@@ -530,7 +537,8 @@ const I={
   img:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>',
   lists:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
   chart:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 3v18h18M8 17V9m5 8V5m5 12v-6"/></svg>',
-  users:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
+  users:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  key:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12.6 10.6a6 6 0 1 0-3 3L14 18l2 2 3-3-2-2 1-1 2 2 3-3-7.4-2.4Z"/><circle cx="6.5" cy="14.5" r="1"/></svg>'
 };
 
 /* ════════════ العرض ════════════ */
@@ -804,7 +812,7 @@ function openUsersModal(){
           <option value="structural">القسم الإنشائي</option>
           <option value="services">قسم تصميم الخدمات</option></select></div>
         <div><label class="lbl-sm">اسم المستخدم</label><input class="inp ltr" id="nu_user" placeholder="username"></div>
-        <div><label class="lbl-sm">الرقم السري</label><input class="inp ltr" id="nu_pass" placeholder="******"></div>
+        <div><label class="lbl-sm">الرقم السري</label><input class="inp ltr" id="nu_pass" value="${DEFAULT_PASSWORD}" placeholder="******"></div>
       </div>
       <div style="display:flex;justify-content:flex-end;margin-top:14px">
         <button class="btn btn-add" id="nu_create">${I.plus} إنشاء الحساب</button>
@@ -819,7 +827,9 @@ function openUsersModal(){
           <td style="padding:9px 6px;font-weight:700">${u.name||'—'}</td>
           <td style="padding:9px 6px" class="ltr">${u.username||'—'}</td>
           <td style="padding:9px 6px;color:var(--muted)">${u.jobTitle||'—'}</td>
-          <td style="padding:9px 6px;text-align:left"><button class="act act-del" data-deluser="${u.id}" title="حذف الحساب">${I.trash}</button></td>
+          <td style="padding:9px 6px;text-align:left;white-space:nowrap">
+            <button class="act act-edit" data-resetuser="${u.id}" data-resetname="${u.name||u.username}" title="إعادة الرمز الافتراضي" style="color:var(--stop)">${I.key}</button>
+            <button class="act act-del" data-deluser="${u.id}" title="حذف الحساب">${I.trash}</button></td>
         </tr>`).join('')}
         </tbody></table></div>`
         : `<div style="color:var(--muted);font-size:13px;padding:10px 0">لا توجد حسابات بعد. أنشئ أول حساب من الأعلى.</div>`}`;
@@ -839,6 +849,15 @@ function openUsersModal(){
     };
     body.querySelectorAll('[data-deluser]').forEach(btn=>{
       btn.onclick=async()=>{ if(confirm('حذف هذا الحساب نهائياً؟')) await deleteUser(btn.getAttribute('data-deluser')); };
+    });
+    body.querySelectorAll('[data-resetuser]').forEach(btn=>{
+      btn.onclick=async()=>{
+        const nm=btn.getAttribute('data-resetname');
+        if(confirm(`إعادة الرمز السري للمهندس «${nm}» إلى الرمز الافتراضي (${DEFAULT_PASSWORD})؟\nسيستخدمه للدخول ثم يغيّره من الإعدادات.`)){
+          const ok=await resetUserPassword(btn.getAttribute('data-resetuser'));
+          if(ok) alert(`تمت إعادة الرمز إلى: ${DEFAULT_PASSWORD}\nأبلغ المهندس به ليدخل ويغيّره.`);
+        }
+      };
     });
   }
   fill();

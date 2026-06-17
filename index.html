@@ -551,6 +551,7 @@ const I={
   img:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>',
   lists:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
   chart:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 3v18h18M8 17V9m5 8V5m5 12v-6"/></svg>',
+  report:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg>',
   users:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
   key:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12.6 10.6a6 6 0 1 0-3 3L14 18l2 2 3-3-2-2 1-1 2 2 3-3-7.4-2.4Z"/><circle cx="6.5" cy="14.5" r="1"/></svg>',
   check:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>',
@@ -635,6 +636,7 @@ function renderApp(){
         <button class="btn btn-ghost" id="btnStats">${I.chart}<span class="lbl">إحصاءات النشاط</span></button>
         <button class="btn btn-ghost" id="btnUsers">${I.users}<span class="lbl">إدارة المستخدمين</span></button>
         <input type="file" id="xlFile" accept=".xlsx,.xls" class="hidden">`:''}
+      ${canViewReports()?`<button class="btn btn-ghost" id="btnReports">${I.report}<span class="lbl">التقارير الشهرية</span></button>`:''}
       <button class="btn btn-add" id="btnAdd">${I.plus}<span class="lbl">إضافة مشروع</span></button>
     </div></div>`);
   if(u.role==='admin'){
@@ -645,6 +647,9 @@ function renderApp(){
     toolbar.querySelector('#btnLists').onclick=openListsModal;
     toolbar.querySelector('#btnStats').onclick=openStatsModal;
     toolbar.querySelector('#btnUsers').onclick=openUsersModal;
+  }
+  if(canViewReports()){
+    const rb=toolbar.querySelector('#btnReports'); if(rb) rb.onclick=openReportsModal;
   }
   toolbar.querySelector('#btnAdd').onclick=()=>openProjectModal(null);
   main.appendChild(toolbar);
@@ -864,6 +869,12 @@ function canViewEval(){
   const jt=u.jobTitle||'';
   return jt==='مدير الدائرة' || jt.indexOf('رئيس')!==-1;
 }
+/* من يفتح التقارير الشهرية: كل من يرى التقييم + موظف التنسيق والمتابعة */
+function canViewReports(){
+  const u=state.appUser; if(!u) return false;
+  if(canViewEval()) return true;
+  return (u.jobTitle||'')==='تنسيق ومتابعة';
+}
 const RATE_FIELDS=[
   ['work','وضع العمل'],
   ['engineer','المهندس'],
@@ -998,6 +1009,113 @@ function openUsersModal(){
 function refreshUsersModal(){
   const ov=document.getElementById('usersOverlay');
   if(ov&&ov._refresh) ov._refresh();
+}
+
+/* ════════════ التقارير الشهرية ════════════ */
+let reportsModalOpen=false;
+const DEPT_MAP=[['architectural','القسم المعماري','arch'],['structural','القسم الإنشائي','str'],['services','قسم تصميم الخدمات','srv']];
+const MONTH_NAMES=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+/* يستخرج YYYY-MM من تاريخ تسليم القسم */
+function ym(dateStr){ return (dateStr && dateStr.length>=7) ? dateStr.slice(0,7) : null; }
+
+function openReportsModal(){
+  if(document.getElementById('reportsOverlay')) return;
+  reportsModalOpen=true;
+  // الشهر الافتراضي: الحالي
+  const now=new Date();
+  let selMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+
+  const overlay=$(`<div class="overlay" id="reportsOverlay"></div>`);
+  const modal=$(`<div class="modal"><div class="modal-head"><h2>التقارير الشهرية</h2>
+    <button class="icon-btn" id="x">${I.close}</button></div></div>`);
+  const body=document.createElement('div');body.className='modal-body';
+  modal.appendChild(body);overlay.appendChild(modal);
+
+  function monthLabel(m){
+    if(!m) return '';
+    const [y,mo]=m.split('-'); return `${MONTH_NAMES[Number(mo)-1]} ${y}`;
+  }
+  function fill(){
+    // اجمع كل الأشهر المتاحة من تواريخ تسليم الأقسام
+    const monthsSet=new Set();
+    state.projects.forEach(p=>DEPT_MAP.forEach(([k])=>{ const m=ym(p[k]?.endDate); if(m) monthsSet.add(m); }));
+    const months=[...monthsSet].sort().reverse();
+    if(!months.includes(selMonth) && months.length) selMonth=months[0];
+
+    const monthOpts = months.length
+      ? months.map(m=>`<option value="${m}" ${m===selMonth?'selected':''}>${monthLabel(m)}</option>`).join('')
+      : `<option value="">لا توجد بيانات</option>`;
+
+    // جمع البيانات للشهر المحدد، لكل قسم
+    let html=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+        <label class="lbl-sm" style="margin:0">الشهر:</label>
+        <select class="inp" id="repMonth" style="width:auto;min-width:160px">${monthOpts}</select>
+      </div>`;
+
+    if(!months.length){
+      html+=`<div style="text-align:center;padding:40px 20px;color:var(--muted)">
+        لا توجد مشاريع لها تاريخ تسليم بعد. عبّئ تواريخ التسليم في الأقسام لتظهر التقارير الشهرية.</div>`;
+      body.innerHTML=html; bindMonth(); return;
+    }
+
+    // ── تقرير الإنجاز: المشاريع المنجزة هذا الشهر لكل قسم ──
+    html+=`<h3 style="font-size:16px;color:var(--oasis-700);margin-bottom:12px">تقرير الإنجاز — ${monthLabel(selMonth)}</h3>`;
+    let grandDone=0;
+    DEPT_MAP.forEach(([key,label])=>{
+      const items=state.projects.filter(p=>ym(p[key]?.endDate)===selMonth && (p[key]?.status==='مكتمل'));
+      grandDone+=items.length;
+      html+=`<div style="background:var(--sand-50);border:1px solid var(--line);border-radius:11px;padding:13px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${items.length?'9px':'0'}">
+          <span style="font-weight:700;color:var(--oasis-700)">${label}</span>
+          <span class="done-count">${items.length} مشروع</span>
+        </div>
+        ${items.map(p=>{
+          const av=canViewEval()?ratingAvg(p[key]?.eval):null;
+          return `<div style="font-size:13px;padding:7px 0;border-top:1px dashed var(--line);display:flex;justify-content:space-between;gap:8px">
+            <span><b>${p.name||'—'}</b> <span style="color:var(--muted)">· ${p[key]?.engineer||'—'}</span></span>
+            <span style="white-space:nowrap;color:var(--muted)">سُلّم: ${p[key].endDate}${av?` · ${av}★`:''}</span>
+          </div>`;
+        }).join('')}
+      </div>`;
+    });
+    html+=`<div style="text-align:left;font-size:13px;color:var(--muted);margin-bottom:22px">إجمالي المنجز هذا الشهر: <b style="color:var(--oasis-700)">${grandDone}</b></div>`;
+
+    // ── تقرير الأداء: متوسط تقييمات كل قسم هذا الشهر (للمخوّلين بالتقييم فقط) ──
+    if(canViewEval()){
+      html+=`<h3 style="font-size:16px;color:var(--oasis-700);margin-bottom:12px">تقرير الأداء — ${monthLabel(selMonth)}</h3>`;
+      const critLabels={work:'وضع العمل',engineer:'المهندس',done:'الإنجاز',delay:'الالتزام بالوقت'};
+      DEPT_MAP.forEach(([key,label])=>{
+        // المشاريع المسلّمة هذا الشهر ولها تقييم
+        const rated=state.projects.filter(p=>ym(p[key]?.endDate)===selMonth && p[key]?.eval && ratingAvg(p[key].eval));
+        const crit={work:[],engineer:[],done:[],delay:[]};
+        rated.forEach(p=>{ ['work','engineer','done','delay'].forEach(c=>{const v=Number(p[key].eval[c]); if(v>=1&&v<=5) crit[c].push(v);}); });
+        const avgOf=arr=>arr.length?(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(1):'—';
+        const overall=rated.length?(rated.reduce((s,p)=>s+Number(ratingAvg(p[key].eval)),0)/rated.length).toFixed(1):null;
+        html+=`<div style="background:var(--sand-50);border:1px solid var(--line);border-radius:11px;padding:13px;margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${rated.length?'9px':'0'}">
+            <span style="font-weight:700;color:var(--oasis-700)">${label}</span>
+            <span style="font-weight:800;color:var(--stop)">${overall?overall+' ★':'لا يوجد تقييم'}</span>
+          </div>
+          ${rated.length?`<div style="font-size:12px;color:var(--muted);display:grid;grid-template-columns:1fr 1fr;gap:5px">
+            ${Object.entries(critLabels).map(([c,l])=>`<span>${l}: <b style="color:var(--ink)">${avgOf(crit[c])}</b></span>`).join('')}
+          </div><div style="font-size:11px;color:var(--muted);margin-top:7px">عدد المشاريع المقيَّمة: ${rated.length}</div>`:''}
+        </div>`;
+      });
+    }
+    html+=`<p style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.7">
+      يعتمد التقرير على تاريخ تسليم كل قسم. المشاريع تظهر في شهر تسليمها.</p>`;
+
+    body.innerHTML=html; bindMonth();
+  }
+  function bindMonth(){
+    const sel=body.querySelector('#repMonth');
+    if(sel) sel.onchange=()=>{ selMonth=sel.value; fill(); };
+  }
+  fill();
+  overlay._refresh=fill;
+  modal.querySelector('#x').onclick=()=>{reportsModalOpen=false;overlay.remove();};
+  overlay.onclick=(e)=>{if(e.target===overlay){reportsModalOpen=false;overlay.remove();}};
+  root.appendChild(overlay);
 }
 
 /* ════════════ لوحة إحصاءات النشاط (للمشرف) ════════════ */

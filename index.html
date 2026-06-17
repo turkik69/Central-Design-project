@@ -146,6 +146,7 @@
   /* ====== بطاقات المشاريع ====== */
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:18px}
   .done-section{margin-top:26px}
+  .done-section.done-top{margin-top:0;margin-bottom:24px}
   .done-toggle{width:100%;display:flex;justify-content:space-between;align-items:center;background:#fff;border:1px solid var(--line);border-radius:13px;padding:14px 18px;font-family:'Cairo';font-weight:700;font-size:15px;color:var(--oasis-700);transition:.15s;box-shadow:var(--shadow)}
   .done-toggle:hover{background:var(--sand-50)}
   .done-count{background:var(--ok-bg);color:var(--ok);font-size:12px;font-weight:700;padding:2px 11px;border-radius:20px;font-family:'Tajawal'}
@@ -673,20 +674,10 @@ function updateGrid(){
     return;
   }
 
-  // المشاريع النشطة
-  if(active.length){
-    const grid=document.createElement('div');grid.className='grid';
-    active.forEach(p=>grid.appendChild(renderCard(p)));
-    host.appendChild(grid);
-  }else{
-    host.appendChild($(`<div class="empty" style="padding:40px 20px">${I.build}
-      <p style="margin-top:10px;color:var(--muted)">لا توجد مشاريع نشطة حالياً.</p></div>`));
-  }
-
-  // قسم المشاريع المنتهية القابل للطي
+  // قسم المشاريع المنتهية القابل للطي — في الأعلى
   if(done.length){
     const wrap=document.createElement('div');
-    wrap.className='done-section';
+    wrap.className='done-section done-top';
     wrap.innerHTML=`
       <button class="done-toggle" id="doneToggle">
         <span style="display:flex;align-items:center;gap:9px">
@@ -704,6 +695,16 @@ function updateGrid(){
       body.appendChild(grid);
     }
     wrap.querySelector('#doneToggle').onclick=()=>{ completedOpen=!completedOpen; updateGrid(); };
+  }
+
+  // المشاريع النشطة
+  if(active.length){
+    const grid=document.createElement('div');grid.className='grid';
+    active.forEach(p=>grid.appendChild(renderCard(p)));
+    host.appendChild(grid);
+  }else{
+    host.appendChild($(`<div class="empty" style="padding:40px 20px">${I.build}
+      <p style="margin-top:10px;color:var(--muted)">لا توجد مشاريع نشطة حالياً.</p></div>`));
   }
 }
 

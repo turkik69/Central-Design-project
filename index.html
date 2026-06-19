@@ -199,6 +199,10 @@
   .divider{height:1px;background:var(--line);margin:20px 0}
   .dept-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:13px}
   .dept{background:var(--sand-50);border:1px solid var(--line);border-radius:11px;padding:13px}
+  .eng-multi{background:#fff;border:1px solid var(--line);border-radius:9px;padding:6px;max-height:150px;overflow-y:auto;display:flex;flex-direction:column;gap:2px}
+  .eng-opt{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:7px;font-size:13.5px;cursor:pointer;transition:background .12s}
+  .eng-opt:hover{background:var(--sand-50)}
+  .eng-opt input{width:17px;height:17px;accent-color:var(--oasis)}
   .dept h4{font-size:13px;color:var(--oasis-700);border-bottom:1px solid var(--line);padding-bottom:7px;margin-bottom:10px}
   .dept .inp{margin-bottom:8px;font-size:12px}
   .modal-foot{display:flex;justify-content:flex-end;gap:10px;padding-top:18px;margin-top:18px;border-top:1px solid var(--line)}
@@ -993,13 +997,29 @@ function openProjectModal(project){
       if(canEvaluate(key)) return get(pf+'_'+field);   // المشرف/رئيس القسم يعدّل بحرية
       return orig ? orig : get(pf+'_'+field);            // غير المخوّل: أول إدخال فقط
     };
+    // يجمع المهندسين المختارين (checkboxes) لكل قسم → مصفوفة {username,name}
+    const engVal=(pf)=>{
+      const box=form.querySelector(`[name="${pf}_engBox"]`);
+      const engineers=[];
+      if(box){
+        box.querySelectorAll('input[type="checkbox"]:checked').forEach(cb=>{
+          const u=state.users.find(x=>x.username===cb.value);
+          if(u) engineers.push({username:u.username,name:u.name});
+        });
+      }
+      // اسم العرض المجمّع + توافق رجعي مع الحقول القديمة
+      const names=engineers.map(e=>e.name).join('، ');
+      const firstUser=engineers.length?engineers[0].username:'';
+      return {engineers, engineer:names, engineerUsername:firstUser};
+    };
+    const archEng=engVal('arch'), strEng=engVal('str'), srvEng=engVal('srv');
     const payload={
       name:get('name'),type:get('type'),customType:get('customType'),
       requestingEntity:get('requestingEntity'),overallStatus:get('overallStatus'),
       area:get('area'),cost:get('cost'),startDate:get('startDate'),endDate:get('endDate'),
-      architectural:{engineer:get('arch_engineer'),status:get('arch_status'),notes:get('arch_notes'),startDate:dateVal('arch','architectural','startDate'),endDate:dateVal('arch','architectural','endDate'),eval:buildEval('arch','architectural')},
-      structural:{engineer:get('str_engineer'),status:get('str_status'),notes:get('str_notes'),startDate:dateVal('str','structural','startDate'),endDate:dateVal('str','structural','endDate'),eval:buildEval('str','structural')},
-      services:{engineer:get('srv_engineer'),status:get('srv_status'),notes:get('srv_notes'),startDate:dateVal('srv','services','startDate'),endDate:dateVal('srv','services','endDate'),eval:buildEval('srv','services')}
+      architectural:{...archEng,status:get('arch_status'),notes:get('arch_notes'),startDate:dateVal('arch','architectural','startDate'),endDate:dateVal('arch','architectural','endDate'),eval:buildEval('arch','architectural')},
+      structural:{...strEng,status:get('str_status'),notes:get('str_notes'),startDate:dateVal('str','structural','startDate'),endDate:dateVal('str','structural','endDate'),eval:buildEval('str','structural')},
+      services:{...srvEng,status:get('srv_status'),notes:get('srv_notes'),startDate:dateVal('srv','services','startDate'),endDate:dateVal('srv','services','endDate'),eval:buildEval('srv','services')}
     };
     if(!CONFIGURED){alert('قاعدة البيانات غير مُعدّة بعد — أضِف مفاتيح Firebase أولاً لحفظ المشاريع.');return;}
     overlay.remove();
@@ -1071,9 +1091,25 @@ function deptCard(title,prefixKey,d){
   const lockStart = !mayEditDates && !!d.startDate;
   const lockEnd   = !mayEditDates && !!d.endDate;
   const lockNote='<span style="color:var(--stop)" title="مقفل — لا يعدّله إلا المشرف أو رئيس القسم"> 🔒</span>';
+  // قائمة مهندسي هذا القسم المسجّلين في النظام
+  const deptEngineers=state.users.filter(u=>u.role!=='admin' && u.dept===prefixKey)
+    .sort((a,b)=>(a.name||'').localeCompare(b.name||'','ar'));
+  // المهندسون المختارون حالياً (يدعم الصيغة الجديدة: مصفوفة، والقديمة: مفرد)
+  let selected=[];
+  if(Array.isArray(d.engineers)) selected=d.engineers.map(e=>e.username).filter(Boolean);
+  else if(d.engineerUsername) selected=[d.engineerUsername];
+  // اسم قديم مكتوب يدوياً وغير مربوط بحساب
+  const legacyName = (!selected.length && d.engineer && !deptEngineers.some(u=>u.name===d.engineer)) ? d.engineer : '';
+  const engBox = deptEngineers.length
+    ? `<div class="eng-multi" name="${pf}_engBox">
+        ${deptEngineers.map(u=>`<label class="eng-opt"><input type="checkbox" value="${u.username}" ${selected.includes(u.username)?'checked':''}> ${u.name}</label>`).join('')}
+       </div>`
+    : `<div style="font-size:12px;color:var(--muted);padding:6px 0">لا يوجد مهندسون مسجّلون في هذا القسم بعد.</div>`;
+  const legacyHint = legacyName ? `<div style="font-size:11px;color:var(--danger);margin-top:4px">مسجّل سابقاً: ${legacyName} (اختر المهندس من القائمة لربطه)</div>` : '';
   return `<div class="dept"><h4>${title}</h4>
-    <input class="inp" name="${pf}_engineer" placeholder="اسم المهندس" value="${d.engineer||''}">
-    <select class="inp" name="${pf}_status">${sOpt}</select>
+    <label class="lbl-sm">المهندسون المسؤولون (يمكن اختيار أكثر من واحد)</label>
+    ${engBox}${legacyHint}
+    <select class="inp" name="${pf}_status" style="margin-top:8px">${sOpt}</select>
     <label class="lbl-sm" style="margin-top:4px">تاريخ الاستلام${lockStart?lockNote:''}</label>
     <input class="inp" type="date" name="${pf}_startDate" value="${d.startDate||''}" ${lockStart?'readonly disabled style="background:var(--sand-100);color:var(--muted)"':''}>
     <label class="lbl-sm">تاريخ التسليم المتوقع${lockEnd?lockNote:''}</label>
@@ -1334,59 +1370,52 @@ function openEngineerSearch(){
   const body=document.createElement('div');body.className='modal-body';
   modal.appendChild(body);overlay.appendChild(modal);
 
-  // اجمع أسماء المهندسين الفريدة من كل الأقسام
-  const names=new Set();
-  state.projects.forEach(p=>DEPT_MAP.forEach(([k])=>{ const e=(p[k]?.engineer||'').trim(); if(e) names.add(e); }));
-  const allNames=[...names].sort((a,b)=>a.localeCompare(b,'ar'));
+  // قائمة المهندسين من المسجّلين في النظام (مرتبطين بالرقم الوظيفي)
+  const engineers=state.users
+    .filter(u=>u.role!=='admin' && ['architectural','structural','services'].includes(u.dept))
+    .sort((a,b)=>(a.name||'').localeCompare(b.name||'','ar'));
 
-  let query='';
+  let selUser='';   // الرقم الوظيفي المختار
   function render(){
-    const matchNames = query ? allNames.filter(n=>n.includes(query)) : allNames;
-    let html=`
-      <input class="inp" id="engQ" placeholder="اكتب اسم المهندس…" value="${query}" style="margin-bottom:12px">`;
-    if(!allNames.length){
-      html+=`<div style="text-align:center;color:var(--muted);padding:30px">لا يوجد مهندسون مسجّلون في المشاريع بعد.</div>`;
-      body.innerHTML=html; bind(); return;
-    }
-    if(query && matchNames.length){
-      // اعرض تقرير أول تطابق (أو قائمة لو عدة)
-      if(matchNames.length>1){
-        html+=`<div style="font-size:12px;color:var(--muted);margin-bottom:8px">${matchNames.length} نتيجة — اختر:</div>`;
-        html+=matchNames.map(n=>`<button class="eng-pick btn btn-ghost" data-name="${n}" style="width:100%;justify-content:flex-start;margin-bottom:6px">${I.person} ${n}</button>`).join('');
-      }else{
-        html+=engineerReport(matchNames[0]);
-      }
-    }else if(query){
-      html+=`<div style="text-align:center;color:var(--muted);padding:30px">لا يوجد مهندس بهذا الاسم.</div>`;
+    let html=`<label class="lbl-sm">اختر المهندس (من المسجّلين)</label>
+      <select class="inp" id="engSel" style="margin-bottom:14px">
+        <option value="">— اختر اسم المهندس —</option>
+        ${engineers.map(u=>`<option value="${u.username}" ${u.username===selUser?'selected':''}>${u.name} — ${u.username}</option>`).join('')}
+      </select>`;
+    if(!engineers.length){
+      html=`<div style="text-align:center;color:var(--muted);padding:30px">لا يوجد مهندسون مسجّلون في الأقسام الفنية بعد. أضِفهم من «إدارة المستخدمين».</div>`;
+    }else if(selUser){
+      html+=engineerReport(selUser);
     }else{
-      html+=`<div style="font-size:12px;color:var(--muted);margin-bottom:8px">كل المهندسين (${allNames.length}):</div>`;
-      html+=allNames.map(n=>`<button class="eng-pick btn btn-ghost" data-name="${n}" style="width:100%;justify-content:flex-start;margin-bottom:6px">${I.person} ${n}</button>`).join('');
+      html+=`<div style="text-align:center;color:var(--muted);padding:20px;font-size:13px">اختر مهندساً لعرض أعماله وتقييمه.</div>`;
     }
-    body.innerHTML=html; bind();
-  }
-  function bind(){
-    const q=body.querySelector('#engQ');
-    if(q){ q.oninput=()=>{ query=q.value.trim(); render(); setTimeout(()=>{const f=body.querySelector('#engQ'); if(f){f.focus();f.setSelectionRange(f.value.length,f.value.length);}},0); }; }
-    body.querySelectorAll('.eng-pick').forEach(btn=>{
-      btn.onclick=()=>{ query=btn.getAttribute('data-name'); render(); };
-    });
+    body.innerHTML=html;
+    const sel=body.querySelector('#engSel');
+    if(sel) sel.onchange=()=>{ selUser=sel.value; render(); };
   }
   render();
   modal.querySelector('#x').onclick=()=>overlay.remove();
   overlay.onclick=(e)=>{if(e.target===overlay)overlay.remove();};
   root.appendChild(overlay);
 }
-/* يبني تقرير مهندس واحد: أعماله القائمة والمنجزة + تقييمه المفصّل */
-function engineerReport(name){
+/* تقرير مهندس واحد بالرقم الوظيفي: أعماله القائمة والمنجزة + تقييمه المفصّل */
+function engineerReport(username){
+  const u=state.users.find(x=>x.username===username);
+  const name=u?u.name:username;
   const active=[], done=[];
   const critSum={work:[],engineer:[],done:[],delay:[]};
   state.projects.forEach(p=>{
     DEPT_MAP.forEach(([key,label])=>{
-      if((p[key]?.engineer||'').trim()!==name) return;
-      const st=p[key]?.status||'قيد الانتظار';
-      const ev=p[key]?.eval;
-      const avg=ratingAvg(ev);
-      const item={project:p.name||'—',dept:label,status:st,endDate:p[key]?.endDate||'',avg};
+      const sec=p[key]; if(!sec) return;
+      // المطابقة بالرقم الوظيفي ضمن قائمة مهندسي القسم (تدعم الجديد والقديم)
+      let inSection=false;
+      if(Array.isArray(sec.engineers)) inSection=sec.engineers.some(e=>e.username===username);
+      else if(sec.engineerUsername) inSection=(sec.engineerUsername===username);
+      else if(sec.engineer && u && sec.engineer===u.name) inSection=true; // قديم بالاسم
+      if(!inSection) return;   // أقسام هذا المهندس فقط — لا أقسام زملائه
+      const st=sec.status||'قيد الانتظار';
+      const ev=sec.eval; const avg=ratingAvg(ev);
+      const item={project:p.name||'—',dept:label,status:st,endDate:sec.endDate||'',avg};
       if(st==='مكتمل') done.push(item); else active.push(item);
       if(ev){ ['work','engineer','done','delay'].forEach(c=>{const v=Number(ev[c]); if(v>=1&&v<=5) critSum[c].push(v);}); }
     });
@@ -1409,6 +1438,7 @@ function engineerReport(name){
   return `
     <div style="background:var(--oasis-50);border-radius:12px;padding:14px;margin-bottom:14px;text-align:center">
       <div style="font-family:'Cairo';font-weight:800;font-size:18px;color:var(--oasis-700)">${name}</div>
+      <div style="font-size:12px;color:var(--muted)" class="ltr">${username}</div>
       <div style="font-size:13px;color:var(--muted);margin-top:4px">إجمالي الأعمال: ${active.length+done.length} · المنجز: ${done.length} · القائم: ${active.length}</div>
       ${overall?`<div style="margin-top:8px;font-size:22px;font-weight:800;color:var(--stop)">${overall} ★</div><div style="font-size:11px;color:var(--muted)">التقييم الإجمالي</div>`:`<div style="margin-top:8px;font-size:13px;color:var(--muted)">لا يوجد تقييم بعد</div>`}
     </div>

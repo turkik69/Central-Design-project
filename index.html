@@ -472,6 +472,20 @@ async function updateUser(id,fields){
   try{ await FB.updateDoc(FB.doc(db,'artifacts',APP_ID,'public','data','users',id),fields); return true; }
   catch(e){ console.error(e); alert('تعذّر حفظ التعديل.'); return false; }
 }
+const EMAIL_DOMAIN='@mm.gov.om';
+/* يولّد البريد من الرقم الوظيفي (اسم المستخدم) لكل من لا بريد له */
+async function generateMissingEmails(){
+  const targets=state.users.filter(u=>u.role!=='admin' && u.username && !u.email);
+  if(!targets.length){ alert('كل المستخدمين لديهم بريد بالفعل.'); return; }
+  if(!confirm(`سيتم توليد البريد الإلكتروني لـ ${targets.length} مستخدم بالصيغة: الرقم الوظيفي${EMAIL_DOMAIN}\nمتابعة؟`)) return;
+  let done=0;
+  for(const u of targets){
+    const email=String(u.username).trim()+EMAIL_DOMAIN;
+    const ok=await updateUser(u.id,{email});
+    if(ok) done++;
+  }
+  alert(`تم توليد البريد لـ ${done} مستخدم بنجاح.`);
+}
 async function deleteUser(id){
   try{ await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','users',id)); }
   catch(e){ console.error(e); alert('تعذّر حذف المستخدم.'); }
@@ -1105,7 +1119,10 @@ function openUsersModal(){
       </div>
       <div class="divider"></div>
       <h4 style="font-size:14px;color:var(--oasis-700);margin-bottom:6px">الحسابات الحالية (${list.length})</h4>
-      ${missingEmail?`<div style="background:var(--stop-bg);border:1px solid #ecd9a8;color:#7a5d12;border-radius:9px;padding:9px 12px;font-size:12px;margin-bottom:12px">${missingEmail} حساب بدون بريد إلكتروني — اضغط ✎ لإضافته (يلزم لعمل تنبيهات الإنجاز).</div>`:''}
+      ${missingEmail?`<div style="background:var(--stop-bg);border:1px solid #ecd9a8;color:#7a5d12;border-radius:9px;padding:11px 12px;font-size:12px;margin-bottom:12px">
+        <div style="margin-bottom:8px">${missingEmail} حساب بدون بريد إلكتروني.</div>
+        <button class="btn btn-add" id="genEmails" style="padding:7px 13px;font-size:12px">توليد البريد تلقائياً (الرقم الوظيفي${EMAIL_DOMAIN})</button>
+      </div>`:''}
       ${list.length? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="text-align:right;color:var(--muted);border-bottom:2px solid var(--line)">
           <th style="padding:8px 6px">الاسم</th><th style="padding:8px 6px">المسمى</th>
@@ -1122,6 +1139,8 @@ function openUsersModal(){
         </tbody></table></div>`
         : `<div style="color:var(--muted);font-size:13px;padding:10px 0">لا توجد حسابات بعد. أنشئ أول حساب من الأعلى.</div>`}`;
 
+    const genBtn=body.querySelector('#genEmails');
+    if(genBtn) genBtn.onclick=()=>generateMissingEmails();
     body.querySelector('#nu_create').onclick=async()=>{
       const ok=await createUser({
         name:body.querySelector('#nu_name').value,

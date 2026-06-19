@@ -274,13 +274,15 @@ const state = {
   search:'', isNewUser:false, authError:'', loading:true,
   customOpts:{type:[],entity:[],jobTitle:[],dept:[]},   // بنود يضيفها المشرف
   stats:[],   // إحصاءات نشاط المستخدمين
-  users:[]    // قائمة المستخدمين (للمشرف)
+  users:[],    // قائمة المستخدمين (للمشرف)
+  notifs:[]    // إشعارات الإنجاز
 };
 const ADMIN = { user:'turki69', pass:'abuyassmin69' };
 const colRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','projects');
 const usersRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','users');
 const optsRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','options');
 const statsRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','stats');
+const notifsRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','notifications');
 
 /* ---- تتبّع نشاط المستخدمين (لقياس تبنّي النظام) ---- */
 function statsDoc(username){
@@ -349,7 +351,7 @@ async function initFirebase(){
   try{
     await loadFirebase();
     FB.signInAnonymously(auth).catch(e=>console.error("مصادقة:",e));
-    FB.onAuthStateChanged(auth,(u)=>{ if(u){state.fbReady=true; subscribeProjects(); subscribeOptions(); subscribeStats(); subscribeUsers();} });
+    FB.onAuthStateChanged(auth,(u)=>{ if(u){state.fbReady=true; subscribeProjects(); subscribeOptions(); subscribeStats(); subscribeUsers(); subscribeNotifs();} });
   }catch(e){
     console.error("تحميل Firebase:",e);
     state.authError='تعذّر الاتصال بقاعدة البيانات. تحقّق من الإنترنت ومن صحة مفاتيح Firebase.';
@@ -387,18 +389,88 @@ function subscribeUsers(){
     if(usersModalOpen){ refreshUsersModal(); }
   },(e)=>{console.error("جلب المستخدمين:",e);});
 }
+function subscribeNotifs(){
+  FB.onSnapshot(notifsRef(),(snap)=>{
+    state.notifs=snap.docs.map(d=>({id:d.id,...d.data()}));
+    // حدّث جرس الإشعارات إن كان معروضاً
+    const bell=document.getElementById('notifBell'); if(bell) updateBell();
+    if(notifsPanelOpen) renderNotifPanel();
+  },(e)=>{console.error("جلب الإشعارات:",e);});
+}
+/* الإشعارات الموجَّهة للمستخدم الحالي وغير المقروءة */
+function myNotifs(){
+  const u=state.appUser; if(!u) return [];
+  return state.notifs
+    .filter(n=> n.toUser===u.username || (u.role==='admin'&&n.toRole==='admin'))
+    .sort((a,b)=> new Date(b.at||0)-new Date(a.at||0));
+}
+async function addNotif(n){
+  try{ await FB.addDoc(notifsRef(),{...n,at:new Date().toISOString(),read:false}); }
+  catch(e){ console.error("إضافة إشعار:",e); }
+}
+async function markNotifRead(id){
+  try{ await FB.updateDoc(FB.doc(db,'artifacts',APP_ID,'public','data','notifications',id),{read:true}); }
+  catch(e){ console.error(e); }
+}
+function updateBell(){
+  const dot=document.getElementById('notifDot'); if(!dot) return;
+  const unread=myNotifs().filter(n=>!n.read).length;
+  if(unread>0){ dot.textContent=unread>9?'9+':unread; dot.classList.remove('hidden'); }
+  else dot.classList.add('hidden');
+}
+let notifsPanelOpen=false;
+function toggleNotifPanel(){
+  if(document.getElementById('notifPanel')){ closeNotifPanel(); return; }
+  notifsPanelOpen=true;
+  const panel=$(`<div class="overlay" id="notifPanel" style="align-items:flex-start;justify-content:flex-start"></div>`);
+  const card=document.createElement('div');
+  card.style.cssText='margin:64px 14px 0 auto;background:#fff;border-radius:14px;max-width:360px;width:100%;max-height:75vh;overflow-y:auto;box-shadow:0 20px 50px -15px rgba(0,0,0,.4)';
+  panel.appendChild(card);
+  panel._render=()=>{
+    const list=myNotifs();
+    card.innerHTML=`<div style="position:sticky;top:0;background:var(--oasis);color:#fff;padding:13px 16px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-family:'Cairo';font-weight:700">الإشعارات</span>
+        ${list.some(n=>!n.read)?`<button id="markAll" style="color:#fff;font-size:12px;text-decoration:underline">تعليم الكل مقروء</button>`:''}
+      </div>
+      <div style="padding:8px">
+      ${list.length? list.map(n=>`
+        <div data-nid="${n.id}" style="padding:11px;border-radius:10px;margin-bottom:6px;background:${n.read?'#fff':'var(--oasis-50)'};border:1px solid var(--line);cursor:pointer">
+          <div style="font-size:13px;line-height:1.7;color:var(--ink)">${n.text||''}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:5px">${fmtDate(n.at)}${n.read?'':' · جديد'}</div>
+        </div>`).join('')
+       : `<div style="padding:40px 16px;text-align:center;color:var(--muted);font-size:13px">لا توجد إشعارات.</div>`}
+      </div>`;
+    const ma=card.querySelector('#markAll');
+    if(ma) ma.onclick=async()=>{ for(const n of list.filter(x=>!x.read)) await markNotifRead(n.id); };
+    card.querySelectorAll('[data-nid]').forEach(el=>{
+      el.onclick=async()=>{ await markNotifRead(el.getAttribute('data-nid')); };
+    });
+  };
+  panel._render();
+  panel.onclick=(e)=>{ if(e.target===panel) closeNotifPanel(); };
+  root.appendChild(panel);
+}
+function renderNotifPanel(){ const p=document.getElementById('notifPanel'); if(p&&p._render) p._render(); updateBell(); }
+function closeNotifPanel(){ notifsPanelOpen=false; const p=document.getElementById('notifPanel'); if(p) p.remove(); }
 async function createUser(u){
   const username=(u.username||'').trim().toLowerCase();
   const password=(u.password||'').trim();
   const name=(u.name||'').trim();
+  const email=(u.email||'').trim();
   if(!username||!password||!name){ alert('يرجى تعبئة الاسم واسم المستخدم والرقم السري.'); return false; }
+  if(!email){ alert('البريد الإلكتروني إلزامي للحسابات الجديدة.'); return false; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ alert('صيغة البريد الإلكتروني غير صحيحة.'); return false; }
   if(username===ADMIN.user){ alert('اسم المستخدم محجوز.'); return false; }
   try{
     const dup=await FB.getDocs(FB.query(usersRef(),FB.where("username","==",username)));
     if(!dup.empty){ alert('اسم المستخدم محجوز مسبقاً، اختر اسماً آخر.'); return false; }
-    await FB.addDoc(usersRef(),{username,password,name,role:'engineer',dept:u.dept||'architectural',jobTitle:u.jobTitle||'',profilePic:''});
+    await FB.addDoc(usersRef(),{username,password,name,email,role:'engineer',dept:u.dept||'architectural',jobTitle:u.jobTitle||'',profilePic:''});
     return true;
   }catch(e){ console.error(e); alert('تعذّر إنشاء الحساب.'); return false; }
+}
+async function updateUser(id,fields){
+  try{ await FB.updateDoc(FB.doc(db,'artifacts',APP_ID,'public','data','users',id),fields); return true; }
+  catch(e){ console.error(e); alert('تعذّر حفظ التعديل.'); return false; }
 }
 async function deleteUser(id){
   try{ await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','users',id)); }
@@ -523,11 +595,63 @@ async function clearAll(){
   }catch(e){console.error(e);alert("حدث خطأ أثناء المسح.");}
   state.loading=false;render();
 }
-async function saveProject(data,editingId){
+async function saveProject(data,editingId,prev){
   const nowISO=new Date().toISOString();
   const payload={...data,lastUpdatedBy:state.appUser.name,lastUpdatedAt:new Date().toLocaleString('ar-OM'),updatedAtTS:nowISO};
   if(editingId){await FB.updateDoc(FB.doc(db,'artifacts',APP_ID,'public','data','projects',editingId),payload);logActivity('update');}
   else{await FB.addDoc(colRef(),{...payload,createdAt:nowISO});logActivity('create');}
+  // اكتشف الأقسام التي تحوّلت إلى «مكتمل» حديثاً وأنشئ إشعاراً لرئيس كل قسم
+  try{ detectCompletions(payload, prev); }catch(e){ console.error("إشعار الإنجاز:",e); }
+}
+const HEAD_TITLES={architectural:'رئيس القسم المعماري',structural:'رئيس القسم الإنشائي',services:'رئيس قسم تصميم الخدمات'};
+const DEPT_AR={architectural:'القسم المعماري',structural:'القسم الإنشائي',services:'قسم تصميم الخدمات'};
+/* يجد حساب رئيس القسم من مسماه الوظيفي */
+function findHead(deptKey){
+  return state.users.find(u=>u.jobTitle===HEAD_TITLES[deptKey]) || null;
+}
+async function detectCompletions(payload, prev){
+  for(const key of ['architectural','structural','services']){
+    const now=payload[key]?.status, before=prev? (prev[key]?.status) : undefined;
+    if(now==='مكتمل' && before!=='مكتمل'){
+      const head=findHead(key);
+      if(head){
+        await addNotif({
+          toUser:head.username, toRole:'head', deptKey:key,
+          projectName:payload.name||'', engineer:payload[key]?.engineer||state.appUser.name,
+          byUser:state.appUser.name,
+          text:`أنجز ${payload[key]?.engineer||state.appUser.name} العمل في «${DEPT_AR[key]}» لمشروع «${payload.name}».`
+        });
+      }
+      // اعرض للمهندس زر بريد جاهز لرئيس القسم
+      offerCompletionEmail(key, payload, head);
+    }
+  }
+}
+/* يفتح بريداً جاهزاً لرئيس القسم (يرسله المهندس بضغطة) */
+function offerCompletionEmail(deptKey, payload, head){
+  const to = head && head.email ? head.email : '';
+  const subject=`إنجاز عمل: ${payload.name} — ${DEPT_AR[deptKey]}`;
+  const body=`السلام عليكم ورحمة الله وبركاته،\n\nأفيدكم بأنه تم الانتهاء من العمل في «${DEPT_AR[deptKey]}» الخاص بمشروع «${payload.name}».\n\nاسم المهندس: ${payload[deptKey]?.engineer||state.appUser.name}\nتاريخ التسليم المتوقع: ${payload[deptKey]?.endDate||'—'}\n\nوتفضلوا بقبول فائق الاحترام والتقدير.`;
+  const mailto=`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  // نافذة تأكيد صغيرة بدل فتح البريد فجأة
+  const overlay=$(`<div class="overlay"></div>`);
+  const modal=$(`<div class="modal modal-sm"><div class="modal-head"><h2>إبلاغ رئيس القسم</h2>
+    <button class="icon-btn" id="x">${I.close}</button></div></div>`);
+  const b=document.createElement('div'); b.className='modal-body';
+  b.innerHTML=`
+    <p style="font-size:13.5px;line-height:1.8;color:var(--ink)">تم تعليم «${DEPT_AR[deptKey]}» كمكتمل في مشروع «${payload.name}».</p>
+    ${to?`<p style="font-size:13px;color:var(--muted);margin-top:8px">يمكنك إرسال إشعار بالبريد إلى رئيس القسم (${to}). سيفتح تطبيق البريد برسالة جاهزة، تضغط «إرسال» فقط.</p>`
+        :`<p style="font-size:13px;color:var(--danger);margin-top:8px">لا يوجد بريد مسجّل لرئيس هذا القسم. أبلغ المشرف لإضافته. (تم تسجيل إشعار داخلي على أي حال.)</p>`}
+    <div class="modal-foot">
+      <button type="button" class="btn btn-ghost" id="later">لاحقاً</button>
+      ${to?`<a class="btn btn-add" id="sendmail" href="${mailto}">${I.report} فتح البريد الجاهز</a>`:''}
+    </div>`;
+  b.querySelector('#later').onclick=()=>overlay.remove();
+  if(to){ b.querySelector('#sendmail').onclick=()=>{ setTimeout(()=>overlay.remove(),300); }; }
+  modal.querySelector('#x').onclick=()=>overlay.remove();
+  modal.appendChild(b); overlay.appendChild(modal);
+  overlay.onclick=(e)=>{if(e.target===overlay)overlay.remove();};
+  root.appendChild(overlay);
 }
 async function deleteProject(id){
   await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','projects',id));
@@ -553,6 +677,7 @@ const I={
   chart:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 3v18h18M8 17V9m5 8V5m5 12v-6"/></svg>',
   report:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg>',
   backup:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5"/></svg>',
+  bell:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
   users:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
   key:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12.6 10.6a6 6 0 1 0-3 3L14 18l2 2 3-3-2-2 1-1 2 2 3-3-7.4-2.4Z"/><circle cx="6.5" cy="14.5" r="1"/></svg>',
   check:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>',
@@ -607,6 +732,7 @@ function renderApp(){
     <div class="user-box">
       <div class="user-meta"><div class="nm">${u.name}</div><div class="rl">${u.role==='admin'?'مشرف عام':(u.jobTitle||'مهندس مصمم')}</div></div>
       <div class="avatar">${u.profilePic?`<img src="${u.profilePic}">`:I.user}</div>
+      ${canViewEval()?`<button class="icon-btn" id="notifBell" title="الإشعارات" style="position:relative">${I.bell}<span id="notifDot" class="hidden" style="position:absolute;top:3px;left:3px;min-width:16px;height:16px;background:var(--danger);color:#fff;border-radius:9px;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px"></span></button>`:''}
       <button class="icon-btn" id="btnProfile" title="إعدادات الحساب">${I.settings}</button>
       <button class="icon-btn" id="btnLogout" title="تسجيل الخروج">${I.logout}</button>
     </div></div></header>`);
@@ -614,6 +740,10 @@ function renderApp(){
   searchInp.oninput=(e)=>{state.search=e.target.value;applyFilter();updateGrid();};
   header.querySelector('#btnLogout').onclick=logout;
   header.querySelector('#btnProfile').onclick=openProfile;
+  if(canViewEval()){
+    const bell=header.querySelector('#notifBell');
+    if(bell){ bell.onclick=toggleNotifPanel; setTimeout(updateBell,0); }
+  }
   frag.appendChild(header);
 
   /* المحتوى */
@@ -854,7 +984,7 @@ function openProjectModal(project){
     };
     if(!CONFIGURED){alert('قاعدة البيانات غير مُعدّة بعد — أضِف مفاتيح Firebase أولاً لحفظ المشاريع.');return;}
     overlay.remove();
-    await saveProject(payload, project?.id);
+    await saveProject(payload, project?.id, project);
   };
   modal.querySelector('#x').onclick=()=>overlay.remove();
   form.querySelector('#cancel').onclick=()=>overlay.remove();
@@ -955,6 +1085,7 @@ function openUsersModal(){
   function fill(){
     const jobOpts=opts('jobTitle').map(o=>`<option>${o}</option>`).join('');
     const list=state.users.filter(u=>u.role!=='admin');
+    const missingEmail=list.filter(u=>!u.email).length;
     body.innerHTML=`
       <h4 style="font-size:14px;color:var(--oasis-700);margin-bottom:12px">إنشاء حساب جديد</h4>
       <div class="form-grid">
@@ -965,6 +1096,7 @@ function openUsersModal(){
           <option value="structural">القسم الإنشائي</option>
           <option value="services">قسم تصميم الخدمات</option>
           <option value="administration">الإدارة</option></select></div>
+        <div><label class="lbl-sm">البريد الإلكتروني (إلزامي)</label><input class="inp ltr" id="nu_email" type="email" placeholder="name@example.com"></div>
         <div><label class="lbl-sm">اسم المستخدم</label><input class="inp ltr" id="nu_user" placeholder="username"></div>
         <div><label class="lbl-sm">الرقم السري</label><input class="inp ltr" id="nu_pass" value="${DEFAULT_PASSWORD}" placeholder="******"></div>
       </div>
@@ -972,16 +1104,18 @@ function openUsersModal(){
         <button class="btn btn-add" id="nu_create">${I.plus} إنشاء الحساب</button>
       </div>
       <div class="divider"></div>
-      <h4 style="font-size:14px;color:var(--oasis-700);margin-bottom:12px">الحسابات الحالية (${list.length})</h4>
+      <h4 style="font-size:14px;color:var(--oasis-700);margin-bottom:6px">الحسابات الحالية (${list.length})</h4>
+      ${missingEmail?`<div style="background:var(--stop-bg);border:1px solid #ecd9a8;color:#7a5d12;border-radius:9px;padding:9px 12px;font-size:12px;margin-bottom:12px">${missingEmail} حساب بدون بريد إلكتروني — اضغط ✎ لإضافته (يلزم لعمل تنبيهات الإنجاز).</div>`:''}
       ${list.length? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="text-align:right;color:var(--muted);border-bottom:2px solid var(--line)">
-          <th style="padding:8px 6px">الاسم</th><th style="padding:8px 6px">اسم المستخدم</th>
-          <th style="padding:8px 6px">المسمى</th><th style="padding:8px 6px"></th></tr></thead><tbody>
+          <th style="padding:8px 6px">الاسم</th><th style="padding:8px 6px">المسمى</th>
+          <th style="padding:8px 6px">البريد</th><th style="padding:8px 6px"></th></tr></thead><tbody>
         ${list.map(u=>`<tr style="border-bottom:1px solid var(--line)">
-          <td style="padding:9px 6px;font-weight:700">${u.name||'—'}</td>
-          <td style="padding:9px 6px" class="ltr">${u.username||'—'}</td>
+          <td style="padding:9px 6px;font-weight:700">${u.name||'—'}<div style="font-size:11px;color:var(--muted)" class="ltr">${u.username||''}</div></td>
           <td style="padding:9px 6px;color:var(--muted)">${u.jobTitle||'—'}</td>
+          <td style="padding:9px 6px" class="ltr">${u.email?`<span style="font-size:11px">${u.email}</span>`:'<span style="color:var(--danger);font-size:11px">— ناقص</span>'}</td>
           <td style="padding:9px 6px;text-align:left;white-space:nowrap">
+            <button class="act act-edit" data-edituser="${u.id}" title="تعديل البيانات" style="color:var(--oasis-600)">${I.edit}</button>
             <button class="act act-edit" data-resetuser="${u.id}" data-resetname="${u.name||u.username}" title="إعادة الرمز الافتراضي" style="color:var(--stop)">${I.key}</button>
             <button class="act act-del" data-deluser="${u.id}" title="حذف الحساب">${I.trash}</button></td>
         </tr>`).join('')}
@@ -993,14 +1127,19 @@ function openUsersModal(){
         name:body.querySelector('#nu_name').value,
         jobTitle:body.querySelector('#nu_job').value,
         dept:body.querySelector('#nu_dept').value,
+        email:body.querySelector('#nu_email').value,
         username:body.querySelector('#nu_user').value,
         password:body.querySelector('#nu_pass').value
       });
-      if(ok){ // امسح الحقول؛ القائمة ستتحدث تلقائياً
-        ['nu_name','nu_user','nu_pass'].forEach(id=>{const el=body.querySelector('#'+id); if(el) el.value='';});
+      if(ok){
+        ['nu_name','nu_user','nu_email'].forEach(id=>{const el=body.querySelector('#'+id); if(el) el.value='';});
+        const pe=body.querySelector('#nu_pass'); if(pe) pe.value=DEFAULT_PASSWORD;
         alert('تم إنشاء الحساب بنجاح.');
       }
     };
+    body.querySelectorAll('[data-edituser]').forEach(btn=>{
+      btn.onclick=()=>{ const u=list.find(x=>x.id===btn.getAttribute('data-edituser')); if(u) openEditUser(u); };
+    });
     body.querySelectorAll('[data-deluser]').forEach(btn=>{
       btn.onclick=async()=>{ if(confirm('حذف هذا الحساب نهائياً؟')) await deleteUser(btn.getAttribute('data-deluser')); };
     });
@@ -1023,6 +1162,43 @@ function openUsersModal(){
 function refreshUsersModal(){
   const ov=document.getElementById('usersOverlay');
   if(ov&&ov._refresh) ov._refresh();
+}
+/* تعديل بيانات مستخدم موجود (خاصة إضافة البريد للحسابات القديمة) */
+function openEditUser(u){
+  const overlay=$(`<div class="overlay"></div>`);
+  const modal=$(`<div class="modal modal-sm"><div class="modal-head"><h2>تعديل الحساب</h2>
+    <button class="icon-btn" id="x">${I.close}</button></div></div>`);
+  const form=document.createElement('form');form.className='modal-body';
+  const jobOpts=opts('jobTitle').map(o=>`<option ${o===(u.jobTitle||'')?'selected':''}>${o}</option>`).join('');
+  const deptOpts=[['architectural','القسم المعماري'],['structural','القسم الإنشائي'],['services','قسم تصميم الخدمات'],['administration','الإدارة']]
+    .map(([v,l])=>`<option value="${v}" ${v===(u.dept||'')?'selected':''}>${l}</option>`).join('');
+  form.innerHTML=`
+    <div class="field"><label class="lbl-sm">الاسم الكامل</label><input class="inp" name="name" value="${u.name||''}"></div>
+    <div class="field"><label class="lbl-sm">المسمى الوظيفي</label><select class="inp" name="jobTitle">${jobOpts}</select></div>
+    <div class="field"><label class="lbl-sm">القسم الفني</label><select class="inp" name="dept">${deptOpts}</select></div>
+    <div class="field"><label class="lbl-sm">البريد الإلكتروني</label><input class="inp ltr" type="email" name="email" value="${u.email||''}" placeholder="name@example.com"></div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-ghost" id="cancel">إلغاء</button>
+      <button type="submit" class="btn btn-add">حفظ التعديل</button>
+    </div>`;
+  form.onsubmit=async(e)=>{
+    e.preventDefault();
+    const fd=new FormData(form);
+    const email=(fd.get('email')||'').trim();
+    if(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ alert('صيغة البريد غير صحيحة.'); return; }
+    const ok=await updateUser(u.id,{
+      name:(fd.get('name')||'').trim(),
+      jobTitle:fd.get('jobTitle'),
+      dept:fd.get('dept'),
+      email:email
+    });
+    if(ok){ overlay.remove(); }   // قائمة المستخدمين ستتحدّث تلقائياً
+  };
+  modal.querySelector('#x').onclick=()=>overlay.remove();
+  form.querySelector('#cancel').onclick=()=>overlay.remove();
+  modal.appendChild(form);overlay.appendChild(modal);
+  overlay.onclick=(e)=>{if(e.target===overlay)overlay.remove();};
+  root.appendChild(overlay);
 }
 
 /* ════════════ النسخ الاحتياطي (للمشرف) ════════════ */

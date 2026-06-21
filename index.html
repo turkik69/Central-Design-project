@@ -325,11 +325,9 @@ const BASE_OPTS = {
   entity:['مسقط','مطرح','بوشر','السيب','العامرات','قريات',
     'المديرية العامة للشؤون الصحية','المديرية العامة للتخطيط والاستثمار',
     'المديرية العامة للمشاريع والتشجير','جهة أخرى…'],
-  jobTitle:['مهندس معماري أول','مهندس معماري','رسام معماري','مصمم معماري',
-    'مهندس إنشائي','مهندس تصميم خدمات','مهندس إلكتروميكانيكي',
-    'مصمم داخلي','مصمم جرافيك',
+  jobTitle:['مهندس معماري','مهندس إنشائي','مهندس تصميم خدمات',
     'رئيس القسم المعماري','رئيس القسم الإنشائي','رئيس قسم تصميم الخدمات',
-    'مدير الدائرة','تنفيذي تنسيق ومتابعة','تنسيق ومتابعة'],
+    'مدير الدائرة','تنسيق ومتابعة'],
   dept:[]   // الأقسام لها قيم/تسميات خاصة، تُدار بقائمة منفصلة
 };
 const OPT_LABELS = {type:'أنواع المشاريع',entity:'الجهات الطالبة',jobTitle:'المسميات الوظيفية',dept:'الأقسام الفنية'};
@@ -338,32 +336,6 @@ function opts(key){
   const extra=(state.customOpts[key]||[]).map(o=>o.value);
   return [...BASE_OPTS[key], ...extra.filter(v=>!BASE_OPTS[key].includes(v))];
 }
-/* تأنيث/تذكير المسمى الوظيفي للعرض حسب جنس المستخدم (التخزين يبقى موحّداً) */
-const TITLE_FEMININE = {
-  'مهندس معماري أول':'مهندسة معمارية أول',
-  'مهندس معماري':'مهندسة معمارية',
-  'رسام معماري':'رسامة معمارية',
-  'مصمم معماري':'مصممة معمارية',
-  'مهندس إنشائي':'مهندسة إنشائية',
-  'مهندس تصميم خدمات':'مهندسة تصميم خدمات',
-  'مهندس إلكتروميكانيكي':'مهندسة إلكتروميكانيكية',
-  'مصمم داخلي':'مصممة داخلية',
-  'مصمم جرافيك':'مصممة جرافيك',
-  'رئيس القسم المعماري':'رئيسة القسم المعماري',
-  'رئيس القسم الإنشائي':'رئيسة القسم الإنشائي',
-  'رئيس قسم تصميم الخدمات':'رئيسة قسم تصميم الخدمات',
-  'مدير الدائرة':'مديرة الدائرة',
-  'تنفيذي تنسيق ومتابعة':'تنفيذية تنسيق ومتابعة',
-  'تنسيق ومتابعة':'تنسيق ومتابعة'
-};
-/* يعيد المسمى المعروض حسب الجنس؛ يقبل كائن المستخدم أو (المسمى، الجنس) */
-function displayTitle(jobTitle, gender){
-  if(!jobTitle) return '';
-  if(gender==='female') return TITLE_FEMININE[jobTitle] || jobTitle;
-  return jobTitle;
-}
-/* اختصار: مسمى مستخدم حسب جنسه المخزّن */
-function userTitle(u){ return u ? displayTitle(u.jobTitle, u.gender) : ''; }
 
 const STATUS_STYLE = {
   'مكتمل':['var(--ok)','var(--ok-bg)'],
@@ -497,7 +469,7 @@ async function createUser(u){
   try{
     const dup=await FB.getDocs(FB.query(usersRef(),FB.where("username","==",username)));
     if(!dup.empty){ alert('اسم المستخدم محجوز مسبقاً، اختر اسماً آخر.'); return false; }
-    await FB.addDoc(usersRef(),{username,password,name,email,role:'engineer',dept:u.dept||'architectural',jobTitle:u.jobTitle||'',gender:u.gender||'male',profilePic:''});
+    await FB.addDoc(usersRef(),{username,password,name,email,role:'engineer',dept:u.dept||'architectural',jobTitle:u.jobTitle||'',profilePic:''});
     return true;
   }catch(e){ console.error(e); alert('تعذّر إنشاء الحساب.'); return false; }
 }
@@ -1175,8 +1147,6 @@ function openUsersModal(){
       <div class="form-grid">
         <div><label class="lbl-sm">الاسم الكامل</label><input class="inp" id="nu_name" placeholder="مثال: محمد العامري"></div>
         <div><label class="lbl-sm">المسمى الوظيفي</label><select class="inp" id="nu_job">${jobOpts}</select></div>
-        <div><label class="lbl-sm">الجنس</label><select class="inp" id="nu_gender">
-          <option value="male">ذكر</option><option value="female">أنثى</option></select></div>
         <div><label class="lbl-sm">القسم الفني</label><select class="inp" id="nu_dept">
           <option value="architectural">القسم المعماري</option>
           <option value="structural">القسم الإنشائي</option>
@@ -1201,7 +1171,7 @@ function openUsersModal(){
           <th style="padding:8px 6px">البريد</th><th style="padding:8px 6px"></th></tr></thead><tbody>
         ${list.map(u=>`<tr style="border-bottom:1px solid var(--line)">
           <td style="padding:9px 6px;font-weight:700">${u.name||'—'}<div style="font-size:11px;color:var(--muted)" class="ltr">${u.username||''}</div></td>
-          <td style="padding:9px 6px;color:var(--muted)">${userTitle(u)||'—'}</td>
+          <td style="padding:9px 6px;color:var(--muted)">${u.jobTitle||'—'}</td>
           <td style="padding:9px 6px" class="ltr">${u.email?`<span style="font-size:11px">${u.email}</span>`:'<span style="color:var(--danger);font-size:11px">— ناقص</span>'}</td>
           <td style="padding:9px 6px;text-align:left;white-space:nowrap">
             <button class="act act-edit" data-edituser="${u.id}" title="تعديل البيانات" style="color:var(--oasis-600)">${I.edit}</button>
@@ -1217,7 +1187,6 @@ function openUsersModal(){
       const ok=await createUser({
         name:body.querySelector('#nu_name').value,
         jobTitle:body.querySelector('#nu_job').value,
-        gender:body.querySelector('#nu_gender').value,
         dept:body.querySelector('#nu_dept').value,
         email:body.querySelector('#nu_email').value,
         username:body.querySelector('#nu_user').value,
@@ -1267,9 +1236,6 @@ function openEditUser(u){
   form.innerHTML=`
     <div class="field"><label class="lbl-sm">الاسم الكامل</label><input class="inp" name="name" value="${u.name||''}"></div>
     <div class="field"><label class="lbl-sm">المسمى الوظيفي</label><select class="inp" name="jobTitle">${jobOpts}</select></div>
-    <div class="field"><label class="lbl-sm">الجنس</label><select class="inp" name="gender">
-      <option value="male" ${(u.gender||'male')==='male'?'selected':''}>ذكر</option>
-      <option value="female" ${u.gender==='female'?'selected':''}>أنثى</option></select></div>
     <div class="field"><label class="lbl-sm">القسم الفني</label><select class="inp" name="dept">${deptOpts}</select></div>
     <div class="field"><label class="lbl-sm">البريد الإلكتروني</label><input class="inp ltr" type="email" name="email" value="${u.email||''}" placeholder="name@example.com"></div>
     <div class="modal-foot">
@@ -1284,7 +1250,6 @@ function openEditUser(u){
     const ok=await updateUser(u.id,{
       name:(fd.get('name')||'').trim(),
       jobTitle:fd.get('jobTitle'),
-      gender:fd.get('gender'),
       dept:fd.get('dept'),
       email:email
     });

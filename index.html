@@ -617,17 +617,17 @@ async function clearAll(){
 async function saveProject(data,editingId,prev){
   const nowISO=new Date().toISOString();
   const todayStr=new Date().toISOString().slice(0,10);   // YYYY-MM-DD
-  // سجّل تاريخ التسليم الفعلي تلقائياً لكل قسم تحوّل إلى «مكتمل» (ويبقى ثابتاً بعدها)
+  // سجّل تاريخ التسليم الفعلي لكل قسم بناءً على لحظة اكتماله هو فقط (مستقل تماماً عن باقي الأقسام)
   for(const key of ['architectural','structural','services']){
     if(!data[key]) continue;
-    const nowSt=data[key].status, beforeSt=prev? (prev[key]?.status):undefined;
-    const prevActual = prev && prev[key] ? prev[key].actualDate : '';
+    const nowSt=data[key].status;
+    const incoming = data[key].actualDate || '';                 // قيمة قادمة (تعديل يدوي من المخوّل أو أصل محفوظ)
+    const prevActual = prev && prev[key] ? (prev[key].actualDate||'') : '';
     if(nowSt==='مكتمل'){
-      // إن كان مكتملاً سابقاً ولديه تاريخ فعلي، احتفظ به؛ وإلا اختم بتاريخ اليوم
-      data[key].actualDate = prevActual || todayStr;
+      // الأولوية: تعديل يدوي قادم ← ثم الأصل المحفوظ ← ثم تاريخ اليوم (لحظة اكتمال هذا القسم)
+      data[key].actualDate = incoming || prevActual || todayStr;
     }else{
-      // إن رُجع من «مكتمل» إلى حالة أخرى، أزل التاريخ الفعلي
-      data[key].actualDate = '';
+      data[key].actualDate = '';   // غير مكتمل ⇒ لا تاريخ فعلي
     }
   }
   const payload={...data,lastUpdatedBy:state.appUser.name,lastUpdatedAt:new Date().toLocaleString('ar-OM'),updatedAtTS:nowISO};
@@ -1028,14 +1028,23 @@ function openProjectModal(project){
       const firstUser=engineers.length?engineers[0].username:'';
       return {engineers, engineer:names, engineerUsername:firstUser};
     };
+    // تاريخ التسليم الفعلي: المشرف/رئيس القسم يعدّله يدوياً؛ غيرهما يُبقي الأصل
+    const actualVal=(pf,key)=>{
+      const orig=(data[key]&&data[key].actualDate)?data[key].actualDate:'';
+      if(canEvaluate(key)){
+        const f=form.querySelector(`[name="${pf}_actualDate"]`);
+        if(f) return f.value||'';   // الحقل ظاهر للمخوّل فقط
+      }
+      return orig;
+    };
     const archEng=engVal('arch'), strEng=engVal('str'), srvEng=engVal('srv');
     const payload={
       name:get('name'),type:get('type'),customType:get('customType'),
       requestingEntity:get('requestingEntity'),overallStatus:get('overallStatus'),
       area:get('area'),cost:get('cost'),startDate:get('startDate'),endDate:get('endDate'),
-      architectural:{...archEng,status:get('arch_status'),notes:get('arch_notes'),startDate:dateVal('arch','architectural','startDate'),endDate:dateVal('arch','architectural','endDate'),eval:buildEval('arch','architectural')},
-      structural:{...strEng,status:get('str_status'),notes:get('str_notes'),startDate:dateVal('str','structural','startDate'),endDate:dateVal('str','structural','endDate'),eval:buildEval('str','structural')},
-      services:{...srvEng,status:get('srv_status'),notes:get('srv_notes'),startDate:dateVal('srv','services','startDate'),endDate:dateVal('srv','services','endDate'),eval:buildEval('srv','services')}
+      architectural:{...archEng,status:get('arch_status'),notes:get('arch_notes'),startDate:dateVal('arch','architectural','startDate'),endDate:dateVal('arch','architectural','endDate'),actualDate:actualVal('arch','architectural'),eval:buildEval('arch','architectural')},
+      structural:{...strEng,status:get('str_status'),notes:get('str_notes'),startDate:dateVal('str','structural','startDate'),endDate:dateVal('str','structural','endDate'),actualDate:actualVal('str','structural'),eval:buildEval('str','structural')},
+      services:{...srvEng,status:get('srv_status'),notes:get('srv_notes'),startDate:dateVal('srv','services','startDate'),endDate:dateVal('srv','services','endDate'),actualDate:actualVal('srv','services'),eval:buildEval('srv','services')}
     };
     if(!CONFIGURED){alert('قاعدة البيانات غير مُعدّة بعد — أضِف مفاتيح Firebase أولاً لحفظ المشاريع.');return;}
     overlay.remove();
@@ -1130,9 +1139,14 @@ function deptCard(title,prefixKey,d){
     <input class="inp" type="date" name="${pf}_startDate" value="${d.startDate||''}" ${lockStart?'readonly disabled style="background:var(--sand-100);color:var(--muted)"':''}>
     <label class="lbl-sm">تاريخ التسليم المتوقع${lockEnd?lockNote:''}</label>
     <input class="inp" type="date" name="${pf}_endDate" value="${d.endDate||''}" ${lockEnd?'readonly disabled style="background:var(--sand-100);color:var(--muted)"':''}>
-    ${d.actualDate?`<label class="lbl-sm" style="margin-top:4px">تاريخ التسليم الفعلي (تلقائي)</label>
+    ${d.actualDate?(mayEditDates?`
+      <label class="lbl-sm" style="margin-top:4px">تاريخ التسليم الفعلي ${deliveryBadge(d.endDate,d.actualDate)}</label>
+      <input class="inp" type="date" name="${pf}_actualDate" value="${d.actualDate}">
+      <div style="font-size:10.5px;color:var(--muted);margin-top:2px">يُسجَّل تلقائياً عند الإكمال؛ يمكنك تعديله لظرف طارئ.</div>`
+    :`
+      <label class="lbl-sm" style="margin-top:4px">تاريخ التسليم الفعلي (تلقائي)</label>
       <div class="inp" style="background:var(--sand-100);display:flex;justify-content:space-between;align-items:center">
-        <span>${d.actualDate}</span>${deliveryBadge(d.endDate,d.actualDate)}</div>`:''}
+        <span>${d.actualDate}</span>${deliveryBadge(d.endDate,d.actualDate)}</div>`):''}
     <textarea class="inp" name="${pf}_notes" rows="2" placeholder="ملاحظات…" style="resize:none;margin-top:4px">${d.notes||''}</textarea>
     ${rateBlock}
   </div>`;

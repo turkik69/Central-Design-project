@@ -616,6 +616,20 @@ async function clearAll(){
 }
 async function saveProject(data,editingId,prev){
   const nowISO=new Date().toISOString();
+  const todayStr=new Date().toISOString().slice(0,10);   // YYYY-MM-DD
+  // سجّل تاريخ التسليم الفعلي تلقائياً لكل قسم تحوّل إلى «مكتمل» (ويبقى ثابتاً بعدها)
+  for(const key of ['architectural','structural','services']){
+    if(!data[key]) continue;
+    const nowSt=data[key].status, beforeSt=prev? (prev[key]?.status):undefined;
+    const prevActual = prev && prev[key] ? prev[key].actualDate : '';
+    if(nowSt==='مكتمل'){
+      // إن كان مكتملاً سابقاً ولديه تاريخ فعلي، احتفظ به؛ وإلا اختم بتاريخ اليوم
+      data[key].actualDate = prevActual || todayStr;
+    }else{
+      // إن رُجع من «مكتمل» إلى حالة أخرى، أزل التاريخ الفعلي
+      data[key].actualDate = '';
+    }
+  }
   const payload={...data,lastUpdatedBy:state.appUser.name,lastUpdatedAt:new Date().toLocaleString('ar-OM'),updatedAtTS:nowISO};
   if(editingId){await FB.updateDoc(FB.doc(db,'artifacts',APP_ID,'public','data','projects',editingId),payload);logActivity('update');}
   else{await FB.addDoc(colRef(),{...payload,createdAt:nowISO});logActivity('create');}
@@ -874,8 +888,9 @@ function updateGrid(){
 function secRow(title,data){
   const st=data?.status||'قيد الانتظار';
   const [c,bg]=SEC_STYLE[st]||SEC_STYLE['قيد الانتظار'];
-  const sd=data?.startDate, ed=data?.endDate;
+  const sd=data?.startDate, ed=data?.endDate, ad=data?.actualDate;
   const dateLine = (sd||ed) ? `<div class="sec-dates">استلام: ${sd||'—'} · تسليم متوقع: ${ed||'—'}</div>` : '';
+  const actualLine = ad ? `<div class="sec-dates" style="display:flex;justify-content:space-between;align-items:center;gap:6px"><span>تسليم فعلي: ${ad}</span>${deliveryBadge(ed,ad)}</div>` : '';
   const avg=ratingAvg(data?.eval);
   const rateLine = (avg && canViewEval()) ? `<div class="sec-rate">تقييم رئيس القسم: <b>${avg}</b> <span style="color:var(--stop)">★</span></div>` : '';
   return `<div class="sec sec-col"><div class="sec-row">
@@ -883,7 +898,7 @@ function secRow(title,data){
         <span class="dot" style="background:${c}"></span>
         <div><div class="ttl">${title}</div><div class="eng">${data?.engineer||'لم يُسنَد'}</div></div>
       </div><span class="sec-badge" style="color:${c};background:${bg}">${st}</span>
-    </div>${dateLine}${rateLine}</div>`;
+    </div>${dateLine}${actualLine}${rateLine}</div>`;
 }
 
 function renderCard(p){
@@ -1115,9 +1130,22 @@ function deptCard(title,prefixKey,d){
     <input class="inp" type="date" name="${pf}_startDate" value="${d.startDate||''}" ${lockStart?'readonly disabled style="background:var(--sand-100);color:var(--muted)"':''}>
     <label class="lbl-sm">تاريخ التسليم المتوقع${lockEnd?lockNote:''}</label>
     <input class="inp" type="date" name="${pf}_endDate" value="${d.endDate||''}" ${lockEnd?'readonly disabled style="background:var(--sand-100);color:var(--muted)"':''}>
+    ${d.actualDate?`<label class="lbl-sm" style="margin-top:4px">تاريخ التسليم الفعلي (تلقائي)</label>
+      <div class="inp" style="background:var(--sand-100);display:flex;justify-content:space-between;align-items:center">
+        <span>${d.actualDate}</span>${deliveryBadge(d.endDate,d.actualDate)}</div>`:''}
     <textarea class="inp" name="${pf}_notes" rows="2" placeholder="ملاحظات…" style="resize:none;margin-top:4px">${d.notes||''}</textarea>
     ${rateBlock}
   </div>`;
+}
+/* شارة المقارنة بين التسليم المتوقع والفعلي */
+function deliveryBadge(expected, actual){
+  if(!actual) return '';
+  if(!expected) return `<span style="font-size:11px;color:var(--muted)">—</span>`;
+  const e=new Date(expected), a=new Date(actual);
+  const days=Math.round((a-e)/86400000);
+  if(days>0) return `<span style="font-size:11px;font-weight:700;color:#b3261e;background:#fbe9e7;padding:2px 9px;border-radius:20px">متأخر ${days} يوم</span>`;
+  if(days<0) return `<span style="font-size:11px;font-weight:700;color:#1f5d4c;background:#e6f0ec;padding:2px 9px;border-radius:20px">مبكّر ${Math.abs(days)} يوم</span>`;
+  return `<span style="font-size:11px;font-weight:700;color:#1f5d4c;background:#e6f0ec;padding:2px 9px;border-radius:20px">في الموعد</span>`;
 }
 /* متوسط التقييم */
 function ratingAvg(ev){
@@ -1574,7 +1602,7 @@ function openReportsModal(){
   // تصدير تقرير الإنجاز للشهر المحدد إلى Excel
   overlay._exportExcel=()=>{
     if(!window.XLSX){alert('تعذّر تحميل أداة Excel، حاول لاحقاً.');return;}
-    const COLS=7;
+    const COLS=8;
     const today=new Date();
     const exportDate=`${String(today.getDate()).padStart(2,'0')}/${String(today.getMonth()+1).padStart(2,'0')}/${today.getFullYear()}`;
     // صفوف الترويسة الرسمية
@@ -1586,7 +1614,7 @@ function openReportsModal(){
       [`الشهر: ${monthLabel(selMonth)}`],
       [`تاريخ استخراج الملف: ${exportDate}`],
       [],
-      ['القسم','اسم المشروع','المهندس','الجهة الطالبة','تاريخ الاستلام','تاريخ التسليم المتوقع','الحالة']
+      ['القسم','اسم المشروع','المهندس','الجهة الطالبة','تاريخ الاستلام','تاريخ التسليم المتوقع','تاريخ التسليم الفعلي','الحالة']
     ];
     const headerRows=aoa.length;      // عدد صفوف الترويسة (قبل البيانات)
     let count=0;
@@ -1596,7 +1624,7 @@ function openReportsModal(){
         .forEach(p=>{
           count++;
           aoa.push([label, p.name||'', p[key]?.engineer||'', p.requestingEntity||'',
-            p[key]?.startDate||'', p[key]?.endDate||'', p[key]?.status||'']);
+            p[key]?.startDate||'', p[key]?.endDate||'', p[key]?.actualDate||'', p[key]?.status||'']);
         });
     });
     if(count===0){alert('لا توجد مشاريع منجزة في هذا الشهر للتصدير.');return;}
@@ -1604,7 +1632,7 @@ function openReportsModal(){
     aoa.push([`إجمالي الأعمال المنجزة: ${count}`]);
 
     const ws=window.XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols']=[{wch:18},{wch:30},{wch:20},{wch:24},{wch:16},{wch:18},{wch:12}];
+    ws['!cols']=[{wch:18},{wch:30},{wch:20},{wch:24},{wch:16},{wch:18},{wch:18},{wch:12}];
     ws['!views']=[{RTL:true}];
 
     // دمج صفوف الترويسة عبر كل الأعمدة

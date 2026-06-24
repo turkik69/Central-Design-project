@@ -666,13 +666,12 @@ function offerCompletionEmail(deptKey, payload, head){
   const subject=`إنجاز عمل: ${payload.name} — ${DEPT_AR[deptKey]}`;
   // أسماء المهندسين المسؤولين عن القسم (إن وُجدوا)
   const engNames = payload[deptKey]?.engineer || '';
-  // المرسِل: إن كان إدارياً (تنسيق/مدير/مشرف) لا يُلقّب بمهندس
+  // المرسِل: الجميع يحمل لقب «المهندس» إلا موظف التنسيق والمتابعة (إداري)
   const u=state.appUser||{};
-  const jt=u.jobTitle||'';
-  const isAdminRole = u.role==='admin' || jt==='تنسيق ومتابعة' || jt==='مدير الدائرة' || jt==='المدير العام' || jt.indexOf('رئيس')!==-1;
-  const senderLabel = isAdminRole ? 'الموظف المختص' : 'المهندس';
+  const isCoordinator = (u.jobTitle||'')==='تنسيق ومتابعة';
+  const senderLine = isCoordinator ? `الموظف: ${u.name||''}` : `المهندس: ${u.name||''}`;
   const engLine = engNames ? `\nالمهندس المسؤول: ${engNames}` : '';
-  const body=`السلام عليكم ورحمة الله وبركاته،\n\nأفيدكم بأنه تم الانتهاء من العمل في «${DEPT_AR[deptKey]}» الخاص بمشروع «${payload.name}».${engLine}\nتاريخ التسليم المتوقع: ${payload[deptKey]?.endDate||'—'}\n\n${senderLabel}: ${u.name||''}\nوتفضلوا بقبول فائق الاحترام والتقدير.`;
+  const body=`السلام عليكم ورحمة الله وبركاته،\n\nأفيدكم بأنه تم الانتهاء من العمل في «${DEPT_AR[deptKey]}» الخاص بمشروع «${payload.name}».${engLine}\nتاريخ التسليم المتوقع: ${payload[deptKey]?.endDate||'—'}\n\n${senderLine}\nوتفضلوا بقبول فائق الاحترام والتقدير.`;
   const mailto=`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   // نافذة تأكيد صغيرة بدل فتح البريد فجأة
   const overlay=$(`<div class="overlay"></div>`);

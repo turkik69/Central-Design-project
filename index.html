@@ -280,7 +280,8 @@ const state = {
   customOpts:{type:[],entity:[],jobTitle:[],dept:[]},   // بنود يضيفها المشرف
   stats:[],   // إحصاءات نشاط المستخدمين
   users:[],    // قائمة المستخدمين (للمشرف)
-  notifs:[]    // إشعارات الإنجاز
+  notifs:[],   // إشعارات الإنجاز
+  trash:[]     // سلة المحذوفات
 };
 const ADMIN = { user:'turki69', pass:'abuyassmin69' };
 const colRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','projects');
@@ -356,7 +357,7 @@ async function initFirebase(){
   try{
     await loadFirebase();
     FB.signInAnonymously(auth).catch(e=>console.error("مصادقة:",e));
-    FB.onAuthStateChanged(auth,(u)=>{ if(u){state.fbReady=true; subscribeProjects(); subscribeOptions(); subscribeStats(); subscribeUsers(); subscribeNotifs();} });
+    FB.onAuthStateChanged(auth,(u)=>{ if(u){state.fbReady=true; subscribeProjects(); subscribeOptions(); subscribeStats(); subscribeUsers(); subscribeNotifs(); subscribeTrash();} });
   }catch(e){
     console.error("تحميل Firebase:",e);
     state.authError='تعذّر الاتصال بقاعدة البيانات. تحقّق من الإنترنت ومن صحة مفاتيح Firebase.';
@@ -401,6 +402,12 @@ function subscribeNotifs(){
     const bell=document.getElementById('notifBell'); if(bell) updateBell();
     if(notifsPanelOpen) renderNotifPanel();
   },(e)=>{console.error("جلب الإشعارات:",e);});
+}
+function subscribeTrash(){
+  FB.onSnapshot(trashRef(),(snap)=>{
+    state.trash=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(trashModalOpen) refreshTrashModal();
+  },(e)=>{console.error("جلب سلة المحذوفات:",e);});
 }
 /* الإشعارات الموجَّهة للمستخدم الحالي وغير المقروءة */
 function myNotifs(){
@@ -694,7 +701,37 @@ function offerCompletionEmail(deptKey, payload, head){
   root.appendChild(overlay);
 }
 async function deleteProject(id){
-  await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','projects',id));
+  // ينقل المشروع إلى سلة المحذوفات بدل الحذف النهائي
+  try{
+    const p=state.projects.find(x=>x.id===id);
+    if(p){
+      const {id:_omit,...rest}=p;
+      await FB.setDoc(FB.doc(db,'artifacts',APP_ID,'public','data','trash',id),
+        {...rest, deletedAt:new Date().toISOString(), deletedBy:state.appUser?.name||'—'});
+    }
+    await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','projects',id));
+  }catch(e){ console.error('حذف المشروع:',e); alert('تعذّر الحذف.'); }
+}
+const trashRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','trash');
+async function restoreFromTrash(id){
+  try{
+    const t=state.trash.find(x=>x.id===id); if(!t) return;
+    const {id:_o, deletedAt, deletedBy, ...rest}=t;
+    await FB.setDoc(FB.doc(db,'artifacts',APP_ID,'public','data','projects',id),rest);
+    await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','trash',id));
+  }catch(e){ console.error('استرجاع:',e); alert('تعذّر الاسترجاع.'); }
+}
+async function deleteFromTrash(id){
+  try{ await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','trash',id)); }
+  catch(e){ console.error(e); alert('تعذّر الحذف النهائي.'); }
+}
+async function emptyTrash(){
+  try{
+    const snap=await FB.getDocs(trashRef());
+    const batch=FB.writeBatch(db);
+    snap.forEach(d=>batch.delete(d.ref));
+    await batch.commit();
+  }catch(e){ console.error(e); alert('تعذّر تفريغ السلة.'); }
 }
 
 /* ════════════ أيقونات SVG ════════════ */
@@ -718,6 +755,8 @@ const I={
   report:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg>',
   backup:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5"/></svg>',
   bell:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
+  trashbin:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>',
+  restore:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"/></svg>',
   person:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="8" r="4"/><path d="M5 21a6 6 0 0 1 12 0M19 11l2 2 3-4"/></svg>',
   users:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
   key:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12.6 10.6a6 6 0 1 0-3 3L14 18l2 2 3-3-2-2 1-1 2 2 3-3-7.4-2.4Z"/><circle cx="6.5" cy="14.5" r="1"/></svg>',
@@ -808,6 +847,7 @@ function renderApp(){
         <button class="btn btn-ghost" id="btnStats">${I.chart}<span class="lbl">إحصاءات النشاط</span></button>
         <button class="btn btn-ghost" id="btnUsers">${I.users}<span class="lbl">إدارة المستخدمين</span></button>
         <button class="btn btn-ghost" id="btnBackup">${I.backup}<span class="lbl">نسخة احتياطية</span></button>
+        <button class="btn btn-ghost" id="btnTrash">${I.trashbin}<span class="lbl">سلة المحذوفات</span></button>
         <input type="file" id="xlFile" accept=".xlsx,.xls" class="hidden">`:''}
       ${canViewReports()?`<button class="btn btn-ghost" id="btnReports">${I.report}<span class="lbl">التقارير الشهرية</span></button>`:''}
       ${canViewReports()?`<button class="btn btn-ghost" id="btnEngSearch">${I.person}<span class="lbl">بحث باسم المهندس</span></button>`:''}
@@ -822,6 +862,7 @@ function renderApp(){
     toolbar.querySelector('#btnStats').onclick=openStatsModal;
     toolbar.querySelector('#btnUsers').onclick=openUsersModal;
     toolbar.querySelector('#btnBackup').onclick=openBackupModal;
+    toolbar.querySelector('#btnTrash').onclick=openTrashModal;
   }
   if(canViewReports()){
     const rb=toolbar.querySelector('#btnReports'); if(rb) rb.onclick=openReportsModal;
@@ -1337,6 +1378,56 @@ function openEditUser(u){
   overlay.onclick=(e)=>{if(e.target===overlay)overlay.remove();};
   root.appendChild(overlay);
 }
+
+/* ════════════ سلة المحذوفات (للمشرف) ════════════ */
+let trashModalOpen=false;
+function openTrashModal(){
+  if(document.getElementById('trashOverlay')) return;
+  trashModalOpen=true;
+  const overlay=$(`<div class="overlay" id="trashOverlay"></div>`);
+  const modal=$(`<div class="modal"><div class="modal-head"><h2>سلة المحذوفات</h2>
+    <button class="icon-btn" id="x">${I.close}</button></div></div>`);
+  const body=document.createElement('div');body.className='modal-body';
+  modal.appendChild(body);overlay.appendChild(modal);
+
+  function fill(){
+    const list=[...state.trash].sort((a,b)=> new Date(b.deletedAt||0)-new Date(a.deletedAt||0));
+    body.innerHTML=`
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div style="font-size:13px;color:var(--muted)">المشاريع المحذوفة (${list.length}) — يمكن استرجاعها أو حذفها نهائياً.</div>
+        ${list.length?`<button class="btn btn-del" id="emptyTrash">${I.trashbin} تفريغ السلة</button>`:''}
+      </div>
+      ${list.length? list.map(t=>`
+        <div style="background:var(--sand-50);border:1px solid var(--line);border-radius:11px;padding:12px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:start;gap:10px">
+            <div>
+              <div style="font-weight:700;color:var(--ink)">${t.name||'—'}</div>
+              <div style="font-size:11.5px;color:var(--muted);margin-top:3px">حُذف: ${fmtDate(t.deletedAt)} · بواسطة: ${t.deletedBy||'—'}</div>
+            </div>
+            <div style="display:flex;gap:6px;white-space:nowrap">
+              <button class="act act-edit" data-restore="${t.id}" title="استرجاع" style="color:var(--oasis-600)">${I.restore}</button>
+              <button class="act act-del" data-purge="${t.id}" title="حذف نهائي">${I.trash}</button>
+            </div>
+          </div>
+        </div>`).join('')
+        : `<div style="text-align:center;color:var(--muted);padding:40px 20px">السلة فارغة.</div>`}`;
+
+    const eb=body.querySelector('#emptyTrash');
+    if(eb) eb.onclick=async()=>{ if(confirm('تفريغ سلة المحذوفات نهائياً؟ لا يمكن التراجع.')) await emptyTrash(); };
+    body.querySelectorAll('[data-restore]').forEach(b=>{
+      b.onclick=async()=>{ await restoreFromTrash(b.getAttribute('data-restore')); };
+    });
+    body.querySelectorAll('[data-purge]').forEach(b=>{
+      b.onclick=async()=>{ if(confirm('حذف هذا المشروع نهائياً؟ لا يمكن التراجع.')) await deleteFromTrash(b.getAttribute('data-purge')); };
+    });
+  }
+  fill();
+  overlay._refresh=fill;
+  modal.querySelector('#x').onclick=()=>{trashModalOpen=false;overlay.remove();};
+  overlay.onclick=(e)=>{if(e.target===overlay){trashModalOpen=false;overlay.remove();}};
+  root.appendChild(overlay);
+}
+function refreshTrashModal(){ const ov=document.getElementById('trashOverlay'); if(ov&&ov._refresh) ov._refresh(); }
 
 /* ════════════ النسخ الاحتياطي (للمشرف) ════════════ */
 async function exportBackup(){

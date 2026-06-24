@@ -327,7 +327,7 @@ const BASE_OPTS = {
     'المديرية العامة للمشاريع والتشجير','جهة أخرى…'],
   jobTitle:['مهندس معماري','مهندس إنشائي','مهندس تصميم خدمات',
     'رئيس القسم المعماري','رئيس القسم الإنشائي','رئيس قسم تصميم الخدمات',
-    'مدير الدائرة','تنسيق ومتابعة'],
+    'مدير الدائرة','المدير العام','تنسيق ومتابعة'],
   dept:[]   // الأقسام لها قيم/تسميات خاصة، تُدار بقائمة منفصلة
 };
 const OPT_LABELS = {type:'أنواع المشاريع',entity:'الجهات الطالبة',jobTitle:'المسميات الوظيفية',dept:'الأقسام الفنية'};
@@ -660,11 +660,19 @@ async function detectCompletions(payload, prev){
     }
   }
 }
-/* يفتح بريداً جاهزاً لرئيس القسم (يرسله المهندس بضغطة) */
+/* يفتح بريداً جاهزاً لرئيس القسم (يرسله المرسِل بضغطة) */
 function offerCompletionEmail(deptKey, payload, head){
   const to = head && head.email ? head.email : '';
   const subject=`إنجاز عمل: ${payload.name} — ${DEPT_AR[deptKey]}`;
-  const body=`السلام عليكم ورحمة الله وبركاته،\n\nأفيدكم بأنه تم الانتهاء من العمل في «${DEPT_AR[deptKey]}» الخاص بمشروع «${payload.name}».\n\nاسم المهندس: ${payload[deptKey]?.engineer||state.appUser.name}\nتاريخ التسليم المتوقع: ${payload[deptKey]?.endDate||'—'}\n\nوتفضلوا بقبول فائق الاحترام والتقدير.`;
+  // أسماء المهندسين المسؤولين عن القسم (إن وُجدوا)
+  const engNames = payload[deptKey]?.engineer || '';
+  // المرسِل: إن كان إدارياً (تنسيق/مدير/مشرف) لا يُلقّب بمهندس
+  const u=state.appUser||{};
+  const jt=u.jobTitle||'';
+  const isAdminRole = u.role==='admin' || jt==='تنسيق ومتابعة' || jt==='مدير الدائرة' || jt==='المدير العام' || jt.indexOf('رئيس')!==-1;
+  const senderLabel = isAdminRole ? 'الموظف المختص' : 'المهندس';
+  const engLine = engNames ? `\nالمهندس المسؤول: ${engNames}` : '';
+  const body=`السلام عليكم ورحمة الله وبركاته،\n\nأفيدكم بأنه تم الانتهاء من العمل في «${DEPT_AR[deptKey]}» الخاص بمشروع «${payload.name}».${engLine}\nتاريخ التسليم المتوقع: ${payload[deptKey]?.endDate||'—'}\n\n${senderLabel}: ${u.name||''}\nوتفضلوا بقبول فائق الاحترام والتقدير.`;
   const mailto=`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   // نافذة تأكيد صغيرة بدل فتح البريد فجأة
   const overlay=$(`<div class="overlay"></div>`);
@@ -804,7 +812,7 @@ function renderApp(){
         <input type="file" id="xlFile" accept=".xlsx,.xls" class="hidden">`:''}
       ${canViewReports()?`<button class="btn btn-ghost" id="btnReports">${I.report}<span class="lbl">التقارير الشهرية</span></button>`:''}
       ${canViewReports()?`<button class="btn btn-ghost" id="btnEngSearch">${I.person}<span class="lbl">بحث باسم المهندس</span></button>`:''}
-      <button class="btn btn-add" id="btnAdd">${I.plus}<span class="lbl">إضافة مشروع</span></button>
+      ${isObserver()?'':`<button class="btn btn-add" id="btnAdd">${I.plus}<span class="lbl">إضافة مشروع</span></button>`}
     </div></div>`);
   if(u.role==='admin'){
     const xl=toolbar.querySelector('#xlFile');
@@ -822,7 +830,7 @@ function renderApp(){
   if(canViewReports()){
     const eb=toolbar.querySelector('#btnEngSearch'); if(eb) eb.onclick=openEngineerSearch;
   }
-  toolbar.querySelector('#btnAdd').onclick=()=>openProjectModal(null);
+  { const ab=toolbar.querySelector('#btnAdd'); if(ab) ab.onclick=()=>openProjectModal(null); }
   main.appendChild(toolbar);
 
   const gridHost=document.createElement('div');
@@ -927,7 +935,7 @@ function renderCard(p){
     <div class="card-foot">
       <div class="upd">حدّثه: ${p.lastUpdatedBy||'النظام'}<br>${p.lastUpdatedAt||''}</div>
       <div class="acts">
-        <button class="act act-edit" title="تحديث">${I.edit}</button>
+        <button class="act act-edit" title="${isObserver()?'عرض':'تحديث'}">${isObserver()?I.person:I.edit}</button>
         ${isAdmin?`<button class="act act-del" title="حذف">${I.trash}</button>`:''}
       </div>
     </div></div>`);
@@ -964,18 +972,19 @@ function openProjectModal(project){
   const modal=$(`<div class="modal"><div class="modal-head"><h2>${project?'تحديث المشروع':'إضافة مشروع جديد'}</h2>
     <button class="icon-btn" id="x">${I.close}</button></div></div>`);
   const form=document.createElement('form');form.className='modal-body';
+  const GDIS = isObserver() ? 'disabled' : '';
   form.innerHTML=`
     <div class="form-grid">
-      <div><label class="lbl-sm">اسم المشروع</label><input class="inp" name="name" required value="${data.name}"></div>
-      <div><label class="lbl-sm">الجهة الطالبة</label><select class="inp" name="requestingEntity">${opt(opts('entity'),data.requestingEntity)}</select></div>
-      <div><label class="lbl-sm">الوضع العام</label><select class="inp" name="overallStatus" style="font-weight:700">
+      <div><label class="lbl-sm">اسم المشروع</label><input class="inp" name="name" required value="${data.name}" ${GDIS}></div>
+      <div><label class="lbl-sm">الجهة الطالبة</label><select class="inp" name="requestingEntity" ${GDIS}>${opt(opts('entity'),data.requestingEntity)}</select></div>
+      <div><label class="lbl-sm">الوضع العام</label><select class="inp" name="overallStatus" style="font-weight:700" ${GDIS}>
         ${opt(['قيد التصميم','مكتمل','متوقف الى اشعار اخر','الغي المشروع'],data.overallStatus)}</select></div>
-      <div><label class="lbl-sm">النوع</label><select class="inp" name="type">${opt(opts('type'),data.type)}</select>
-        <input class="inp ${data.type==='أخرى'?'':'hidden'}" name="customType" id="ct" placeholder="اكتب نوع المشروع…" value="${data.customType||''}" style="margin-top:8px"></div>
-      <div><label class="lbl-sm">المساحة</label><input class="inp" name="area" value="${data.area||''}"></div>
-      <div><label class="lbl-sm">التكلفة (ر.ع)</label><input class="inp" name="cost" value="${data.cost||''}"></div>
-      <div><label class="lbl-sm">تاريخ الاستلام</label><input class="inp" type="date" name="startDate" value="${data.startDate||''}"></div>
-      <div><label class="lbl-sm">تاريخ التسليم</label><input class="inp" type="date" name="endDate" value="${data.endDate||''}"></div>
+      <div><label class="lbl-sm">النوع</label><select class="inp" name="type" ${GDIS}>${opt(opts('type'),data.type)}</select>
+        <input class="inp ${data.type==='أخرى'?'':'hidden'}" name="customType" id="ct" placeholder="اكتب نوع المشروع…" value="${data.customType||''}" style="margin-top:8px" ${GDIS}></div>
+      <div><label class="lbl-sm">المساحة</label><input class="inp" name="area" value="${data.area||''}" ${GDIS}></div>
+      <div><label class="lbl-sm">التكلفة (ر.ع)</label><input class="inp" name="cost" value="${data.cost||''}" ${GDIS}></div>
+      <div><label class="lbl-sm">تاريخ الاستلام</label><input class="inp" type="date" name="startDate" value="${data.startDate||''}" ${GDIS}></div>
+      <div><label class="lbl-sm">تاريخ التسليم</label><input class="inp" type="date" name="endDate" value="${data.endDate||''}" ${GDIS}></div>
     </div>
     <div class="divider"></div>
     <div class="dept-grid">
@@ -984,8 +993,8 @@ function openProjectModal(project){
       ${deptCard('قسم الخدمات','services',data.services)}
     </div>
     <div class="modal-foot">
-      <button type="button" class="btn btn-ghost" id="cancel">إلغاء</button>
-      <button type="submit" class="btn btn-add">${I.save} حفظ التغييرات</button>
+      <button type="button" class="btn btn-ghost" id="cancel">${isObserver()?'إغلاق':'إلغاء'}</button>
+      ${isObserver()?'':`<button type="submit" class="btn btn-add">${I.save} حفظ التغييرات</button>`}
     </div>`;
   // إظهار حقل النوع المخصص
   form.querySelector('[name=type]').onchange=(e)=>{
@@ -1075,12 +1084,12 @@ function canEvaluate(prefixKey){
   const headTitles={architectural:'رئيس القسم المعماري',structural:'رئيس القسم الإنشائي',services:'رئيس قسم تصميم الخدمات'};
   return jt===headTitles[prefixKey];
 }
-/* هل يحق له رؤية التقييم؟ (المشرف + مدير الدائرة + أي رئيس قسم) */
+/* هل يحق له رؤية التقييم؟ (المشرف + مدير الدائرة + المدير العام + أي رئيس قسم) */
 function canViewEval(){
   const u=state.appUser; if(!u) return false;
   if(u.role==='admin') return true;
   const jt=u.jobTitle||'';
-  return jt==='مدير الدائرة' || jt.indexOf('رئيس')!==-1;
+  return jt==='مدير الدائرة' || jt==='المدير العام' || jt.indexOf('رئيس')!==-1;
 }
 /* من يفتح التقارير الشهرية: كل من يرى التقييم + موظف التنسيق والمتابعة */
 function canViewReports(){
@@ -1094,10 +1103,13 @@ function canEditDept(prefixKey){
   const u=state.appUser; if(!u) return false;
   if(u.role==='admin') return true;
   const jt=u.jobTitle||'';
+  if(jt==='المدير العام') return false;          // المدير العام: مراقب فقط، لا يعدّل
   if(jt==='مدير الدائرة') return true;          // مدير الدائرة يعدّل الكل
   if(canEvaluate(prefixKey)) return true;        // رئيس القسم لقسمه
   return u.dept===prefixKey;                     // المهندس لقسمه فقط
 }
+/* المدير العام مراقب فقط: لا ينشئ مشاريع ولا يعدّل الحقول العامة ولا يحذف */
+function isObserver(){ return (state.appUser?.jobTitle||'')==='المدير العام'; }
 const RATE_FIELDS=[
   ['work','وضع العمل'],
   ['engineer','المهندس'],

@@ -969,8 +969,8 @@ function renderCard(p){
         <div><span class="k">${I.cal} التسليم:</span> <span class="v">${p.endDate||'—'}</span></div>
       </div>
       ${secRow('المعماري',p.architectural)}
-      ${secRow('الإنشائي',p.structural)}
-      ${secRow('الخدمات',p.services)}
+      ${p.overallStatus==='فكرة مبدئية' ? '' : secRow('الإنشائي',p.structural)}
+      ${p.overallStatus==='فكرة مبدئية' ? '' : secRow('الخدمات',p.services)}
     </div>
     <div class="card-foot">
       <div class="upd">حدّثه: ${p.lastUpdatedBy||'النظام'}<br>${p.lastUpdatedAt||''}</div>
@@ -1018,7 +1018,7 @@ function openProjectModal(project){
       <div><label class="lbl-sm">اسم المشروع</label><input class="inp" name="name" required value="${data.name}" ${GDIS}></div>
       <div><label class="lbl-sm">الجهة الطالبة</label><select class="inp" name="requestingEntity" ${GDIS}>${opt(opts('entity'),data.requestingEntity)}</select></div>
       <div><label class="lbl-sm">الوضع العام</label><select class="inp" name="overallStatus" style="font-weight:700" ${GDIS}>
-        ${opt(['قيد التصميم','مكتمل','متوقف الى اشعار اخر','الغي المشروع'],data.overallStatus)}</select></div>
+        ${opt(['قيد التصميم','فكرة مبدئية','خرائط تفصيلية','رأي فني','مكتمل','متوقف الى اشعار اخر','الغي المشروع'],data.overallStatus)}</select></div>
       <div><label class="lbl-sm">النوع</label><select class="inp" name="type" ${GDIS}>${opt(opts('type'),data.type)}</select>
         <input class="inp ${data.type==='أخرى'?'':'hidden'}" name="customType" id="ct" placeholder="اكتب نوع المشروع…" value="${data.customType||''}" style="margin-top:8px" ${GDIS}></div>
       <div><label class="lbl-sm">المساحة</label><input class="inp" name="area" value="${data.area||''}" ${GDIS}></div>
@@ -1029,8 +1029,10 @@ function openProjectModal(project){
     <div class="divider"></div>
     <div class="dept-grid">
       ${deptCard('القسم المعماري','architectural',data.architectural)}
-      ${deptCard('القسم الإنشائي','structural',data.structural)}
-      ${deptCard('قسم الخدمات','services',data.services)}
+      <div id="otherDepts" style="display:contents">
+        ${deptCard('القسم الإنشائي','structural',data.structural)}
+        ${deptCard('قسم الخدمات','services',data.services)}
+      </div>
     </div>
     <div class="modal-foot">
       <button type="button" class="btn btn-ghost" id="cancel">${isObserver()?'إغلاق':'إلغاء'}</button>
@@ -1040,6 +1042,13 @@ function openProjectModal(project){
   form.querySelector('[name=type]').onchange=(e)=>{
     form.querySelector('#ct').classList.toggle('hidden',e.target.value!=='أخرى');
   };
+  // عند «فكرة مبدئية» يبقى القسم المعماري فقط (عمل مقتصر عليه)
+  const overallSel=form.querySelector('[name=overallStatus]');
+  const otherDepts=form.querySelector('#otherDepts');
+  const applyIdeaMode=()=>{
+    if(otherDepts) otherDepts.style.display = (overallSel.value==='فكرة مبدئية') ? 'none' : 'contents';
+  };
+  if(overallSel){ overallSel.onchange=applyIdeaMode; applyIdeaMode(); }
   form.onsubmit=async(e)=>{
     e.preventDefault();
     const fd=new FormData(form);

@@ -899,7 +899,44 @@ function renderApp(){
   frag.appendChild(main);
 
   setTimeout(updateGrid,0);
+  // تنبيه قرب موعد التسليم — يظهر مرة واحدة عند الدخول للمهندس
+  setTimeout(()=>{ try{ maybeShowDeadlineBanner(); }catch(e){ console.error('تنبيه المواعيد:',e); } }, 400);
   return frag;
+}
+/* يعرض شريط تنبيه بمواعيد التسليم القريبة/المتأخرة (مرة واحدة في الجلسة) */
+let deadlineBannerShown=false;
+function maybeShowDeadlineBanner(){
+  if(deadlineBannerShown) return;
+  const u=state.appUser; if(!u) return;
+  if(u.role==='admin' || isObserver()) return;        // التنبيه للمهندسين المنفّذين
+  const alerts=myDeadlineAlerts(2);                   // خلال يومين أو متأخر
+  if(!alerts.length){ deadlineBannerShown=true; return; }
+  deadlineBannerShown=true;
+  const rows=alerts.map(a=>{
+    let badge, color, bg;
+    if(a.days<0){ badge=`متأخر ${Math.abs(a.days)} يوم`; color='#b3261e'; bg='#fbe9e7'; }
+    else if(a.days===0){ badge='ينتهي اليوم'; color='#a8500a'; bg='#fdecd8'; }
+    else { badge=`باقٍ ${a.days} يوم`; color='#a8500a'; bg='#fdecd8'; }
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 0;border-top:1px dashed var(--line)">
+        <span style="font-size:13.5px"><b>${a.project}</b> <span style="color:var(--muted)">· ${a.dept}</span><br><span style="font-size:11.5px;color:var(--muted)">التسليم المتوقع: ${a.endDate}</span></span>
+        <span style="font-size:11.5px;font-weight:700;color:${color};background:${bg};padding:3px 10px;border-radius:20px;white-space:nowrap">${badge}</span>
+      </div>`;
+  }).join('');
+  const overlay=$(`<div class="overlay" id="deadlineOverlay"></div>`);
+  const modal=$(`<div class="modal" style="max-width:440px"><div class="modal-head">
+      <h2 style="display:flex;align-items:center;gap:8px">${I.bell} تنبيه مواعيد التسليم</h2>
+      <button class="icon-btn" id="x">${I.close}</button></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:6px">لديك ${alerts.length} ${alerts.length===1?'عمل يقترب':'أعمال تقترب'} موعد تسليمها أو تجاوزته. يُرجى المتابعة:</p>
+      ${rows}
+      <div class="modal-foot"><button class="btn btn-add" id="ok">حسناً، فهمت</button></div>
+    </div></div>`);
+  overlay.appendChild(modal);
+  const close=()=>overlay.remove();
+  modal.querySelector('#x').onclick=close;
+  modal.querySelector('#ok').onclick=close;
+  overlay.onclick=(e)=>{ if(e.target===overlay) close(); };
+  root.appendChild(overlay);
 }
 
 let completedOpen=false;   // حالة طي قائمة المشاريع المنتهية
@@ -1179,6 +1216,35 @@ function canEditDept(prefixKey){
 }
 /* المدير العام مراقب فقط: لا ينشئ مشاريع ولا يعدّل الحقول العامة ولا يحذف */
 function isObserver(){ return (state.appUser?.jobTitle||'')==='المدير العام'; }
+
+/* تنبيهات قرب/تجاوز موعد التسليم المتوقع لأقسام المهندس الحالي (غير المكتملة) */
+function myDeadlineAlerts(thresholdDays){
+  const u=state.appUser; if(!u) return [];
+  const out=[];
+  const today=new Date(); today.setHours(0,0,0,0);
+  state.projects.forEach(p=>{
+    DEPT_MAP.forEach(([key,label])=>{
+      const sec=p[key]; if(!sec) return;
+      if(sec.status==='مكتمل') return;                 // المكتمل لا ينبَّه
+      if(!sec.endDate) return;                          // لا تاريخ متوقع
+      // هل المهندس الحالي ضمن مهندسي هذا القسم؟
+      let mine=false;
+      if(Array.isArray(sec.engineers)) mine=sec.engineers.some(e=>e.username===u.username);
+      else if(sec.engineerUsername) mine=(sec.engineerUsername===u.username);
+      else if(sec.engineer && sec.engineer===u.name) mine=true;
+      if(!mine) return;
+      const end=new Date(sec.endDate+'T00:00:00');
+      if(isNaN(end)) return;
+      const days=Math.round((end-today)/86400000);
+      if(days<=thresholdDays){                          // ضمن العتبة أو متأخر
+        out.push({project:p.name||'—', dept:label, endDate:sec.endDate, days});
+      }
+    });
+  });
+  // الأقرب موعداً/الأكثر تأخراً أولاً
+  out.sort((a,b)=>a.days-b.days);
+  return out;
+}
 const RATE_FIELDS=[
   ['work','وضع العمل'],
   ['engineer','المهندس'],

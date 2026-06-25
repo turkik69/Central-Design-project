@@ -281,7 +281,9 @@ const state = {
   stats:[],   // إحصاءات نشاط المستخدمين
   users:[],    // قائمة المستخدمين (للمشرف)
   notifs:[],   // إشعارات الإنجاز
-  trash:[]     // سلة المحذوفات
+  trash:[],    // سلة المحذوفات
+  visits:[],   // سجل زيارات المواقع
+  meetings:[]  // سجل الاجتماعات
 };
 const ADMIN = { user:'turki69', pass:'abuyassmin69' };
 const colRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','projects');
@@ -357,7 +359,7 @@ async function initFirebase(){
   try{
     await loadFirebase();
     FB.signInAnonymously(auth).catch(e=>console.error("مصادقة:",e));
-    FB.onAuthStateChanged(auth,(u)=>{ if(u){state.fbReady=true; subscribeProjects(); subscribeOptions(); subscribeStats(); subscribeUsers(); subscribeNotifs(); subscribeTrash();} });
+    FB.onAuthStateChanged(auth,(u)=>{ if(u){state.fbReady=true; subscribeProjects(); subscribeOptions(); subscribeStats(); subscribeUsers(); subscribeNotifs(); subscribeTrash(); subscribeVisits(); subscribeMeetings();} });
   }catch(e){
     console.error("تحميل Firebase:",e);
     state.authError='تعذّر الاتصال بقاعدة البيانات. تحقّق من الإنترنت ومن صحة مفاتيح Firebase.';
@@ -408,6 +410,18 @@ function subscribeTrash(){
     state.trash=snap.docs.map(d=>({id:d.id,...d.data()}));
     if(trashModalOpen) refreshTrashModal();
   },(e)=>{console.error("جلب سلة المحذوفات:",e);});
+}
+function subscribeVisits(){
+  FB.onSnapshot(visitsRef(),(snap)=>{
+    state.visits=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(visitModalOpen) refreshVisitModal();
+  },(e)=>{console.error("جلب الزيارات:",e);});
+}
+function subscribeMeetings(){
+  FB.onSnapshot(meetingsRef(),(snap)=>{
+    state.meetings=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(meetingModalOpen) refreshMeetingModal();
+  },(e)=>{console.error("جلب الاجتماعات:",e);});
 }
 /* الإشعارات الموجَّهة للمستخدم الحالي وغير المقروءة */
 function myNotifs(){
@@ -713,6 +727,8 @@ async function deleteProject(id){
   }catch(e){ console.error('حذف المشروع:',e); alert('تعذّر الحذف.'); }
 }
 const trashRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','trash');
+const visitsRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','visits');
+const meetingsRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','meetings');
 async function restoreFromTrash(id){
   try{
     const t=state.trash.find(x=>x.id===id); if(!t) return;
@@ -852,6 +868,8 @@ function renderApp(){
       ${canViewReports()?`<button class="btn btn-ghost" id="btnReports">${I.report}<span class="lbl">التقارير الشهرية</span></button>`:''}
       ${canViewReports()?`<button class="btn btn-ghost" id="btnEngSearch">${I.person}<span class="lbl">بحث باسم المهندس</span></button>`:''}
       ${isObserver()?'':`<button class="btn btn-add" id="btnAdd">${I.plus}<span class="lbl">إضافة مشروع</span></button>`}
+      ${isObserver()?'':`<button class="btn btn-add" id="btnVisit" style="background:var(--clay,#8a6d2f)">${I.pin}<span class="lbl">زيارة موقع</span></button>`}
+      ${isObserver()?'':`<button class="btn btn-add" id="btnMeeting" style="background:#3b6ea5">${I.users}<span class="lbl">اجتماع</span></button>`}
     </div></div>`);
   if(u.role==='admin'){
     const xl=toolbar.querySelector('#xlFile');
@@ -871,6 +889,8 @@ function renderApp(){
     const eb=toolbar.querySelector('#btnEngSearch'); if(eb) eb.onclick=openEngineerSearch;
   }
   { const ab=toolbar.querySelector('#btnAdd'); if(ab) ab.onclick=()=>openProjectModal(null); }
+  { const vb=toolbar.querySelector('#btnVisit'); if(vb) vb.onclick=()=>openVisitModal(); }
+  { const mb=toolbar.querySelector('#btnMeeting'); if(mb) mb.onclick=()=>openMeetingModal(); }
   main.appendChild(toolbar);
 
   const gridHost=document.createElement('div');
@@ -1386,6 +1406,175 @@ function openEditUser(u){
   modal.appendChild(form);overlay.appendChild(modal);
   overlay.onclick=(e)=>{if(e.target===overlay)overlay.remove();};
   root.appendChild(overlay);
+}
+
+/* ════════════ زيارات المواقع والاجتماعات ════════════ */
+const ACTIVITY_DEPTS=[['administration','الإدارة'],['architectural','القسم المعماري'],['structural','القسم الإنشائي'],['services','قسم تصميم الخدمات']];
+
+/* يبني واجهة اختيار القسم ثم أشخاصه (اختيار متعدد) — مشتركة بين الزيارة والاجتماع */
+function buildPeoplePicker(initialDept, initialUsernames){
+  const selDept = initialDept || '';
+  const deptSel=`<label class="lbl-sm">القسم</label>
+    <select class="inp" id="ap_dept">
+      <option value="">— اختر القسم —</option>
+      ${ACTIVITY_DEPTS.map(([v,l])=>`<option value="${v}" ${v===selDept?'selected':''}>${l}</option>`).join('')}
+    </select>`;
+  return `<div class="field">${deptSel}</div>
+    <div class="field"><label class="lbl-sm">الأشخاص (يمكن اختيار أكثر من واحد)</label>
+      <div id="ap_people"></div></div>`;
+}
+/* يملأ قائمة الأشخاص حسب القسم المختار */
+function renderPeopleOptions(host, dept, selected){
+  selected=selected||[];
+  const people=state.users.filter(u=>u.role!=='admin' && u.dept===dept)
+    .sort((a,b)=>(a.name||'').localeCompare(b.name||'','ar'));
+  if(!dept){ host.innerHTML=`<div style="font-size:12px;color:var(--muted);padding:6px 0">اختر القسم أولاً لعرض الأسماء.</div>`; return; }
+  if(!people.length){ host.innerHTML=`<div style="font-size:12px;color:var(--muted);padding:6px 0">لا يوجد أشخاص مسجّلون في هذا القسم.</div>`; return; }
+  host.innerHTML=`<div class="eng-multi">${people.map(u=>`<label class="eng-opt"><input type="checkbox" value="${u.username}" ${selected.includes(u.username)?'checked':''}> ${u.name}</label>`).join('')}</div>`;
+}
+/* يجمع الأشخاص المختارين {username,name} */
+function collectPeople(host){
+  const arr=[];
+  host.querySelectorAll('input[type="checkbox"]:checked').forEach(cb=>{
+    const u=state.users.find(x=>x.username===cb.value);
+    if(u) arr.push({username:u.username,name:u.name});
+  });
+  return arr;
+}
+
+let visitModalOpen=false;
+function openVisitModal(){
+  if(document.getElementById('visitOverlay')) return;
+  visitModalOpen=true;
+  const overlay=$(`<div class="overlay" id="visitOverlay"></div>`);
+  const modal=$(`<div class="modal"><div class="modal-head"><h2>زيارة موقع</h2>
+    <button class="icon-btn" id="x">${I.close}</button></div></div>`);
+  const body=document.createElement('div');body.className='modal-body';
+  modal.appendChild(body);overlay.appendChild(modal);
+
+  function fill(){
+    const list=[...state.visits].sort((a,b)=> new Date(b.createdAt||0)-new Date(a.createdAt||0));
+    body.innerHTML=`
+      <form id="visitForm">
+        ${buildPeoplePicker('',[])}
+        <div class="field"><label class="lbl-sm">تاريخ الزيارة</label><input class="inp" type="date" name="date" required></div>
+        <div class="field"><label class="lbl-sm">الموقع / الولاية</label><input class="inp" name="location" placeholder="مثال: السيب"></div>
+        <div class="field"><label class="lbl-sm">الغرض من الزيارة</label><input class="inp" name="purpose" placeholder="الغرض…"></div>
+        <div class="field"><label class="lbl-sm">ملاحظات</label><textarea class="inp" name="notes" rows="2" style="resize:none"></textarea></div>
+        <div class="modal-foot"><button type="submit" class="btn btn-add">${I.save} حفظ الزيارة</button></div>
+      </form>
+      <div class="divider"></div>
+      <h3 style="font-size:15px;color:var(--oasis-700);margin-bottom:10px">سجل الزيارات (${list.length})</h3>
+      ${list.length? list.map(v=>activityCard(v,'visit')).join('') : '<div style="text-align:center;color:var(--muted);padding:24px">لا توجد زيارات مسجّلة.</div>'}`;
+    const form=body.querySelector('#visitForm');
+    const dept=form.querySelector('#ap_dept'), people=form.querySelector('#ap_people');
+    renderPeopleOptions(people, dept.value, []);
+    dept.onchange=()=>renderPeopleOptions(people, dept.value, []);
+    form.onsubmit=async(e)=>{
+      e.preventDefault();
+      const fd=new FormData(form);
+      const persons=collectPeople(people);
+      if(!dept.value){ alert('اختر القسم.'); return; }
+      if(!persons.length){ alert('اختر شخصاً واحداً على الأقل.'); return; }
+      if(!fd.get('date')){ alert('أدخل تاريخ الزيارة.'); return; }
+      try{
+        await FB.addDoc(visitsRef(),{
+          dept:dept.value, deptLabel:(ACTIVITY_DEPTS.find(d=>d[0]===dept.value)||['',''])[1],
+          persons, personNames:persons.map(p=>p.name).join('، '),
+          date:fd.get('date'), location:(fd.get('location')||'').trim(),
+          purpose:(fd.get('purpose')||'').trim(), notes:(fd.get('notes')||'').trim(),
+          createdAt:new Date().toISOString(), createdBy:state.appUser?.name||'—'
+        });
+      }catch(err){ console.error(err); alert('تعذّر حفظ الزيارة.'); }
+    };
+    body.querySelectorAll('[data-del-activity]').forEach(b=>{
+      b.onclick=async()=>{ if(confirm('حذف هذا السجل؟')){ try{ await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','visits',b.getAttribute('data-del-activity'))); }catch(e){alert('تعذّر الحذف.');} } };
+    });
+  }
+  fill(); overlay._refresh=fill;
+  modal.querySelector('#x').onclick=()=>{visitModalOpen=false;overlay.remove();};
+  overlay.onclick=(e)=>{if(e.target===overlay){visitModalOpen=false;overlay.remove();}};
+  root.appendChild(overlay);
+}
+function refreshVisitModal(){ const ov=document.getElementById('visitOverlay'); if(ov&&ov._refresh) ov._refresh(); }
+
+let meetingModalOpen=false;
+function openMeetingModal(){
+  if(document.getElementById('meetingOverlay')) return;
+  meetingModalOpen=true;
+  const overlay=$(`<div class="overlay" id="meetingOverlay"></div>`);
+  const modal=$(`<div class="modal"><div class="modal-head"><h2>اجتماع</h2>
+    <button class="icon-btn" id="x">${I.close}</button></div></div>`);
+  const body=document.createElement('div');body.className='modal-body';
+  modal.appendChild(body);overlay.appendChild(modal);
+
+  function fill(){
+    const list=[...state.meetings].sort((a,b)=> new Date(b.createdAt||0)-new Date(a.createdAt||0));
+    body.innerHTML=`
+      <form id="meetingForm">
+        <div class="field"><label class="lbl-sm">اسم الاجتماع</label><input class="inp" name="title" placeholder="عنوان الاجتماع" required></div>
+        ${buildPeoplePicker('',[])}
+        <div class="field"><label class="lbl-sm">تاريخ الاجتماع</label><input class="inp" type="date" name="date" required></div>
+        <div class="field"><label class="lbl-sm">الموقع</label><input class="inp" name="location" placeholder="مكان الاجتماع"></div>
+        <div class="field"><label class="lbl-sm">الغرض من الاجتماع</label><input class="inp" name="purpose" placeholder="الغرض…"></div>
+        <div class="field"><label class="lbl-sm">ملاحظات</label><textarea class="inp" name="notes" rows="2" style="resize:none"></textarea></div>
+        <div class="modal-foot"><button type="submit" class="btn btn-add">${I.save} حفظ الاجتماع</button></div>
+      </form>
+      <div class="divider"></div>
+      <h3 style="font-size:15px;color:var(--oasis-700);margin-bottom:10px">سجل الاجتماعات (${list.length})</h3>
+      ${list.length? list.map(m=>activityCard(m,'meeting')).join('') : '<div style="text-align:center;color:var(--muted);padding:24px">لا توجد اجتماعات مسجّلة.</div>'}`;
+    const form=body.querySelector('#meetingForm');
+    const dept=form.querySelector('#ap_dept'), people=form.querySelector('#ap_people');
+    renderPeopleOptions(people, dept.value, []);
+    dept.onchange=()=>renderPeopleOptions(people, dept.value, []);
+    form.onsubmit=async(e)=>{
+      e.preventDefault();
+      const fd=new FormData(form);
+      const persons=collectPeople(people);
+      if(!(fd.get('title')||'').trim()){ alert('أدخل اسم الاجتماع.'); return; }
+      if(!dept.value){ alert('اختر القسم.'); return; }
+      if(!persons.length){ alert('اختر شخصاً واحداً على الأقل.'); return; }
+      if(!fd.get('date')){ alert('أدخل تاريخ الاجتماع.'); return; }
+      try{
+        await FB.addDoc(meetingsRef(),{
+          title:(fd.get('title')||'').trim(),
+          dept:dept.value, deptLabel:(ACTIVITY_DEPTS.find(d=>d[0]===dept.value)||['',''])[1],
+          persons, personNames:persons.map(p=>p.name).join('، '),
+          date:fd.get('date'), location:(fd.get('location')||'').trim(),
+          purpose:(fd.get('purpose')||'').trim(), notes:(fd.get('notes')||'').trim(),
+          createdAt:new Date().toISOString(), createdBy:state.appUser?.name||'—'
+        });
+      }catch(err){ console.error(err); alert('تعذّر حفظ الاجتماع.'); }
+    };
+    body.querySelectorAll('[data-del-meeting]').forEach(b=>{
+      b.onclick=async()=>{ if(confirm('حذف هذا السجل؟')){ try{ await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','meetings',b.getAttribute('data-del-meeting'))); }catch(e){alert('تعذّر الحذف.');} } };
+    });
+  }
+  fill(); overlay._refresh=fill;
+  modal.querySelector('#x').onclick=()=>{meetingModalOpen=false;overlay.remove();};
+  overlay.onclick=(e)=>{if(e.target===overlay){meetingModalOpen=false;overlay.remove();}};
+  root.appendChild(overlay);
+}
+function refreshMeetingModal(){ const ov=document.getElementById('meetingOverlay'); if(ov&&ov._refresh) ov._refresh(); }
+
+/* بطاقة عرض زيارة/اجتماع في السجل */
+function activityCard(a, kind){
+  const delAttr = kind==='meeting' ? `data-del-meeting="${a.id}"` : `data-del-activity="${a.id}"`;
+  const titleLine = kind==='meeting' ? `<div style="font-weight:700;color:var(--ink)">${a.title||'اجتماع'}</div>` : '';
+  return `<div style="background:var(--sand-50);border:1px solid var(--line);border-radius:11px;padding:12px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:start;gap:10px">
+      <div style="flex:1">
+        ${titleLine}
+        <div style="font-size:13px;color:var(--oasis-700);font-weight:600">${a.deptLabel||''} · ${fmtDate(a.date)||a.date||'—'}</div>
+        <div style="font-size:12.5px;color:var(--ink);margin-top:3px">الأشخاص: ${a.personNames||'—'}</div>
+        ${a.location?`<div style="font-size:12.5px;color:var(--muted);margin-top:2px">الموقع: ${a.location}</div>`:''}
+        ${a.purpose?`<div style="font-size:12.5px;color:var(--muted);margin-top:2px">الغرض: ${a.purpose}</div>`:''}
+        ${a.notes?`<div style="font-size:12.5px;color:var(--muted);margin-top:2px">ملاحظات: ${a.notes}</div>`:''}
+        <div style="font-size:10.5px;color:var(--muted);margin-top:5px">سجّله: ${a.createdBy||'—'}</div>
+      </div>
+      <button class="act act-del" ${delAttr} title="حذف">${I.trash}</button>
+    </div>
+  </div>`;
 }
 
 /* ════════════ سلة المحذوفات (للمشرف) ════════════ */

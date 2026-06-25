@@ -1834,12 +1834,45 @@ const MONTH_NAMES=['يناير','فبراير','مارس','أبريل','مايو
 /* يستخرج YYYY-MM من تاريخ تسليم القسم */
 function ym(dateStr){ return (dateStr && dateStr.length>=7) ? dateStr.slice(0,7) : null; }
 
+/* تقرير الاجتماعات لشهر (عرض داخل النافذة) */
+function renderMeetingsReport(list, label){
+  let html=`<h3 style="font-size:16px;color:var(--oasis-700);margin-bottom:12px">تقرير الاجتماعات — ${label}</h3>`;
+  if(!list.length){ return html+`<div style="background:var(--sand-50);border:1px solid var(--line);border-radius:11px;padding:16px;text-align:center;color:var(--muted);margin-bottom:18px">لا توجد اجتماعات في هذا الشهر.</div>`; }
+  list.slice().sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(m=>{
+    html+=`<div style="background:var(--sand-50);border:1px solid var(--line);border-radius:11px;padding:13px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;gap:8px"><span style="font-weight:700;color:var(--ink)">${m.title||'اجتماع'}</span>
+        <span style="font-size:12.5px;color:var(--oasis-700);font-weight:600;white-space:nowrap">${m.deptLabel||''} · ${m.date||'—'}</span></div>
+      <div style="font-size:12.5px;color:var(--ink);margin-top:4px">الأشخاص: ${m.personNames||'—'}</div>
+      ${m.location?`<div style="font-size:12.5px;color:var(--muted);margin-top:2px">الموقع: ${m.location}</div>`:''}
+      ${m.purpose?`<div style="font-size:12.5px;color:var(--muted);margin-top:2px">الغرض: ${m.purpose}</div>`:''}
+      ${m.notes?`<div style="font-size:12.5px;color:var(--muted);margin-top:2px">ملاحظات: ${m.notes}</div>`:''}
+    </div>`;
+  });
+  return html+`<div style="text-align:left;font-size:13px;color:var(--muted);margin-bottom:18px">إجمالي الاجتماعات: <b style="color:var(--oasis-700)">${list.length}</b></div>`;
+}
+/* تقرير الزيارات الميدانية لشهر (عرض داخل النافذة) */
+function renderVisitsReport(list, label){
+  let html=`<h3 style="font-size:16px;color:var(--oasis-700);margin-bottom:12px">تقرير الزيارات الميدانية — ${label}</h3>`;
+  if(!list.length){ return html+`<div style="background:var(--sand-50);border:1px solid var(--line);border-radius:11px;padding:16px;text-align:center;color:var(--muted);margin-bottom:18px">لا توجد زيارات في هذا الشهر.</div>`; }
+  list.slice().sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(v=>{
+    html+=`<div style="background:var(--sand-50);border:1px solid var(--line);border-radius:11px;padding:13px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;gap:8px"><span style="font-weight:700;color:var(--ink)">${v.location||'زيارة موقع'}</span>
+        <span style="font-size:12.5px;color:var(--oasis-700);font-weight:600;white-space:nowrap">${v.deptLabel||''} · ${v.date||'—'}</span></div>
+      <div style="font-size:12.5px;color:var(--ink);margin-top:4px">الأشخاص: ${v.personNames||'—'}</div>
+      ${v.purpose?`<div style="font-size:12.5px;color:var(--muted);margin-top:2px">الغرض: ${v.purpose}</div>`:''}
+      ${v.notes?`<div style="font-size:12.5px;color:var(--muted);margin-top:2px">ملاحظات: ${v.notes}</div>`:''}
+    </div>`;
+  });
+  return html+`<div style="text-align:left;font-size:13px;color:var(--muted);margin-bottom:18px">إجمالي الزيارات: <b style="color:var(--oasis-700)">${list.length}</b></div>`;
+}
+
 function openReportsModal(){
   if(document.getElementById('reportsOverlay')) return;
   reportsModalOpen=true;
   // الشهر الافتراضي: الحالي
   const now=new Date();
   let selMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  let selType='projects';   // نوع التقرير: projects | meetings | visits | all
 
   const overlay=$(`<div class="overlay" id="reportsOverlay"></div>`);
   const modal=$(`<div class="modal"><div class="modal-head"><h2>التقارير الشهرية</h2>
@@ -1865,16 +1898,31 @@ function openReportsModal(){
     // جمع البيانات للشهر المحدد، لكل قسم
     const canExport = (state.appUser.role==='admin') || ((state.appUser.jobTitle||'')==='تنسيق ومتابعة');
     let html=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+        <label class="lbl-sm" style="margin:0">نوع التقرير:</label>
+        <select class="inp" id="repType" style="width:auto;min-width:150px">
+          <option value="projects" ${selType==='projects'?'selected':''}>المشاريع</option>
+          <option value="meetings" ${selType==='meetings'?'selected':''}>الاجتماعات</option>
+          <option value="visits" ${selType==='visits'?'selected':''}>الزيارات الميدانية</option>
+          <option value="all" ${selType==='all'?'selected':''}>الكل في ملف واحد</option>
+        </select>
         <label class="lbl-sm" style="margin:0">الشهر:</label>
-        <select class="inp" id="repMonth" style="width:auto;min-width:160px">${monthOpts}</select>
+        <select class="inp" id="repMonth" style="width:auto;min-width:150px">${monthOpts}</select>
         ${canExport?`<button class="btn btn-add" id="repExport" style="padding:8px 14px;margin-right:auto">${I.upload} تصدير Excel</button>`:''}
       </div>`;
 
-    if(!months.length){
+    if(!months.length && selType==='projects'){
       html+=`<div style="text-align:center;padding:40px 20px;color:var(--muted)">
         لا توجد مشاريع لها تاريخ تسليم بعد. عبّئ تواريخ التسليم في الأقسام لتظهر التقارير الشهرية.</div>`;
       body.innerHTML=html; bindMonth(); return;
     }
+
+    // أنشطة الشهر (زيارات/اجتماعات) حسب تاريخها
+    const visitsThisMonth=state.visits.filter(v=>ym(v.date)===selMonth);
+    const meetingsThisMonth=state.meetings.filter(m=>ym(m.date)===selMonth);
+
+    if(selType==='meetings'){ html+=renderMeetingsReport(meetingsThisMonth, monthLabel(selMonth)); body.innerHTML=html; bindMonth(); return; }
+    if(selType==='visits'){ html+=renderVisitsReport(visitsThisMonth, monthLabel(selMonth)); body.innerHTML=html; bindMonth(); return; }
+    // selType === 'all' يعرض المشاريع ثم الاجتماعات ثم الزيارات
 
     // ── تقرير الإنجاز: المشاريع المنجزة هذا الشهر لكل قسم ──
     html+=`<h3 style="font-size:16px;color:var(--oasis-700);margin-bottom:12px">تقرير الإنجاز — ${monthLabel(selMonth)}</h3>`;
@@ -1943,11 +1991,18 @@ function openReportsModal(){
     html+=`<p style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.7">
       يعتمد التقرير على تاريخ تسليم كل قسم. المشاريع تظهر في شهر تسليمها.</p>`;
 
+    if(selType==='all'){
+      html+=`<div class="divider"></div>`+renderMeetingsReport(meetingsThisMonth, monthLabel(selMonth));
+      html+=`<div class="divider"></div>`+renderVisitsReport(visitsThisMonth, monthLabel(selMonth));
+    }
+
     body.innerHTML=html; bindMonth();
   }
   function bindMonth(){
     const sel=body.querySelector('#repMonth');
     if(sel) sel.onchange=()=>{ selMonth=sel.value; fill(); };
+    const ts=body.querySelector('#repType');
+    if(ts) ts.onchange=()=>{ selType=ts.value; fill(); };
     const exp=body.querySelector('#repExport');
     if(exp) exp.onclick=()=>{ if(overlay._exportExcel) overlay._exportExcel(); };
   }
@@ -1957,91 +2012,99 @@ function openReportsModal(){
   overlay.onclick=(e)=>{if(e.target===overlay){reportsModalOpen=false;overlay.remove();}};
   root.appendChild(overlay);
 
-  // تصدير التقرير للشهر المحدد إلى Excel (المنجَز هذا الشهر + قيد العمل حالياً)
+  // تصدير التقرير حسب النوع المختار إلى Excel
   overlay._exportExcel=()=>{
     if(!window.XLSX){alert('تعذّر تحميل أداة Excel، حاول لاحقاً.');return;}
-    const COLS=8;
+    const X=window.XLSX;
     const today=new Date();
     const exportDate=`${String(today.getDate()).padStart(2,'0')}/${String(today.getMonth()+1).padStart(2,'0')}/${today.getFullYear()}`;
-    const colHeaders=['القسم','اسم المشروع','المهندس','الجهة الطالبة','تاريخ الاستلام','تاريخ التسليم المتوقع','تاريخ التسليم الفعلي','الحالة'];
-    const aoa=[
-      ['سلطنة عُمان — بلدية مسقط'],
-      ['المديرية العامة للشؤون الفنية'],
-      ['نظام مشاريع التصميم المركزي'],
-      ['تقرير المشاريع'],
-      [`الشهر: ${monthLabel(selMonth)}`],
-      [`تاريخ استخراج الملف: ${exportDate}`],
-      []
-    ];
-    const titleRows=aoa.length;          // صفوف الترويسة العلوية
-    const sectionHeadRows=[];            // فهارس صفوف عناوين الأقسام (للتلوين)
-    const colHeadRows=[];                // فهارس صفوف رؤوس الأعمدة
-    const totalRows=[];                  // فهارس صفوف الإجمالي
-
-    // ① المنجَز هذا الشهر
-    sectionHeadRows.push(aoa.length); aoa.push([`الأعمال المنجزة — ${monthLabel(selMonth)}`]);
-    colHeadRows.push(aoa.length); aoa.push(colHeaders.slice());
-    let done=0;
-    DEPT_MAP.forEach(([key,label])=>{
-      state.projects.filter(p=>ym(p[key]?.endDate)===selMonth && p[key]?.status==='مكتمل')
-        .forEach(p=>{ done++; aoa.push([label,p.name||'',p[key]?.engineer||'',p.requestingEntity||'',
-          p[key]?.startDate||'',p[key]?.endDate||'',p[key]?.actualDate||'',p[key]?.status||'']); });
-    });
-    if(done===0) aoa.push(['— لا توجد أعمال منجزة في هذا الشهر —']);
-    totalRows.push(aoa.length); aoa.push([`إجمالي المنجز هذا الشهر: ${done}`]);
-    aoa.push([]);
-
-    // ② قيد العمل حالياً (مستقلة عن الشهر)
-    sectionHeadRows.push(aoa.length); aoa.push(['المشاريع قيد العمل حالياً (استُلمت ولم تكتمل)']);
-    colHeadRows.push(aoa.length); aoa.push(colHeaders.slice());
-    let wip=0;
-    DEPT_MAP.forEach(([key,label])=>{
-      state.projects.filter(p=>p[key]?.status==='قيد العمل')
-        .forEach(p=>{ wip++; aoa.push([label,p.name||'',p[key]?.engineer||'',p.requestingEntity||'',
-          p[key]?.startDate||'',p[key]?.endDate||'','',p[key]?.status||'']); });
-    });
-    if(wip===0) aoa.push(['— لا توجد مشاريع قيد العمل حالياً —']);
-    totalRows.push(aoa.length); aoa.push([`إجمالي قيد العمل: ${wip}`]);
-
-    if(done===0 && wip===0){ alert('لا توجد بيانات لتصديرها.'); return; }
-
-    const ws=window.XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols']=[{wch:18},{wch:30},{wch:20},{wch:24},{wch:16},{wch:18},{wch:18},{wch:12}];
-    ws['!views']=[{RTL:true}];
-
     const OASIS='1F5D4C', SAND='F3EEE3', CLAY='8A6D2F';
-    const enc=(r,c)=>window.XLSX.utils.encode_cell({r,c});
-    const setStyle=(addr,style)=>{ if(ws[addr]) ws[addr].s=style; };
+    const monthName=monthLabel(selMonth);
 
-    // دمج الترويسة العلوية + صفوف العناوين والإجمالي عبر كل الأعمدة
-    const merges=[];
-    for(let r=0;r<titleRows-1;r++) merges.push({s:{r,c:0},e:{r,c:COLS-1}});
-    sectionHeadRows.concat(totalRows).forEach(r=>merges.push({s:{r,c:0},e:{r,c:COLS-1}}));
-    ws['!merges']=merges;
-
-    // الترويسة العلوية
-    setStyle('A1',{font:{bold:true,sz:15,color:{rgb:OASIS}},alignment:{horizontal:'center'}});
-    setStyle('A2',{font:{bold:true,sz:12,color:{rgb:'5E574A'}},alignment:{horizontal:'center'}});
-    setStyle('A3',{font:{bold:true,sz:13,color:{rgb:OASIS}},alignment:{horizontal:'center'}});
-    setStyle('A4',{font:{bold:true,sz:13,color:{rgb:'FFFFFF'}},alignment:{horizontal:'center'},fill:{fgColor:{rgb:OASIS}}});
-    setStyle('A5',{font:{bold:true,sz:11},alignment:{horizontal:'center'}});
-    setStyle('A6',{font:{sz:10,color:{rgb:'8A8170'}},alignment:{horizontal:'center'}});
-    // عناوين الأقسام
-    sectionHeadRows.forEach(r=>setStyle(enc(r,0),{font:{bold:true,sz:12,color:{rgb:OASIS}},alignment:{horizontal:'right'},fill:{fgColor:{rgb:SAND}}}));
-    // رؤوس الأعمدة
-    colHeadRows.forEach(hr=>{ for(let c=0;c<COLS;c++) setStyle(enc(hr,c),{font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:OASIS}},alignment:{horizontal:'center'}}); });
-    // صفوف الإجمالي
-    totalRows.forEach(r=>setStyle(enc(r,0),{font:{bold:true,color:{rgb:CLAY}},alignment:{horizontal:'right'}}));
-    // محاذاة عامة لصفوف البيانات
-    const special=new Set([...sectionHeadRows,...colHeadRows,...totalRows]);
-    for(let r=titleRows;r<aoa.length;r++){
-      if(special.has(r)) continue;
-      for(let c=0;c<COLS;c++) if(ws[enc(r,c)]) ws[enc(r,c)].s={alignment:{horizontal:'center'}};
+    // يبني ورقة عمل منسّقة من عنوان التقرير + أقسام (كل قسم: عنوان + رؤوس أعمدة + صفوف)
+    function buildSheet(reportTitle, COLS, sections){
+      const aoa=[
+        ['سلطنة عُمان — بلدية مسقط'],
+        ['المديرية العامة للشؤون الفنية'],
+        ['نظام مشاريع التصميم المركزي'],
+        [reportTitle],
+        [`الشهر: ${monthName}`],
+        [`تاريخ استخراج الملف: ${exportDate}`],
+        []
+      ];
+      const titleRows=aoa.length;
+      const sectionHeadRows=[], colHeadRows=[], totalRows=[];
+      sections.forEach(sec=>{
+        sectionHeadRows.push(aoa.length); aoa.push([sec.title]);
+        colHeadRows.push(aoa.length); aoa.push(sec.headers.slice());
+        if(sec.rows.length){ sec.rows.forEach(r=>aoa.push(r)); }
+        else { aoa.push(['— لا توجد بيانات —']); }
+        totalRows.push(aoa.length); aoa.push([`الإجمالي: ${sec.rows.length}`]);
+        aoa.push([]);
+      });
+      const ws=X.utils.aoa_to_sheet(aoa);
+      ws['!cols']=Array.from({length:COLS},(_,i)=>({wch:i===1?28:18}));
+      ws['!views']=[{RTL:true}];
+      const enc=(r,c)=>X.utils.encode_cell({r,c});
+      const setS=(a,s)=>{ if(ws[a]) ws[a].s=s; };
+      const merges=[];
+      for(let r=0;r<titleRows-1;r++) merges.push({s:{r,c:0},e:{r,c:COLS-1}});
+      sectionHeadRows.concat(totalRows).forEach(r=>merges.push({s:{r,c:0},e:{r,c:COLS-1}}));
+      ws['!merges']=merges;
+      setS('A1',{font:{bold:true,sz:15,color:{rgb:OASIS}},alignment:{horizontal:'center'}});
+      setS('A2',{font:{bold:true,sz:12,color:{rgb:'5E574A'}},alignment:{horizontal:'center'}});
+      setS('A3',{font:{bold:true,sz:13,color:{rgb:OASIS}},alignment:{horizontal:'center'}});
+      setS('A4',{font:{bold:true,sz:13,color:{rgb:'FFFFFF'}},alignment:{horizontal:'center'},fill:{fgColor:{rgb:OASIS}}});
+      setS('A5',{font:{bold:true,sz:11},alignment:{horizontal:'center'}});
+      setS('A6',{font:{sz:10,color:{rgb:'8A8170'}},alignment:{horizontal:'center'}});
+      sectionHeadRows.forEach(r=>setS(enc(r,0),{font:{bold:true,sz:12,color:{rgb:OASIS}},alignment:{horizontal:'right'},fill:{fgColor:{rgb:SAND}}}));
+      colHeadRows.forEach(hr=>{ for(let c=0;c<COLS;c++) setS(enc(hr,c),{font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:OASIS}},alignment:{horizontal:'center'}}); });
+      totalRows.forEach(r=>setS(enc(r,0),{font:{bold:true,color:{rgb:CLAY}},alignment:{horizontal:'right'}}));
+      const special=new Set([...sectionHeadRows,...colHeadRows,...totalRows]);
+      for(let r=titleRows;r<aoa.length;r++){ if(special.has(r))continue; for(let c=0;c<COLS;c++) if(ws[enc(r,c)]) ws[enc(r,c)].s={alignment:{horizontal:'center'}}; }
+      return ws;
     }
 
-    const wb=window.XLSX.utils.book_new();
-    window.XLSX.utils.book_append_sheet(wb,ws,'تقرير المشاريع');
-    window.XLSX.writeFile(wb,`تقرير_المشاريع_${monthLabel(selMonth)}.xlsx`);
+    // أوراق كل نوع
+    function projectsSheet(){
+      const headers=['القسم','اسم المشروع','المهندس','الجهة الطالبة','تاريخ الاستلام','تاريخ التسليم المتوقع','تاريخ التسليم الفعلي','الحالة'];
+      const doneRows=[], wipRows=[];
+      DEPT_MAP.forEach(([key,label])=>{
+        state.projects.filter(p=>ym(p[key]?.endDate)===selMonth && p[key]?.status==='مكتمل')
+          .forEach(p=>doneRows.push([label,p.name||'',p[key]?.engineer||'',p.requestingEntity||'',p[key]?.startDate||'',p[key]?.endDate||'',p[key]?.actualDate||'',p[key]?.status||'']));
+        state.projects.filter(p=>p[key]?.status==='قيد العمل')
+          .forEach(p=>wipRows.push([label,p.name||'',p[key]?.engineer||'',p.requestingEntity||'',p[key]?.startDate||'',p[key]?.endDate||'','',p[key]?.status||'']));
+      });
+      return buildSheet('تقرير المشاريع',8,[
+        {title:`الأعمال المنجزة — ${monthName}`,headers,rows:doneRows},
+        {title:'المشاريع قيد العمل حالياً (استُلمت ولم تكتمل)',headers,rows:wipRows}
+      ]);
+    }
+    function meetingsSheet(){
+      const headers=['اسم الاجتماع','القسم','الأشخاص','التاريخ','الموقع','الغرض','ملاحظات'];
+      const rows=state.meetings.filter(m=>ym(m.date)===selMonth).sort((a,b)=>new Date(a.date)-new Date(b.date))
+        .map(m=>[m.title||'',m.deptLabel||'',m.personNames||'',m.date||'',m.location||'',m.purpose||'',m.notes||'']);
+      return buildSheet('تقرير الاجتماعات',7,[{title:`الاجتماعات — ${monthName}`,headers,rows}]);
+    }
+    function visitsSheet(){
+      const headers=['الموقع / الولاية','القسم','الأشخاص','التاريخ','الغرض','ملاحظات'];
+      const rows=state.visits.filter(v=>ym(v.date)===selMonth).sort((a,b)=>new Date(a.date)-new Date(b.date))
+        .map(v=>[v.location||'',v.deptLabel||'',v.personNames||'',v.date||'',v.purpose||'',v.notes||'']);
+      return buildSheet('تقرير الزيارات الميدانية',6,[{title:`الزيارات الميدانية — ${monthName}`,headers,rows}]);
+    }
+
+    const wb=X.utils.book_new();
+    let fname='تقرير';
+    if(selType==='projects'){ X.utils.book_append_sheet(wb,projectsSheet(),'المشاريع'); fname='تقرير_المشاريع'; }
+    else if(selType==='meetings'){ X.utils.book_append_sheet(wb,meetingsSheet(),'الاجتماعات'); fname='تقرير_الاجتماعات'; }
+    else if(selType==='visits'){ X.utils.book_append_sheet(wb,visitsSheet(),'الزيارات'); fname='تقرير_الزيارات'; }
+    else { // الكل في ملف واحد (عدة أوراق)
+      X.utils.book_append_sheet(wb,projectsSheet(),'المشاريع');
+      X.utils.book_append_sheet(wb,meetingsSheet(),'الاجتماعات');
+      X.utils.book_append_sheet(wb,visitsSheet(),'الزيارات');
+      fname='التقرير_الشامل';
+    }
+    X.writeFile(wb,`${fname}_${monthName}.xlsx`);
   };
 }
 

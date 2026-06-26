@@ -441,6 +441,15 @@ async function markNotifRead(id){
   try{ await FB.updateDoc(FB.doc(db,'artifacts',APP_ID,'public','data','notifications',id),{read:true}); }
   catch(e){ console.error(e); }
 }
+async function deleteNotif(id){
+  try{ await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','notifications',id)); }
+  catch(e){ console.error('حذف إشعار:',e); }
+}
+async function clearReadNotifs(){
+  // يحذف إشعارات المستخدم الحالي المقروءة فقط
+  const read=myNotifs().filter(n=>n.read);
+  for(const n of read){ await deleteNotif(n.id); }
+}
 function updateBell(){
   const dot=document.getElementById('notifDot'); if(!dot) return;
   const unread=myNotifs().filter(n=>!n.read).length;
@@ -457,22 +466,35 @@ function toggleNotifPanel(){
   panel.appendChild(card);
   panel._render=()=>{
     const list=myNotifs();
-    card.innerHTML=`<div style="position:sticky;top:0;background:var(--oasis);color:#fff;padding:13px 16px;display:flex;justify-content:space-between;align-items:center">
+    const hasUnread=list.some(n=>!n.read);
+    const hasRead=list.some(n=>n.read);
+    card.innerHTML=`<div style="position:sticky;top:0;background:var(--oasis);color:#fff;padding:13px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px">
         <span style="font-family:'Cairo';font-weight:700">الإشعارات</span>
-        ${list.some(n=>!n.read)?`<button id="markAll" style="color:#fff;font-size:12px;text-decoration:underline">تعليم الكل مقروء</button>`:''}
+        <span style="display:flex;gap:12px">
+          ${hasUnread?`<button id="markAll" style="color:#fff;font-size:12px;text-decoration:underline">تعليم الكل مقروء</button>`:''}
+          ${hasRead?`<button id="clearRead" style="color:#ffd9d2;font-size:12px;text-decoration:underline">مسح المقروء</button>`:''}
+        </span>
       </div>
       <div style="padding:8px">
       ${list.length? list.map(n=>`
-        <div data-nid="${n.id}" style="padding:11px;border-radius:10px;margin-bottom:6px;background:${n.read?'#fff':'var(--oasis-50)'};border:1px solid var(--line);cursor:pointer">
-          <div style="font-size:13px;line-height:1.7;color:var(--ink)">${n.text||''}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:5px">${fmtDate(n.at)}${n.read?'':' · جديد'}</div>
+        <div style="display:flex;align-items:stretch;gap:6px;margin-bottom:6px">
+          <div data-nid="${n.id}" style="flex:1;padding:11px;border-radius:10px;background:${n.read?'#fff':'var(--oasis-50)'};border:1px solid var(--line);cursor:pointer">
+            <div style="font-size:13px;line-height:1.7;color:var(--ink)">${n.text||''}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:5px">${fmtDate(n.at)}${n.read?'':' · جديد'}</div>
+          </div>
+          <button data-del="${n.id}" title="حذف الإشعار" style="border:1px solid var(--line);background:#fff;border-radius:10px;width:38px;display:flex;align-items:center;justify-content:center;color:var(--danger);cursor:pointer">${I.close}</button>
         </div>`).join('')
        : `<div style="padding:40px 16px;text-align:center;color:var(--muted);font-size:13px">لا توجد إشعارات.</div>`}
       </div>`;
     const ma=card.querySelector('#markAll');
     if(ma) ma.onclick=async()=>{ for(const n of list.filter(x=>!x.read)) await markNotifRead(n.id); };
+    const cr=card.querySelector('#clearRead');
+    if(cr) cr.onclick=async()=>{ if(confirm('مسح كل الإشعارات المقروءة؟')) await clearReadNotifs(); };
     card.querySelectorAll('[data-nid]').forEach(el=>{
       el.onclick=async()=>{ await markNotifRead(el.getAttribute('data-nid')); };
+    });
+    card.querySelectorAll('[data-del]').forEach(el=>{
+      el.onclick=async(e)=>{ e.stopPropagation(); await deleteNotif(el.getAttribute('data-del')); };
     });
   };
   panel._render();

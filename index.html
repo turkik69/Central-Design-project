@@ -1623,6 +1623,7 @@ function openMeetingModal(){
         <div class="field"><label class="lbl-sm">تاريخ الاجتماع</label><input class="inp" type="date" name="date" required></div>
         <div class="field"><label class="lbl-sm">الموقع</label><input class="inp" name="location" placeholder="مكان الاجتماع"></div>
         <div class="field"><label class="lbl-sm">الغرض من الاجتماع</label><input class="inp" name="purpose" placeholder="الغرض…"></div>
+        <div class="field"><label class="lbl-sm">محضر الاجتماع</label><textarea class="inp" name="minutes" rows="4" placeholder="دوّن ما دار في الاجتماع وأبرز القرارات والتوصيات…" style="resize:vertical"></textarea></div>
         <div class="field"><label class="lbl-sm">ملاحظات</label><textarea class="inp" name="notes" rows="2" style="resize:none"></textarea></div>
         <div class="modal-foot"><button type="submit" class="btn btn-add">${I.save} حفظ الاجتماع</button></div>
       </form>
@@ -1648,6 +1649,7 @@ function openMeetingModal(){
           persons, personNames:persons.map(p=>p.name).join('، '),
           date:fd.get('date'), location:(fd.get('location')||'').trim(),
           purpose:(fd.get('purpose')||'').trim(), notes:(fd.get('notes')||'').trim(),
+          minutes:(fd.get('minutes')||'').trim(),
           createdAt:new Date().toISOString(), createdBy:state.appUser?.name||'—'
         });
       }catch(err){ console.error(err); alert('تعذّر حفظ الاجتماع.'); }
@@ -1675,6 +1677,7 @@ function activityCard(a, kind){
         <div style="font-size:12.5px;color:var(--ink);margin-top:3px">الأشخاص: ${a.personNames||'—'}</div>
         ${a.location?`<div style="font-size:12.5px;color:var(--muted);margin-top:2px">الموقع: ${a.location}</div>`:''}
         ${a.purpose?`<div style="font-size:12.5px;color:var(--muted);margin-top:2px">الغرض: ${a.purpose}</div>`:''}
+        ${a.minutes?`<div style="font-size:12.5px;color:var(--ink);margin-top:4px;background:var(--sand-100);border-radius:8px;padding:8px 10px"><b>المحضر:</b> ${a.minutes}</div>`:''}
         ${a.notes?`<div style="font-size:12.5px;color:var(--muted);margin-top:2px">ملاحظات: ${a.notes}</div>`:''}
         <div style="font-size:10.5px;color:var(--muted);margin-top:5px">سجّله: ${a.createdBy||'—'}</div>
       </div>
@@ -1898,6 +1901,24 @@ function engineerReport(username){
   const overall=allVals.length?(allVals.reduce((a,b)=>a+b,0)/allVals.length).toFixed(1):null;
   const showRatings=canViewEval();   // التنسيق لا يرى التقييمات
 
+  // الآراء الفنية: مشاريع وضعها العام «رأي فني» وهذا المهندس مسنَد لأحد أقسامها
+  const opinions=[];
+  state.projects.forEach(p=>{
+    if(p.overallStatus!=='رأي فني') return;
+    let mine=false;
+    DEPT_MAP.forEach(([key])=>{
+      const sec=p[key]; if(!sec) return;
+      if(Array.isArray(sec.engineers)){ if(sec.engineers.some(e=>e.username===username)) mine=true; }
+      else if(sec.engineerUsername===username) mine=true;
+      else if(sec.engineer && u && sec.engineer===u.name) mine=true;
+    });
+    if(mine) opinions.push({project:p.name||'—', entity:p.requestingEntity||''});
+  });
+  // الزيارات والاجتماعات التي شارك فيها (بالرقم الوظيفي)
+  const inPersons=(arr)=> Array.isArray(arr) && arr.some(x=>x.username===username);
+  const myVisits=state.visits.filter(v=>inPersons(v.persons)).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const myMeetings=state.meetings.filter(m=>inPersons(m.persons)).sort((a,b)=>new Date(b.date)-new Date(a.date));
+
   const itemRow=(it)=>{
     const [c,bg]=SEC_STYLE[it.status]||SEC_STYLE['قيد الانتظار'];
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;padding:8px 0;border-top:1px dashed var(--line)">
@@ -1930,6 +1951,30 @@ function engineerReport(username){
     <div>
       <div style="font-weight:700;color:var(--oasis-700);margin-bottom:4px;font-size:14px">الأعمال المنجزة (${done.length})</div>
       ${done.length?done.map(itemRow).join(''):'<div style="font-size:13px;color:var(--muted);padding:8px 0">لا توجد أعمال منجزة.</div>'}
+    </div>
+
+    <div style="margin-top:14px">
+      <div style="font-weight:700;color:var(--oasis-700);margin-bottom:4px;font-size:14px">الآراء الفنية المقدّمة (${opinions.length})</div>
+      ${opinions.length? opinions.map(o=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;padding:8px 0;border-top:1px dashed var(--line)">
+          <span><b>${o.project}</b>${o.entity?` <span style="color:var(--muted)">· ${o.entity}</span>`:''}</span>
+          <span class="sec-badge" style="color:#8a6d2f;background:#f3e9d7">رأي فني</span></div>`).join('')
+        : '<div style="font-size:13px;color:var(--muted);padding:8px 0">لا توجد آراء فنية.</div>'}
+    </div>
+
+    <div style="margin-top:14px">
+      <div style="font-weight:700;color:var(--oasis-700);margin-bottom:4px;font-size:14px">الزيارات الميدانية (${myVisits.length})</div>
+      ${myVisits.length? myVisits.map(v=>`<div style="font-size:13px;padding:8px 0;border-top:1px dashed var(--line)">
+          <div style="display:flex;justify-content:space-between;gap:8px"><b>${v.location||'زيارة'}</b><span style="color:var(--muted);white-space:nowrap">${v.date||'—'}</span></div>
+          ${v.purpose?`<div style="font-size:12px;color:var(--muted);margin-top:2px">${v.purpose}</div>`:''}</div>`).join('')
+        : '<div style="font-size:13px;color:var(--muted);padding:8px 0">لا توجد زيارات.</div>'}
+    </div>
+
+    <div style="margin-top:14px">
+      <div style="font-weight:700;color:var(--oasis-700);margin-bottom:4px;font-size:14px">الاجتماعات المحضورة (${myMeetings.length})</div>
+      ${myMeetings.length? myMeetings.map(m=>`<div style="font-size:13px;padding:8px 0;border-top:1px dashed var(--line)">
+          <div style="display:flex;justify-content:space-between;gap:8px"><b>${m.title||'اجتماع'}</b><span style="color:var(--muted);white-space:nowrap">${m.date||'—'}</span></div>
+          ${m.purpose?`<div style="font-size:12px;color:var(--muted);margin-top:2px">${m.purpose}</div>`:''}</div>`).join('')
+        : '<div style="font-size:13px;color:var(--muted);padding:8px 0">لا توجد اجتماعات.</div>'}
     </div>`;
 }
 

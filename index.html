@@ -892,6 +892,7 @@ function renderApp(){
         <button class="btn btn-ghost" id="btnBackup">${I.backup}<span class="lbl">نسخة احتياطية</span></button>
         <button class="btn btn-ghost" id="btnTrash">${I.trashbin}<span class="lbl">سلة المحذوفات</span></button>
         <input type="file" id="xlFile" accept=".xlsx,.xls" class="hidden">`:''}
+      ${canViewEval()?`<button class="btn btn-ghost" id="btnKpi">${I.chart}<span class="lbl">لوحة المؤشرات</span></button>`:''}
       ${canViewReports()?`<button class="btn btn-ghost" id="btnReports">${I.report}<span class="lbl">التقارير الشهرية</span></button>`:''}
       ${canViewReports()?`<button class="btn btn-ghost" id="btnEngSearch">${I.person}<span class="lbl">بحث باسم المهندس</span></button>`:''}
       ${isObserver()?'':`<button class="btn btn-add" id="btnAdd">${I.plus}<span class="lbl">إضافة مشروع</span></button>`}
@@ -908,6 +909,9 @@ function renderApp(){
     toolbar.querySelector('#btnUsers').onclick=openUsersModal;
     toolbar.querySelector('#btnBackup').onclick=openBackupModal;
     toolbar.querySelector('#btnTrash').onclick=openTrashModal;
+  }
+  if(canViewEval()){
+    const kb=toolbar.querySelector('#btnKpi'); if(kb) kb.onclick=openKpiModal;
   }
   if(canViewReports()){
     const rb=toolbar.querySelector('#btnReports'); if(rb) rb.onclick=openReportsModal;
@@ -1999,6 +2003,164 @@ function engineerReport(username){
         : '<div style="font-size:13px;color:var(--muted);padding:8px 0">لا توجد اجتماعات.</div>'}
     </div>`;
 }
+
+/* ════════════ لوحة مؤشرات الأداء (KPIs) ════════════ */
+let kpiModalOpen=false;
+/* حساب الفرق بالأيام بين تاريخين YYYY-MM-DD */
+function daysBetween(a,b){ if(!a||!b) return null; const d=(new Date(b)-new Date(a))/86400000; return isNaN(d)?null:Math.round(d); }
+/* مؤشرات قسم واحد عبر كل المشاريع */
+function deptKpi(key){
+  let total=0, done=0, wip=0, waiting=0, onTime=0, late=0, delaySum=0, delayCount=0;
+  const ratings=[];
+  state.projects.forEach(p=>{
+    const sec=p[key]; if(!sec) return;
+    // نَعُدّ القسم "موجوداً" إن أُسنِد له مهندس أو حالة غير افتراضية أو تواريخ
+    const used = (Array.isArray(sec.engineers)&&sec.engineers.length) || sec.engineer || sec.startDate || sec.endDate || (sec.status && sec.status!=='قيد الانتظار');
+    if(!used) return;
+    total++;
+    const st=sec.status||'قيد الانتظار';
+    if(st==='مكتمل') done++; else if(st==='قيد العمل') wip++; else waiting++;
+    if(st==='مكتمل' && sec.endDate && sec.actualDate){
+      const diff=daysBetween(sec.endDate, sec.actualDate);
+      if(diff!==null){ if(diff<=0) onTime++; else late++; if(diff>0){ delaySum+=diff; delayCount++; } }
+    }
+    const avg=ratingAvg(sec.eval); if(avg) ratings.push(Number(avg));
+  });
+  const completion = total? Math.round(done/total*100):0;
+  const punctuality = (onTime+late)? Math.round(onTime/(onTime+late)*100):null;
+  const avgDelay = delayCount? (delaySum/delayCount).toFixed(1):null;
+  const avgRating = ratings.length? (ratings.reduce((a,b)=>a+b,0)/ratings.length).toFixed(1):null;
+  return {total,done,wip,waiting,completion,punctuality,avgDelay,avgRating,onTime,late};
+}
+/* مؤشرات مهندس */
+function engineerKpiList(){
+  const engs=state.users.filter(u=>u.role!=='admin' && ['architectural','structural','services'].includes(u.dept));
+  return engs.map(u=>{
+    let total=0,done=0,onTime=0,late=0; const ratings=[];
+    state.projects.forEach(p=>DEPT_MAP.forEach(([key])=>{
+      const sec=p[key]; if(!sec) return;
+      let mine=false;
+      if(Array.isArray(sec.engineers)) mine=sec.engineers.some(e=>e.username===u.username);
+      else if(sec.engineerUsername) mine=(sec.engineerUsername===u.username);
+      else if(sec.engineer===u.name) mine=true;
+      if(!mine) return;
+      total++; if((sec.status||'')==='مكتمل'){ done++;
+        if(sec.endDate&&sec.actualDate){ const d=daysBetween(sec.endDate,sec.actualDate); if(d!==null){ if(d<=0)onTime++; else late++; } } }
+      const a=ratingAvg(sec.eval); if(a) ratings.push(Number(a));
+    }));
+    const completion=total?Math.round(done/total*100):0;
+    const punctuality=(onTime+late)?Math.round(onTime/(onTime+late)*100):null;
+    const avgRating=ratings.length?(ratings.reduce((a,b)=>a+b,0)/ratings.length).toFixed(1):null;
+    return {name:u.name,username:u.username,total,done,completion,punctuality,avgRating};
+  }).filter(e=>e.total>0).sort((a,b)=>b.completion-a.completion);
+}
+/* رسم حلقي SVG لنسبة مئوية */
+function donutSVG(pct,color,label,sub){
+  const r=34,c=2*Math.PI*r,off=c*(1-(pct||0)/100);
+  return `<div style="text-align:center">
+    <svg width="92" height="92" viewBox="0 0 92 92">
+      <circle cx="46" cy="46" r="${r}" fill="none" stroke="var(--line)" stroke-width="9"/>
+      <circle cx="46" cy="46" r="${r}" fill="none" stroke="${color}" stroke-width="9" stroke-linecap="round"
+        stroke-dasharray="${c}" stroke-dashoffset="${off}" transform="rotate(-90 46 46)"/>
+      <text x="46" y="51" text-anchor="middle" font-size="19" font-weight="800" fill="var(--oasis-700)">${pct==null?'—':pct+'%'}</text>
+    </svg>
+    <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-top:2px">${label}</div>
+    ${sub?`<div style="font-size:11px;color:var(--muted)">${sub}</div>`:''}</div>`;
+}
+/* أعمدة SVG أفقية للأقسام */
+function barRow(label,pct,color){
+  return `<div style="margin-bottom:11px">
+    <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px"><span style="color:var(--ink);font-weight:600">${label}</span><b style="color:${color}">${pct==null?'—':pct+'%'}</b></div>
+    <div style="background:var(--sand-100);border-radius:20px;height:11px;overflow:hidden"><div style="width:${pct||0}%;height:100%;background:${color};border-radius:20px"></div></div>
+  </div>`;
+}
+function statCard(num,label,color){
+  return `<div style="background:#fff;border:1px solid var(--line);border-radius:13px;padding:14px;text-align:center">
+    <div style="font-size:26px;font-weight:800;color:${color||'var(--oasis-700)'}">${num}</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:2px">${label}</div></div>`;
+}
+function openKpiModal(){
+  if(document.getElementById('kpiOverlay')) return;
+  kpiModalOpen=true;
+  const overlay=$(`<div class="overlay" id="kpiOverlay"></div>`);
+  const modal=$(`<div class="modal" style="max-width:760px"><div class="modal-head"><h2>لوحة مؤشرات الأداء</h2>
+    <button class="icon-btn" id="x">${I.close}</button></div></div>`);
+  const body=document.createElement('div');body.className='modal-body';
+  modal.appendChild(body);overlay.appendChild(modal);
+
+  function fill(){
+    // ── مؤشرات الدائرة العامة ──
+    const projTotal=state.projects.length;
+    const projDone=state.projects.filter(p=>p.overallStatus==='مكتمل').length;
+    const deptData=DEPT_MAP.map(([key,label])=>({label,key,k:deptKpi(key)}));
+    const allDone=deptData.reduce((s,d)=>s+d.k.done,0);
+    const allTotal=deptData.reduce((s,d)=>s+d.k.total,0);
+    const orgCompletion=allTotal?Math.round(allDone/allTotal*100):0;
+    const onTimeAll=deptData.reduce((s,d)=>s+d.k.onTime,0);
+    const lateAll=deptData.reduce((s,d)=>s+d.k.late,0);
+    const orgPunctual=(onTimeAll+lateAll)?Math.round(onTimeAll/(onTimeAll+lateAll)*100):null;
+    const ratedDepts=deptData.filter(d=>d.k.avgRating);
+    const orgRating=ratedDepts.length?(ratedDepts.reduce((s,d)=>s+Number(d.k.avgRating),0)/ratedDepts.length).toFixed(1):null;
+    const engs=engineerKpiList();
+
+    let html=`
+      <h3 style="font-size:15px;color:var(--oasis-700);margin-bottom:12px">أداء الدائرة العام</h3>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+        ${statCard(projTotal,'إجمالي المشاريع')}
+        ${statCard(projDone,'مشاريع مكتملة','#1f5d4c')}
+        ${statCard(orgRating?orgRating+' ★':'—','متوسط التقييم','#b8860b')}
+        ${statCard(orgPunctual==null?'—':orgPunctual+'%','الالتزام بالوقت','#3b6ea5')}
+      </div>
+      <div style="display:flex;justify-content:space-around;gap:10px;background:var(--sand-50);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:22px;flex-wrap:wrap">
+        ${donutSVG(orgCompletion,'#1f5d4c','نسبة الإنجاز','المكتمل ÷ الإجمالي')}
+        ${donutSVG(orgPunctual,'#3b6ea5','الالتزام بالوقت','المسلَّم في موعده')}
+        ${donutSVG(orgRating?Math.round(orgRating/5*100):null,'#b8860b','مستوى الجودة','من التقييمات')}
+      </div>
+
+      <h3 style="font-size:15px;color:var(--oasis-700);margin-bottom:12px">مؤشرات الأقسام</h3>
+      <div style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:10px">
+        <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">نسبة الإنجاز لكل قسم</div>
+        ${deptData.map(d=>barRow(d.label,d.k.completion,'#1f5d4c')).join('')}
+      </div>
+      <div style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:22px">
+        <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">الالتزام بالوقت لكل قسم</div>
+        ${deptData.map(d=>barRow(d.label,d.k.punctuality,'#3b6ea5')).join('')}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:24px">
+        ${deptData.map(d=>`<div style="background:var(--sand-50);border:1px solid var(--line);border-radius:12px;padding:12px;text-align:center">
+            <div style="font-weight:700;color:var(--oasis-700);font-size:13px;margin-bottom:6px">${d.label}</div>
+            <div style="font-size:12px;color:var(--muted)">قائم: ${d.k.wip} · منجز: ${d.k.done}</div>
+            <div style="font-size:12px;color:var(--muted)">التقييم: ${d.k.avgRating?d.k.avgRating+' ★':'—'}</div>
+            <div style="font-size:12px;color:var(--muted)">متوسط التأخير: ${d.k.avgDelay?d.k.avgDelay+' يوم':'—'}</div>
+          </div>`).join('')}
+      </div>
+
+      <h3 style="font-size:15px;color:var(--oasis-700);margin-bottom:12px">مؤشرات المهندسين</h3>
+      ${engs.length? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:var(--oasis);color:#fff">
+          <th style="padding:9px;text-align:right">المهندس</th><th style="padding:9px">الأعمال</th><th style="padding:9px">المنجز</th><th style="padding:9px">الإنجاز</th><th style="padding:9px">الالتزام</th><th style="padding:9px">التقييم</th>
+        </tr></thead><tbody>
+        ${engs.map((e,i)=>`<tr style="background:${i%2?'var(--sand-50)':'#fff'};border-bottom:1px solid var(--line)">
+          <td style="padding:9px;text-align:right;font-weight:600">${e.name}</td>
+          <td style="padding:9px;text-align:center">${e.total}</td>
+          <td style="padding:9px;text-align:center">${e.done}</td>
+          <td style="padding:9px;text-align:center;font-weight:700;color:#1f5d4c">${e.completion}%</td>
+          <td style="padding:9px;text-align:center;color:#3b6ea5">${e.punctuality==null?'—':e.punctuality+'%'}</td>
+          <td style="padding:9px;text-align:center;color:#b8860b">${e.avgRating?e.avgRating+' ★':'—'}</td>
+        </tr>`).join('')}
+        </tbody></table></div>`
+        : '<div style="text-align:center;color:var(--muted);padding:20px">لا توجد بيانات مهندسين بعد.</div>'}
+
+      <p style="font-size:11px;color:var(--muted);margin-top:16px;line-height:1.7">
+        تُحتسب المؤشرات تلقائياً من حالات الأقسام وتواريخ التسليم والتقييمات. «الالتزام بالوقت» = نسبة الأقسام المسلَّمة في موعدها من إجمالي المسلَّمة.</p>`;
+    body.innerHTML=html;
+  }
+  fill(); overlay._refresh=fill;
+  modal.querySelector('#x').onclick=()=>{kpiModalOpen=false;overlay.remove();};
+  overlay.onclick=(e)=>{if(e.target===overlay){kpiModalOpen=false;overlay.remove();}};
+  root.appendChild(overlay);
+}
+function refreshKpiModal(){ const ov=document.getElementById('kpiOverlay'); if(ov&&ov._refresh) ov._refresh(); }
 
 /* ════════════ التقارير الشهرية ════════════ */
 let reportsModalOpen=false;

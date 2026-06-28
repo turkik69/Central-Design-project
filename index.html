@@ -2182,7 +2182,7 @@ function exportKpiPdf(){
     <style>
       @page{size:A4;margin:14mm}
       *{box-sizing:border-box}
-      body{font-family:'Tajawal',Arial,sans-serif;color:#16201e;margin:0;padding:0}
+      body{font-family:'Tajawal',Arial,sans-serif;color:#16201e;margin:0;padding:0 0 90px}
       :root{--oasis:#1f5d4c;--oasis-700:#16443a;--line:#e4e0d6;--sand-50:#f7f4ee;--sand-100:#efeae0;--muted:#6b6357}
       .hd{background:#16443a;color:#fff;padding:18px 22px;border-radius:12px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center}
       .hd h1{margin:0;font-size:19px}
@@ -2190,13 +2190,34 @@ function exportKpiPdf(){
       table{width:100%;border-collapse:collapse}
       svg{max-width:100%}
       h3{color:var(--oasis-700)}
+      .page-pad{padding:0 14px}
+      /* شريط أدوات ثابت لا يظهر في الطباعة */
+      .toolbar{position:fixed;top:0;left:0;right:0;background:#16443a;display:flex;gap:10px;justify-content:center;align-items:center;padding:12px;z-index:99;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+      .toolbar button{font-family:'Tajawal',Arial,sans-serif;font-size:14px;font-weight:700;border:none;border-radius:9px;padding:10px 20px;cursor:pointer}
+      .b-print{background:#fff;color:#16443a}
+      .b-back{background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.6)}
+      .spacer{height:66px}
+      @media print{ .toolbar,.spacer{display:none!important} body{padding:0} }
     </style></head><body>
-    <div class="hd"><div><h1>لوحة مؤشرات الأداء</h1><div class="sub">نظام مشاريع التصميم المركزي — بلدية مسقط</div></div>
-      <div class="sub">تاريخ التصدير: ${dStr}</div></div>
-    ${src.innerHTML}
+    <div class="toolbar">
+      <button class="b-print" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+      <button class="b-back" onclick="window.close()">رجوع للبرنامج ✕</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="page-pad">
+      <div class="hd"><div><h1>لوحة مؤشرات الأداء</h1><div class="sub">نظام مشاريع التصميم المركزي — بلدية مسقط</div></div>
+        <div class="sub">تاريخ التصدير: ${dStr}</div></div>
+      ${src.innerHTML}
+    </div>
+    <script>
+      // لو تعذّر إغلاق النافذة (بعض المتصفحات)، نرجع للخلف
+      document.querySelector('.b-back').addEventListener('click',function(){
+        setTimeout(function(){ try{ window.close(); }catch(e){} if(!window.closed){ history.back(); } }, 60);
+      });
+    <\/script>
     </body></html>`);
   win.document.close();
-  setTimeout(()=>{ win.focus(); win.print(); }, 500);
+  win.focus();
 }
 
 /* تصدير لوحة المؤشرات إلى Excel (بيانات جدولية منسّقة) */

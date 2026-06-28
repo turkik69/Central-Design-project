@@ -2006,17 +2006,38 @@ function engineerReport(username){
 
 /* ════════════ لوحة مؤشرات الأداء (KPIs) ════════════ */
 let kpiModalOpen=false;
+let kpiPeriod='all';   // all | month | quarter | half | year (يُحدّث من القائمة)
 /* حساب الفرق بالأيام بين تاريخين YYYY-MM-DD */
 function daysBetween(a,b){ if(!a||!b) return null; const d=(new Date(b)-new Date(a))/86400000; return isNaN(d)?null:Math.round(d); }
-/* مؤشرات قسم واحد عبر كل المشاريع */
+/* يعيد {from,to} للفترة المختارة بناءً على تاريخ اليوم */
+function kpiRange(period){
+  const now=new Date(); const y=now.getFullYear(), m=now.getMonth();
+  const mk=(yy,mm,dd)=>new Date(yy,mm,dd);
+  if(period==='month')   return {from:mk(y,m,1), to:mk(y,m+1,0), label:`شهر ${MONTH_NAMES?MONTH_NAMES[m]:m+1} ${y}`};
+  if(period==='quarter'){ const q=Math.floor(m/3); return {from:mk(y,q*3,1), to:mk(y,q*3+3,0), label:`الربع ${q+1} لعام ${y}`}; }
+  if(period==='half'){ const h=m<6?0:6; return {from:mk(y,h,1), to:mk(y,h+6,0), label:`نصف ${m<6?'أول':'ثاني'} ${y}`}; }
+  if(period==='year')    return {from:mk(y,0,1), to:mk(y,12,0), label:`عام ${y}`};
+  return {from:null,to:null,label:'كل الفترات'};
+}
+/* هل يقع التاريخ ضمن الفترة المختارة؟ (إن كانت all يُقبل الكل) */
+function inKpiPeriod(dateStr){
+  if(kpiPeriod==='all') return true;
+  if(!dateStr) return false;
+  const d=new Date(dateStr); if(isNaN(d)) return false;
+  const {from,to}=kpiRange(kpiPeriod);
+  return d>=from && d<=to;
+}
+/* التاريخ المرجعي للقسم في الفلترة: الفعلي إن وُجد، وإلا المتوقع */
+function secRefDate(sec){ return sec.actualDate || sec.endDate || sec.startDate || ''; }
+/* مؤشرات قسم واحد عبر كل المشاريع (ضمن الفترة المختارة) */
 function deptKpi(key){
   let total=0, done=0, wip=0, waiting=0, onTime=0, late=0, delaySum=0, delayCount=0;
   const ratings=[];
   state.projects.forEach(p=>{
     const sec=p[key]; if(!sec) return;
-    // نَعُدّ القسم "موجوداً" إن أُسنِد له مهندس أو حالة غير افتراضية أو تواريخ
     const used = (Array.isArray(sec.engineers)&&sec.engineers.length) || sec.engineer || sec.startDate || sec.endDate || (sec.status && sec.status!=='قيد الانتظار');
     if(!used) return;
+    if(!inKpiPeriod(secRefDate(sec))) return;   // فلترة زمنية
     total++;
     const st=sec.status||'قيد الانتظار';
     if(st==='مكتمل') done++; else if(st==='قيد العمل') wip++; else waiting++;
@@ -2032,7 +2053,7 @@ function deptKpi(key){
   const avgRating = ratings.length? (ratings.reduce((a,b)=>a+b,0)/ratings.length).toFixed(1):null;
   return {total,done,wip,waiting,completion,punctuality,avgDelay,avgRating,onTime,late};
 }
-/* مؤشرات مهندس */
+/* مؤشرات مهندس (ضمن الفترة المختارة) */
 function engineerKpiList(){
   const engs=state.users.filter(u=>u.role!=='admin' && ['architectural','structural','services'].includes(u.dept));
   return engs.map(u=>{
@@ -2044,6 +2065,7 @@ function engineerKpiList(){
       else if(sec.engineerUsername) mine=(sec.engineerUsername===u.username);
       else if(sec.engineer===u.name) mine=true;
       if(!mine) return;
+      if(!inKpiPeriod(secRefDate(sec))) return;   // فلترة زمنية
       total++; if((sec.status||'')==='مكتمل'){ done++;
         if(sec.endDate&&sec.actualDate){ const d=daysBetween(sec.endDate,sec.actualDate); if(d!==null){ if(d<=0)onTime++; else late++; } } }
       const a=ratingAvg(sec.eval); if(a) ratings.push(Number(a));
@@ -2107,8 +2129,20 @@ function openKpiModal(){
     const ratedDepts=deptData.filter(d=>d.k.avgRating);
     const orgRating=ratedDepts.length?(ratedDepts.reduce((s,d)=>s+Number(d.k.avgRating),0)/ratedDepts.length).toFixed(1):null;
     const engs=engineerKpiList();
+    const rangeLabel=kpiRange(kpiPeriod).label;
 
     let html=`
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;background:var(--sand-50);border:1px solid var(--line);border-radius:12px;padding:12px">
+        <label class="lbl-sm" style="margin:0;font-weight:700">فترة القياس:</label>
+        <select class="inp" id="kpiPeriodSel" style="width:auto;min-width:150px">
+          <option value="all" ${kpiPeriod==='all'?'selected':''}>كل الفترات</option>
+          <option value="month" ${kpiPeriod==='month'?'selected':''}>شهرية</option>
+          <option value="quarter" ${kpiPeriod==='quarter'?'selected':''}>ربع سنوية</option>
+          <option value="half" ${kpiPeriod==='half'?'selected':''}>نصف سنوية</option>
+          <option value="year" ${kpiPeriod==='year'?'selected':''}>سنوية</option>
+        </select>
+        <span style="font-size:13px;color:var(--oasis-700);font-weight:700;margin-right:auto">${rangeLabel}</span>
+      </div>
       <h3 style="font-size:15px;color:var(--oasis-700);margin-bottom:12px">أداء الدائرة العام</h3>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
         ${statCard(projTotal,'إجمالي المشاريع')}
@@ -2159,6 +2193,8 @@ function openKpiModal(){
       <p style="font-size:11px;color:var(--muted);margin-top:16px;line-height:1.7">
         تُحتسب المؤشرات تلقائياً من حالات الأقسام وتواريخ التسليم والتقييمات. «الالتزام بالوقت» = نسبة الأقسام المسلَّمة في موعدها من إجمالي المسلَّمة.</p>`;
     body.innerHTML=html;
+    const ps=body.querySelector('#kpiPeriodSel');
+    if(ps) ps.onchange=()=>{ kpiPeriod=ps.value; fill(); };
   }
   fill(); overlay._refresh=fill;
   // تصدير PDF عبر الطباعة (المستخدم يحفظ كـ PDF من حوار الطباعة)
@@ -2238,7 +2274,7 @@ function exportKpiExcel(){
 
   const aoa=[
     ['سلطنة عُمان — بلدية مسقط'],['المديرية العامة للشؤون الفنية'],['نظام مشاريع التصميم المركزي'],
-    ['لوحة مؤشرات الأداء (KPIs)'],[`تاريخ التصدير: ${dStr}`],[],
+    ['لوحة مؤشرات الأداء (KPIs)'],[`الفترة: ${kpiRange(kpiPeriod).label}`],[`تاريخ التصدير: ${dStr}`],[],
     ['مؤشرات الدائرة العامة'],
     ['إجمالي المشاريع','المكتملة','نسبة الإنجاز %','الالتزام بالوقت %','متوسط التقييم'],
     [state.projects.length, state.projects.filter(p=>p.overallStatus==='مكتمل').length, orgCompletion, orgPunctual, orgRating],
@@ -2264,16 +2300,17 @@ function exportKpiExcel(){
       setS(enc(r,0),{font:{bold:true,sz:13,color:{rgb:OASIS}},fill:{fgColor:{rgb:SAND}},alignment:{horizontal:'right'}});
     }
   });
-  // ترويسة علوية
+  // ترويسة علوية (٦ صفوف: الدولة/المديرية/النظام/العنوان/الفترة/التاريخ)
   ws['!merges']=ws['!merges']||[];
-  for(let r=0;r<5;r++) ws['!merges'].push({s:{r,c:0},e:{r,c:7}});
+  for(let r=0;r<6;r++) ws['!merges'].push({s:{r,c:0},e:{r,c:7}});
   setS('A1',{font:{bold:true,sz:15,color:{rgb:OASIS}},alignment:{horizontal:'center'}});
   setS('A2',{font:{bold:true,sz:12,color:{rgb:'5E574A'}},alignment:{horizontal:'center'}});
   setS('A3',{font:{bold:true,sz:13,color:{rgb:OASIS}},alignment:{horizontal:'center'}});
   setS('A4',{font:{bold:true,sz:13,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:OASIS}},alignment:{horizontal:'center'}});
-  setS('A5',{font:{sz:10,color:{rgb:'8A8170'}},alignment:{horizontal:'center'}});
-  // رؤوس الجداول الثلاثة
-  [7,11,16].forEach(hr=>{ for(let c=0;c<8;c++){ const a=enc(hr,c); if(ws[a]) setS(a,{font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:OASIS}},alignment:{horizontal:'center'}});} });
+  setS('A5',{font:{bold:true,sz:11,color:{rgb:OASIS}},alignment:{horizontal:'center'}});
+  setS('A6',{font:{sz:10,color:{rgb:'8A8170'}},alignment:{horizontal:'center'}});
+  // رؤوس الجداول الثلاثة (بعد إضافة صف الفترة)
+  [8,12,17].forEach(hr=>{ for(let c=0;c<8;c++){ const a=enc(hr,c); if(ws[a]) setS(a,{font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:OASIS}},alignment:{horizontal:'center'}});} });
   const wb=X.utils.book_new();
   X.utils.book_append_sheet(wb,ws,'مؤشرات الأداء');
   X.writeFile(wb,`لوحة_مؤشرات_الأداء_${dStr.replace(/\//g,'-')}.xlsx`);

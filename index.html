@@ -2084,8 +2084,13 @@ function openKpiModal(){
   kpiModalOpen=true;
   const overlay=$(`<div class="overlay" id="kpiOverlay"></div>`);
   const modal=$(`<div class="modal" style="max-width:760px"><div class="modal-head"><h2>لوحة مؤشرات الأداء</h2>
-    <button class="icon-btn" id="x">${I.close}</button></div></div>`);
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn btn-ghost" id="kpiPdf" style="padding:7px 12px;font-size:13px">${I.report} PDF</button>
+      <button class="btn btn-ghost" id="kpiXls" style="padding:7px 12px;font-size:13px">${I.upload} Excel</button>
+      <button class="icon-btn" id="x">${I.close}</button>
+    </div></div>`);
   const body=document.createElement('div');body.className='modal-body';
+  body.id='kpiBody';
   modal.appendChild(body);overlay.appendChild(modal);
 
   function fill(){
@@ -2156,11 +2161,102 @@ function openKpiModal(){
     body.innerHTML=html;
   }
   fill(); overlay._refresh=fill;
+  // تصدير PDF عبر الطباعة (المستخدم يحفظ كـ PDF من حوار الطباعة)
+  modal.querySelector('#kpiPdf').onclick=()=>exportKpiPdf();
+  modal.querySelector('#kpiXls').onclick=()=>exportKpiExcel();
   modal.querySelector('#x').onclick=()=>{kpiModalOpen=false;overlay.remove();};
   overlay.onclick=(e)=>{if(e.target===overlay){kpiModalOpen=false;overlay.remove();}};
   root.appendChild(overlay);
 }
 function refreshKpiModal(){ const ov=document.getElementById('kpiOverlay'); if(ov&&ov._refresh) ov._refresh(); }
+
+/* تصدير لوحة المؤشرات إلى PDF عبر نافذة طباعة مخصّصة */
+function exportKpiPdf(){
+  const src=document.getElementById('kpiBody');
+  if(!src){ alert('افتح اللوحة أولاً.'); return; }
+  const today=new Date();
+  const dStr=`${String(today.getDate()).padStart(2,'0')}/${String(today.getMonth()+1).padStart(2,'0')}/${today.getFullYear()}`;
+  const win=window.open('','_blank');
+  if(!win){ alert('فضلاً اسمح بالنوافذ المنبثقة لتصدير PDF.'); return; }
+  win.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>لوحة مؤشرات الأداء</title>
+    <style>
+      @page{size:A4;margin:14mm}
+      *{box-sizing:border-box}
+      body{font-family:'Tajawal',Arial,sans-serif;color:#16201e;margin:0;padding:0}
+      :root{--oasis:#1f5d4c;--oasis-700:#16443a;--line:#e4e0d6;--sand-50:#f7f4ee;--sand-100:#efeae0;--muted:#6b6357}
+      .hd{background:#16443a;color:#fff;padding:18px 22px;border-radius:12px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center}
+      .hd h1{margin:0;font-size:19px}
+      .hd .sub{font-size:12px;color:#bfe9de}
+      table{width:100%;border-collapse:collapse}
+      svg{max-width:100%}
+      h3{color:var(--oasis-700)}
+    </style></head><body>
+    <div class="hd"><div><h1>لوحة مؤشرات الأداء</h1><div class="sub">نظام مشاريع التصميم المركزي — بلدية مسقط</div></div>
+      <div class="sub">تاريخ التصدير: ${dStr}</div></div>
+    ${src.innerHTML}
+    </body></html>`);
+  win.document.close();
+  setTimeout(()=>{ win.focus(); win.print(); }, 500);
+}
+
+/* تصدير لوحة المؤشرات إلى Excel (بيانات جدولية منسّقة) */
+function exportKpiExcel(){
+  if(!window.XLSX){ alert('تعذّر تحميل أداة Excel، حاول لاحقاً.'); return; }
+  const X=window.XLSX;
+  const today=new Date();
+  const dStr=`${String(today.getDate()).padStart(2,'0')}/${String(today.getMonth()+1).padStart(2,'0')}/${today.getFullYear()}`;
+  const OASIS='1F5D4C', SAND='F3EEE3';
+  const deptData=DEPT_MAP.map(([key,label])=>({label,k:deptKpi(key)}));
+  const engs=engineerKpiList();
+  const allDone=deptData.reduce((s,d)=>s+d.k.done,0), allTotal=deptData.reduce((s,d)=>s+d.k.total,0);
+  const onTimeAll=deptData.reduce((s,d)=>s+d.k.onTime,0), lateAll=deptData.reduce((s,d)=>s+d.k.late,0);
+  const orgCompletion=allTotal?Math.round(allDone/allTotal*100):0;
+  const orgPunctual=(onTimeAll+lateAll)?Math.round(onTimeAll/(onTimeAll+lateAll)*100):'—';
+  const ratedDepts=deptData.filter(d=>d.k.avgRating);
+  const orgRating=ratedDepts.length?(ratedDepts.reduce((s,d)=>s+Number(d.k.avgRating),0)/ratedDepts.length).toFixed(1):'—';
+
+  const aoa=[
+    ['سلطنة عُمان — بلدية مسقط'],['المديرية العامة للشؤون الفنية'],['نظام مشاريع التصميم المركزي'],
+    ['لوحة مؤشرات الأداء (KPIs)'],[`تاريخ التصدير: ${dStr}`],[],
+    ['مؤشرات الدائرة العامة'],
+    ['إجمالي المشاريع','المكتملة','نسبة الإنجاز %','الالتزام بالوقت %','متوسط التقييم'],
+    [state.projects.length, state.projects.filter(p=>p.overallStatus==='مكتمل').length, orgCompletion, orgPunctual, orgRating],
+    [],
+    ['مؤشرات الأقسام'],
+    ['القسم','الإجمالي','المنجز','قيد العمل','نسبة الإنجاز %','الالتزام بالوقت %','متوسط التأخير (يوم)','متوسط التقييم'],
+    ...deptData.map(d=>[d.label,d.k.total,d.k.done,d.k.wip,d.k.completion,(d.k.punctuality==null?'—':d.k.punctuality),(d.k.avgDelay||'—'),(d.k.avgRating||'—')]),
+    [],
+    ['مؤشرات المهندسين'],
+    ['المهندس','الرقم الوظيفي','الأعمال','المنجز','نسبة الإنجاز %','الالتزام بالوقت %','متوسط التقييم'],
+    ...engs.map(e=>[e.name,e.username,e.total,e.done,e.completion,(e.punctuality==null?'—':e.punctuality),(e.avgRating||'—')])
+  ];
+  const ws=X.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:26},{wch:16},{wch:12},{wch:14},{wch:16},{wch:18},{wch:16},{wch:14}];
+  ws['!views']=[{RTL:true}];
+  const enc=(r,c)=>X.utils.encode_cell({r,c});
+  const setS=(a,s)=>{ if(ws[a]) ws[a].s=s; };
+  // عناوين الأقسام (الصفوف 6،10،15 تقريباً) — نلوّنها ديناميكياً بالبحث عن النص
+  aoa.forEach((row,r)=>{
+    if(row.length===1 && r>=6){ // عنوان قسم
+      ws['!merges']=ws['!merges']||[];
+      ws['!merges'].push({s:{r,c:0},e:{r,c:7}});
+      setS(enc(r,0),{font:{bold:true,sz:13,color:{rgb:OASIS}},fill:{fgColor:{rgb:SAND}},alignment:{horizontal:'right'}});
+    }
+  });
+  // ترويسة علوية
+  ws['!merges']=ws['!merges']||[];
+  for(let r=0;r<5;r++) ws['!merges'].push({s:{r,c:0},e:{r,c:7}});
+  setS('A1',{font:{bold:true,sz:15,color:{rgb:OASIS}},alignment:{horizontal:'center'}});
+  setS('A2',{font:{bold:true,sz:12,color:{rgb:'5E574A'}},alignment:{horizontal:'center'}});
+  setS('A3',{font:{bold:true,sz:13,color:{rgb:OASIS}},alignment:{horizontal:'center'}});
+  setS('A4',{font:{bold:true,sz:13,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:OASIS}},alignment:{horizontal:'center'}});
+  setS('A5',{font:{sz:10,color:{rgb:'8A8170'}},alignment:{horizontal:'center'}});
+  // رؤوس الجداول الثلاثة
+  [7,11,16].forEach(hr=>{ for(let c=0;c<8;c++){ const a=enc(hr,c); if(ws[a]) setS(a,{font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:OASIS}},alignment:{horizontal:'center'}});} });
+  const wb=X.utils.book_new();
+  X.utils.book_append_sheet(wb,ws,'مؤشرات الأداء');
+  X.writeFile(wb,`لوحة_مؤشرات_الأداء_${dStr.replace(/\//g,'-')}.xlsx`);
+}
 
 /* ════════════ التقارير الشهرية ════════════ */
 let reportsModalOpen=false;

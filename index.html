@@ -418,12 +418,14 @@ function subscribeVisits(){
   FB.onSnapshot(visitsRef(),(snap)=>{
     state.visits=snap.docs.map(d=>({id:d.id,...d.data()}));
     if(visitModalOpen) refreshVisitModal();
+    if(myActsModalOpen) refreshMyActsModal();
   },(e)=>{console.error("جلب الزيارات:",e);});
 }
 function subscribeMeetings(){
   FB.onSnapshot(meetingsRef(),(snap)=>{
     state.meetings=snap.docs.map(d=>({id:d.id,...d.data()}));
     if(meetingModalOpen) refreshMeetingModal();
+    if(myActsModalOpen) refreshMyActsModal();
   },(e)=>{console.error("جلب الاجتماعات:",e);});
 }
 /* الإشعارات الموجَّهة للمستخدم الحالي وغير المقروءة */
@@ -896,6 +898,8 @@ function renderApp(){
       ${canViewEval()?`<button class="btn btn-ghost" id="btnKpi">${I.chart}<span class="lbl">لوحة المؤشرات</span></button>`:''}
       ${canViewReports()?`<button class="btn btn-ghost" id="btnReports">${I.report}<span class="lbl">التقارير الشهرية</span></button>`:''}
       ${canViewReports()?`<button class="btn btn-ghost" id="btnEngSearch">${I.person}<span class="lbl">بحث باسم المهندس</span></button>`:''}
+      ${isEngineer()?`<button class="btn btn-ghost" id="btnMine">${I.build}<span class="lbl">مشاريعي</span></button>`:''}
+      ${isEngineer()?`<button class="btn btn-ghost" id="btnMyActs">${I.pin}<span class="lbl">اجتماعاتي وزياراتي</span></button>`:''}
       ${isObserver()?'':`<button class="btn btn-add" id="btnAdd">${I.plus}<span class="lbl">إضافة مشروع</span></button>`}
       ${isObserver()?'':`<button class="btn btn-add" id="btnVisit" style="background:var(--clay,#8a6d2f)">${I.pin}<span class="lbl">زيارة موقع</span></button>`}
       ${isObserver()?'':`<button class="btn btn-add" id="btnMeeting" style="background:#3b6ea5">${I.users}<span class="lbl">اجتماع</span></button>`}
@@ -921,6 +925,8 @@ function renderApp(){
     const eb=toolbar.querySelector('#btnEngSearch'); if(eb) eb.onclick=openEngineerSearch;
   }
   { const ab=toolbar.querySelector('#btnAdd'); if(ab) ab.onclick=()=>openProjectModal(null); }
+  { const mn=toolbar.querySelector('#btnMine'); if(mn) mn.onclick=()=>{ myProjectsView=!myProjectsView; doneView=false; updateGrid(); }; }
+  { const ma=toolbar.querySelector('#btnMyActs'); if(ma) ma.onclick=()=>openMyActivitiesModal(); }
   { const vb=toolbar.querySelector('#btnVisit'); if(vb) vb.onclick=()=>openVisitModal(); }
   { const mb=toolbar.querySelector('#btnMeeting'); if(mb) mb.onclick=()=>openMeetingModal(); }
   main.appendChild(toolbar);
@@ -973,6 +979,7 @@ function maybeShowDeadlineBanner(){
 
 let completedOpen=false;   // (محتفظ به للتوافق) غير مستخدم بعد الفصل
 let doneView=false;        // true = عرض شاشة المشاريع المنتهية المنفصلة
+let myProjectsView=false;  // true = عرض مشاريع المهندس الحالي فقط
 function updateGrid(){
   const host=document.getElementById('gridHost');
   if(!host) return;
@@ -982,6 +989,29 @@ function updateGrid(){
   // فصل المشاريع المنتهية (مكتمل) عن النشطة
   const active=state.filtered.filter(p=>p.overallStatus!=='مكتمل');
   const done=state.filtered.filter(p=>p.overallStatus==='مكتمل');
+
+  /* ── شاشة «مشاريعي» للمهندس ── */
+  if(myProjectsView){
+    const mine=state.filtered.filter(projectHasMe);
+    const header=document.createElement('div');
+    header.className='done-screen-head';
+    header.innerHTML=`
+      <button class="btn btn-ghost" id="backAll">${I.chevronR||I.chevron} رجوع لكل المشاريع</button>
+      <h2 style="display:flex;align-items:center;gap:9px;margin:0;font-size:19px;color:var(--oasis-700)">
+        ${I.build} مشاريعي <span class="done-count">${mine.length}</span></h2>`;
+    host.appendChild(header);
+    if(mine.length){
+      const grid=document.createElement('div');grid.className='grid';
+      mine.forEach(p=>grid.appendChild(renderCard(p)));
+      host.appendChild(grid);
+    }else{
+      host.appendChild($(`<div class="empty" style="padding:40px 20px">${I.build}
+        <p style="margin-top:10px;color:var(--muted)">لا توجد مشاريع مُسنَدة إليك حالياً.</p></div>`));
+    }
+    const back=host.querySelector('#backAll');
+    if(back) back.onclick=()=>{ myProjectsView=false; updateGrid(); };
+    return;
+  }
 
   if(!state.filtered.length){
     doneView=false;
@@ -1312,6 +1342,22 @@ function canEditDept(prefixKey){
 }
 /* المدير العام مراقب فقط: لا ينشئ مشاريع ولا يعدّل الحقول العامة ولا يحذف */
 function isObserver(){ return (state.appUser?.jobTitle||'')==='المدير العام'; }
+/* هل المستخدم مهندس عادي (له قسم فني ومسنَد للأعمال)؟ */
+function isEngineer(){
+  const u=state.appUser; if(!u||u.role==='admin') return false;
+  if(isObserver()) return false;
+  return ['architectural','structural','services'].includes(u.dept);
+}
+/* هل المهندس الحالي مسنَد لأحد أقسام المشروع؟ */
+function projectHasMe(p){
+  const u=state.appUser; if(!u) return false;
+  return DEPT_MAP.some(([key])=>{
+    const sec=p[key]; if(!sec) return false;
+    if(Array.isArray(sec.engineers)) return sec.engineers.some(e=>e.username===u.username);
+    if(sec.engineerUsername) return sec.engineerUsername===u.username;
+    return sec.engineer===u.name;
+  });
+}
 
 /* تنبيهات قرب/تجاوز موعد التسليم المتوقع لأقسام المهندس الحالي (غير المكتملة) */
 function myDeadlineAlerts(thresholdDays){
@@ -1759,6 +1805,92 @@ function activityCard(a, kind){
       <button class="act act-del" ${delAttr} title="حذف">${I.trash}</button>
     </div>
   </div>`;
+}
+
+/* ════════════ اجتماعاتي وزياراتي (للمهندس) ════════════ */
+let myActsModalOpen=false;
+function openMyActivitiesModal(){
+  if(document.getElementById('myActsOverlay')) return;
+  myActsModalOpen=true;
+  const me=state.appUser?.username;
+  const overlay=$(`<div class="overlay" id="myActsOverlay"></div>`);
+  const modal=$(`<div class="modal"><div class="modal-head"><h2>اجتماعاتي وزياراتي</h2>
+    <button class="icon-btn" id="x">${I.close}</button></div></div>`);
+  const body=document.createElement('div');body.className='modal-body';
+  modal.appendChild(body);overlay.appendChild(modal);
+  const mine=(arr)=>arr.filter(a=>Array.isArray(a.persons)&&a.persons.some(x=>x.username===me));
+
+  function fill(){
+    const visits=mine(state.visits).sort((a,b)=>new Date(b.date)-new Date(a.date));
+    const meetings=mine(state.meetings).sort((a,b)=>new Date(b.date)-new Date(a.date));
+    body.innerHTML=`
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:14px">تظهر هنا الزيارات والاجتماعات التي شاركتَ فيها فقط، ويمكنك تعديلها أو تصحيح بياناتها.</div>
+      <h3 style="font-size:15px;color:var(--oasis-700);margin-bottom:10px">زياراتي (${visits.length})</h3>
+      ${visits.length? visits.map(v=>myActCard(v,'visit')).join('') : '<div style="color:var(--muted);font-size:13px;padding:6px 0 16px">لا توجد زيارات.</div>'}
+      <div class="divider"></div>
+      <h3 style="font-size:15px;color:var(--oasis-700);margin:10px 0">اجتماعاتي (${meetings.length})</h3>
+      ${meetings.length? meetings.map(m=>myActCard(m,'meeting')).join('') : '<div style="color:var(--muted);font-size:13px;padding:6px 0">لا توجد اجتماعات.</div>'}`;
+    body.querySelectorAll('[data-edit-act]').forEach(b=>{
+      b.onclick=()=>{ const kind=b.getAttribute('data-kind'); const id=b.getAttribute('data-edit-act'); openEditActivity(kind,id,fill); };
+    });
+  }
+  fill(); overlay._refresh=fill;
+  modal.querySelector('#x').onclick=()=>{myActsModalOpen=false;overlay.remove();};
+  overlay.onclick=(e)=>{if(e.target===overlay){myActsModalOpen=false;overlay.remove();}};
+  root.appendChild(overlay);
+}
+function refreshMyActsModal(){ const ov=document.getElementById('myActsOverlay'); if(ov&&ov._refresh) ov._refresh(); }
+/* بطاقة نشاط مع زر تعديل */
+function myActCard(a,kind){
+  const title = kind==='meeting' ? (a.title||'اجتماع') : (a.location||'زيارة موقع');
+  return `<div style="background:var(--sand-50);border:1px solid var(--line);border-radius:11px;padding:12px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:start;gap:10px">
+      <div style="flex:1">
+        <div style="font-weight:700;color:var(--ink)">${title}</div>
+        <div style="font-size:13px;color:var(--oasis-700);font-weight:600">${a.deptLabel||''} · ${a.date||'—'}</div>
+        ${a.purpose?`<div style="font-size:12.5px;color:var(--muted);margin-top:2px">الغرض: ${a.purpose}</div>`:''}
+        ${kind==='meeting'&&a.minutes?`<div style="font-size:12px;color:var(--ink);margin-top:4px;background:var(--sand-100);border-radius:8px;padding:7px 9px"><b>المحضر:</b> ${a.minutes}</div>`:''}
+      </div>
+      <button class="act act-edit" data-edit-act="${a.id}" data-kind="${kind}" title="تعديل">${I.edit}</button>
+    </div>
+  </div>`;
+}
+/* نموذج تعديل زيارة/اجتماع (للمشارك فيه) */
+function openEditActivity(kind, id, onDone){
+  const coll = kind==='meeting' ? state.meetings : state.visits;
+  const a = coll.find(x=>x.id===id); if(!a) return;
+  const overlay=$(`<div class="overlay" id="editActOverlay" style="z-index:60"></div>`);
+  const modal=$(`<div class="modal" style="max-width:480px"><div class="modal-head"><h2>تعديل ${kind==='meeting'?'اجتماع':'زيارة'}</h2>
+    <button class="icon-btn" id="x">${I.close}</button></div></div>`);
+  const form=document.createElement('form');form.className='modal-body';
+  modal.appendChild(form);overlay.appendChild(modal);
+  form.innerHTML=`
+    ${kind==='meeting'?`<div class="field"><label class="lbl-sm">اسم الاجتماع</label><input class="inp" name="title" value="${a.title||''}"></div>`:''}
+    <div class="field"><label class="lbl-sm">التاريخ</label><input class="inp" type="date" name="date" value="${a.date||''}"></div>
+    <div class="field"><label class="lbl-sm">${kind==='meeting'?'الموقع':'الموقع / الولاية'}</label><input class="inp" name="location" value="${a.location||''}"></div>
+    <div class="field"><label class="lbl-sm">الغرض</label><input class="inp" name="purpose" value="${a.purpose||''}"></div>
+    ${kind==='meeting'?`<div class="field"><label class="lbl-sm">محضر الاجتماع</label><textarea class="inp" name="minutes" rows="4" style="resize:vertical">${a.minutes||''}</textarea></div>`:''}
+    <div class="field"><label class="lbl-sm">ملاحظات</label><textarea class="inp" name="notes" rows="2" style="resize:none">${a.notes||''}</textarea></div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-ghost" id="cancel">إلغاء</button>
+      <button type="submit" class="btn btn-add">${I.save} حفظ التعديل</button>
+    </div>`;
+  form.onsubmit=async(e)=>{
+    e.preventDefault();
+    const fd=new FormData(form);
+    const upd={ date:fd.get('date'), location:(fd.get('location')||'').trim(),
+      purpose:(fd.get('purpose')||'').trim(), notes:(fd.get('notes')||'').trim() };
+    if(kind==='meeting'){ upd.title=(fd.get('title')||'').trim(); upd.minutes=(fd.get('minutes')||'').trim(); }
+    try{
+      const path = kind==='meeting' ? 'meetings' : 'visits';
+      await FB.updateDoc(FB.doc(db,'artifacts',APP_ID,'public','data',path,id), upd);
+      overlay.remove(); if(onDone) onDone();
+    }catch(err){ console.error(err); alert('تعذّر حفظ التعديل.'); }
+  };
+  modal.querySelector('#x').onclick=()=>overlay.remove();
+  form.querySelector('#cancel').onclick=()=>overlay.remove();
+  overlay.onclick=(e)=>{if(e.target===overlay)overlay.remove();};
+  root.appendChild(overlay);
 }
 
 /* ════════════ سلة المحذوفات (للمشرف) ════════════ */

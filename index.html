@@ -2037,7 +2037,9 @@ function openMessagesModal(){
   const body=document.createElement('div');body.className='modal-body';body.style.cssText='flex:1;display:flex;flex-direction:column;overflow:hidden';
   modal.appendChild(body);overlay.appendChild(modal);
 
+  let paintBubbles=null;   // دالة تحدّث الفقاعات فقط داخل المحادثة المفتوحة
   function fill(){
+    paintBubbles=null;
     body.innerHTML=`
       <div style="display:flex;gap:8px;margin-bottom:12px">
         <button class="btn ${msgView.tab==='dm'?'btn-add':'btn-ghost'}" id="tabDm" style="flex:1">محادثات خاصة</button>
@@ -2066,16 +2068,12 @@ function openMessagesModal(){
       return;
     }
     const peerU=state.users.find(u=>u.username===msgView.peer);
-    const thread=dmThread(msgView.peer);
-    markThreadRead(thread);
     pane.innerHTML=`
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
         <button class="btn btn-ghost" id="backPeers" style="padding:5px 10px">${I.chevronR||''} رجوع</button>
         <span style="font-weight:700;color:var(--oasis-700)">${peerU?peerU.name:'—'}</span>
       </div>
-      <div id="bubbleArea" style="flex:1;overflow-y:auto;background:var(--sand-50);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:8px">
-        ${thread.length?thread.map(m=>bubble(m,me)).join(''):'<div style="color:var(--muted);text-align:center;padding:30px">لا توجد رسائل بعد. ابدأ المحادثة.</div>'}
-      </div>
+      <div id="bubbleArea" style="flex:1;overflow-y:auto;background:var(--sand-50);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:8px"></div>
       ${msgComposer(true)}`;
     pane.querySelector('#backPeers').onclick=()=>{ msgView.peer=null; renderDmPane(pane); };
     wireComposer(pane, async(text, projectId)=>{
@@ -2083,7 +2081,15 @@ function openMessagesModal(){
       await sendMessage({kind:'dm', to:msgView.peer, toName:peerU?peerU.name:'',
         projectId:projectId||'', projectName:proj?proj.name:'', text});
     });
-    const ba=pane.querySelector('#bubbleArea'); if(ba) ba.scrollTop=ba.scrollHeight;
+    // تحديث الفقاعات فقط (لا يلمس صندوق الكتابة) — يُستدعى عند وصول رسائل جديدة
+    paintBubbles=()=>{
+      const ba=pane.querySelector('#bubbleArea'); if(!ba) return;
+      const thread=dmThread(msgView.peer);
+      ba.innerHTML = thread.length?thread.map(m=>bubble(m,me)).join(''):'<div style="color:var(--muted);text-align:center;padding:30px">لا توجد رسائل بعد. ابدأ المحادثة.</div>';
+      ba.scrollTop=ba.scrollHeight;
+      markThreadRead(thread);   // تعليم مقروء بعد العرض (دون إعادة رسم)
+    };
+    paintBubbles();
   }
 
   function renderProjPane(pane){
@@ -2102,30 +2108,38 @@ function openMessagesModal(){
       return;
     }
     const proj=state.projects.find(p=>p.id===msgView.projectId);
-    const thread=projectThread(msgView.projectId);
-    markThreadRead(thread);
     pane.innerHTML=`
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
         <button class="btn btn-ghost" id="backProjs" style="padding:5px 10px">${I.chevronR||''} رجوع</button>
         <span style="font-weight:700;color:var(--oasis-700)">${proj?proj.name:'—'}</span>
         <span style="font-size:11px;color:var(--muted)">نقاش يراه المعنيون بالمشروع</span>
       </div>
-      <div id="bubbleArea" style="flex:1;overflow-y:auto;background:var(--sand-50);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:8px">
-        ${thread.length?thread.map(m=>bubble(m,me,true)).join(''):'<div style="color:var(--muted);text-align:center;padding:30px">لا نقاش بعد. اكتب أول رسالة.</div>'}
-      </div>
+      <div id="bubbleArea" style="flex:1;overflow-y:auto;background:var(--sand-50);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:8px"></div>
       ${msgComposer(false)}`;
     pane.querySelector('#backProjs').onclick=()=>{ msgView.projectId=null; renderProjPane(pane); };
     wireComposer(pane, async(text)=>{
       await sendMessage({kind:'project', projectId:msgView.projectId, projectName:proj?proj.name:'', text});
     });
-    const ba=pane.querySelector('#bubbleArea'); if(ba) ba.scrollTop=ba.scrollHeight;
+    paintBubbles=()=>{
+      const ba=pane.querySelector('#bubbleArea'); if(!ba) return;
+      const thread=projectThread(msgView.projectId);
+      ba.innerHTML = thread.length?thread.map(m=>bubble(m,me,true)).join(''):'<div style="color:var(--muted);text-align:center;padding:30px">لا نقاش بعد. اكتب أول رسالة.</div>';
+      ba.scrollTop=ba.scrollHeight;
+      markThreadRead(thread);
+    };
+    paintBubbles();
   }
 
   fill(); overlay._refresh=()=>{
-    // أعد رسم اللوحة الحالية مع الحفاظ على الموضع
-    if(msgView.tab==='dm') renderDmPane(body.querySelector('#msgPane')||body);
-    else renderProjPane(body.querySelector('#msgPane')||body);
     updateMsgBell();
+    const inThread = (msgView.tab==='dm' && msgView.peer) || (msgView.tab==='project' && msgView.projectId);
+    if(inThread && paintBubbles){
+      paintBubbles();   // داخل محادثة: حدّث الفقاعات فقط (لا تلمس صندوق الكتابة)
+    }else{
+      // في قائمة الاختيار: أعد رسم القائمة لتحديث العدّادات
+      const pane=body.querySelector('#msgPane');
+      if(pane){ if(msgView.tab==='dm') renderDmPane(pane); else renderProjPane(pane); }
+    }
   };
   modal.querySelector('#x').onclick=()=>{msgModalOpen=false;overlay.remove();};
   overlay.onclick=(e)=>{if(e.target===overlay){msgModalOpen=false;overlay.remove();}};

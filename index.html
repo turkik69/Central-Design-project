@@ -666,15 +666,22 @@ async function clearAll(){
 async function saveProject(data,editingId,prev){
   const nowISO=new Date().toISOString();
   const todayStr=new Date().toISOString().slice(0,10);   // YYYY-MM-DD
-  // سجّل تاريخ التسليم الفعلي لكل قسم بناءً على لحظة اكتماله هو فقط (مستقل تماماً عن باقي الأقسام)
+  // سجّل تاريخ التسليم الفعلي لكل قسم: يُثبَّت عند أول اكتمال ولا يتغيّر بتعديل الاسم أو الملاحظات
   for(const key of ['architectural','structural','services']){
     if(!data[key]) continue;
     const nowSt=data[key].status;
-    const incoming = data[key].actualDate || '';                 // قيمة قادمة (تعديل يدوي من المخوّل أو أصل محفوظ)
     const prevActual = prev && prev[key] ? (prev[key].actualDate||'') : '';
+    const prevSt = prev && prev[key] ? (prev[key].status||'') : '';
+    const incoming = data[key].actualDate || '';   // قيمة الحقل القادمة (للمخوّل بتعديل التواريخ فقط)
     if(nowSt==='مكتمل'){
-      // الأولوية: تعديل يدوي قادم ← ثم الأصل المحفوظ ← ثم تاريخ اليوم (لحظة اكتمال هذا القسم)
-      data[key].actualDate = incoming || prevActual || todayStr;
+      if(prevActual){
+        // كان مكتملاً سابقاً وله تاريخ فعلي محفوظ ⇒ احتفظ به كما هو،
+        // إلا إذا غيّره المخوّل يدوياً عمداً إلى قيمة مختلفة وصحيحة
+        data[key].actualDate = (incoming && incoming!==prevActual) ? incoming : prevActual;
+      }else{
+        // أول مرة يكتمل فيها هذا القسم ⇒ ثبّت تاريخ اليوم (أو ما أدخله المخوّل)
+        data[key].actualDate = incoming || todayStr;
+      }
     }else{
       data[key].actualDate = '';   // غير مكتمل ⇒ لا تاريخ فعلي
     }

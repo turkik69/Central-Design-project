@@ -651,6 +651,122 @@ function handleExcelImport(file){
   };
   reader.readAsBinaryString(file);
 }
+/* ════════════ استيراد المشاريع (للمشرف) ════════════ */
+/* أعمدة النمطين */
+const IMPORT_FULL_COLS=['اسم المشروع','رقم المشروع','النوع','الجهة الطالبة','المساحة','التكلفة','تاريخ الاستلام','تاريخ التسليم المتوقع','المهندس المعماري (رقم وظيفي أو اسم)','المهندس الإنشائي (رقم وظيفي أو اسم)','مهندس الخدمات (رقم وظيفي أو اسم)'];
+const IMPORT_SIMPLE_COLS=['اسم المشروع','رقم المشروع','الجهة الطالبة','تاريخ الاستلام','تاريخ التسليم المتوقع'];
+/* يبني كائن مهندس من قيمة (رقم وظيفي أو اسم) ضمن قسم محدّد */
+function resolveEngineer(val, deptKey){
+  const v=String(val||'').trim(); if(!v) return {engineers:[],engineer:'',engineerUsername:''};
+  // مطابقة بالرقم الوظيفي أولاً، ثم بالاسم ضمن نفس القسم
+  let u=state.users.find(x=>x.username===v && x.dept===deptKey)
+      || state.users.find(x=>x.username===v)
+      || state.users.find(x=>(x.name||'')===v && x.dept===deptKey)
+      || state.users.find(x=>(x.name||'')===v);
+  if(u) return {engineers:[{username:u.username,name:u.name}], engineer:u.name, engineerUsername:u.username};
+  // لم يُربط ⇒ نص حر
+  return {engineers:[], engineer:v, engineerUsername:''};
+}
+function downloadImportTemplate(mode){
+  if(!window.XLSX){ alert('تعذّر تحميل أداة Excel.'); return; }
+  const cols = mode==='full'?IMPORT_FULL_COLS:IMPORT_SIMPLE_COLS;
+  const sample = mode==='full'
+    ? ['مثال: تطوير حديقة','2026-101','حديقة','بلدية مسقط','1200','—','2026-06-01','2026-08-01','1001','1015','1032']
+    : ['مثال: تطوير حديقة','2026-101','بلدية مسقط','2026-06-01','2026-08-01'];
+  const ws=window.XLSX.utils.aoa_to_sheet([cols, sample]);
+  ws['!cols']=cols.map(()=>({wch:22})); ws['!views']=[{RTL:true}];
+  const wb=window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(wb,ws,'المشاريع');
+  window.XLSX.writeFile(wb,`نموذج_استيراد_${mode==='full'?'كامل':'مبسط'}.xlsx`);
+}
+function importProjectsFromFile(file, mode){
+  if(!file||!CONFIGURED) return;
+  state.loading=true;render();
+  const reader=new FileReader();
+  reader.onload=async(evt)=>{
+    try{
+      const wb=window.XLSX.read(evt.target.result,{type:'binary'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=window.XLSX.utils.sheet_to_json(ws,{header:1,raw:false});
+      const now=new Date().toLocaleString('ar-OM'); const nowISO=new Date().toISOString();
+      const out=[];
+      const fmtDateCell=(v)=>{ const s=String(v||'').trim(); if(!s||s==='—') return '';
+        // يقبل YYYY-MM-DD مباشرة
+        if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+        const d=new Date(s); return isNaN(d)?'':d.toISOString().slice(0,10); };
+      for(let i=1;i<rows.length;i++){   // تخطّي صف العناوين
+        const r=rows[i]; if(!r||!r.length) continue;
+        const name=String(r[0]||'').trim();
+        if(!name || name.startsWith('مثال:')) continue;
+        let p;
+        if(mode==='full'){
+          p={ name, projectNo:String(r[1]||'').trim(), type:String(r[2]||'').trim()||'أخرى', customType:'',
+            requestingEntity:String(r[3]||'').trim()||'غير محدد', area:String(r[4]||'').trim(), cost:String(r[5]||'').trim(),
+            startDate:fmtDateCell(r[6]), endDate:fmtDateCell(r[7]), overallStatus:'قيد التصميم',
+            architectural:{...resolveEngineer(r[8],'architectural'),status:'قيد الانتظار',notes:'',startDate:fmtDateCell(r[6]),endDate:fmtDateCell(r[7]),actualDate:''},
+            structural:{...resolveEngineer(r[9],'structural'),status:'قيد الانتظار',notes:'',startDate:fmtDateCell(r[6]),endDate:fmtDateCell(r[7]),actualDate:''},
+            services:{...resolveEngineer(r[10],'services'),status:'قيد الانتظار',notes:'',startDate:fmtDateCell(r[6]),endDate:fmtDateCell(r[7]),actualDate:''} };
+        }else{
+          const sd=fmtDateCell(r[3]), ed=fmtDateCell(r[4]);
+          p={ name, projectNo:String(r[1]||'').trim(), type:'أخرى', customType:'',
+            requestingEntity:String(r[2]||'').trim()||'غير محدد', area:'', cost:'',
+            startDate:sd, endDate:ed, overallStatus:'قيد التصميم',
+            architectural:{engineers:[],engineer:'',engineerUsername:'',status:'قيد الانتظار',notes:'',startDate:sd,endDate:ed,actualDate:''},
+            structural:{engineers:[],engineer:'',engineerUsername:'',status:'قيد الانتظار',notes:'',startDate:sd,endDate:ed,actualDate:''},
+            services:{engineers:[],engineer:'',engineerUsername:'',status:'قيد الانتظار',notes:'',startDate:sd,endDate:ed,actualDate:''} };
+        }
+        p.lastUpdatedBy=state.appUser.name; p.lastUpdatedAt=now; p.createdAt=nowISO; p.updatedAtTS=nowISO;
+        out.push(p);
+      }
+      if(!out.length){ state.loading=false;render(); alert('لم يُعثر على مشاريع صالحة في الملف.'); return; }
+      for(const p of out) await FB.addDoc(colRef(),p);
+      state.loading=false;render();
+      alert(`تم استيراد ${out.length} مشروع بنجاح.`);
+    }catch(e){ console.error(e); state.loading=false;render(); alert('تعذّرت قراءة الملف. تأكد من مطابقته للنموذج.'); }
+  };
+  reader.readAsBinaryString(file);
+}
+function openImportModal(){
+  if(document.getElementById('importOverlay')) return;
+  const overlay=$(`<div class="overlay" id="importOverlay"></div>`);
+  const modal=$(`<div class="modal" style="max-width:540px"><div class="modal-head"><h2>استيراد المشاريع</h2>
+    <button class="icon-btn" id="x">${I.close}</button></div></div>`);
+  const body=document.createElement('div');body.className='modal-body';
+  modal.appendChild(body);overlay.appendChild(modal);
+  body.innerHTML=`
+    <p style="font-size:13px;color:var(--muted);line-height:1.8;margin-bottom:14px">
+      اختر نمط الاستيراد، نزّل النموذج، عبّئه ثم ارفعه. لربط المهندسين بدقة استخدم <b>الرقم الوظيفي</b> (ويمكن كتابة الاسم بدل الرقم).</p>
+
+    <div style="background:var(--sand-50);border:1px solid var(--line);border-radius:13px;padding:14px;margin-bottom:12px">
+      <div style="font-weight:700;color:var(--oasis-700);margin-bottom:4px">① استيراد كامل التفاصيل</div>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">الاسم، الرقم، النوع، الجهة، المساحة، التكلفة، التواريخ، ومهندسو الأقسام الثلاثة.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-ghost" id="tplFull">${I.report} تنزيل النموذج الكامل</button>
+        <button class="btn btn-add" id="impFull">${I.upload} رفع وملف كامل</button>
+      </div>
+    </div>
+
+    <div style="background:var(--sand-50);border:1px solid var(--line);border-radius:13px;padding:14px">
+      <div style="font-weight:700;color:var(--oasis-700);margin-bottom:4px">② استيراد مبسّط</div>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">أسماء المشاريع وأرقامها والجهة وتاريخا الاستلام والتسليم فقط.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-ghost" id="tplSimple">${I.report} تنزيل النموذج المبسّط</button>
+        <button class="btn btn-add" id="impSimple">${I.upload} رفع ملف مبسّط</button>
+      </div>
+    </div>
+    <input type="file" id="impFile" accept=".xlsx,.xls" class="hidden">`;
+  let pendingMode='full';
+  const fileInp=body.querySelector('#impFile');
+  body.querySelector('#tplFull').onclick=()=>downloadImportTemplate('full');
+  body.querySelector('#tplSimple').onclick=()=>downloadImportTemplate('simple');
+  body.querySelector('#impFull').onclick=()=>{ pendingMode='full'; fileInp.click(); };
+  body.querySelector('#impSimple').onclick=()=>{ pendingMode='simple'; fileInp.click(); };
+  fileInp.onchange=(e)=>{ const f=e.target.files[0]; e.target.value=''; if(f){ overlay.remove(); importProjectsFromFile(f, pendingMode); } };
+  modal.querySelector('#x').onclick=()=>overlay.remove();
+  overlay.onclick=(e)=>{if(e.target===overlay)overlay.remove();};
+  root.appendChild(overlay);
+}
+
 async function clearAll(){
   if(!confirm("تحذير: سيتم مسح كل المشاريع نهائياً ولا يمكن التراجع. متابعة؟")) return;
   state.loading=true;render();
@@ -927,7 +1043,7 @@ function renderApp(){
     </div></div>`);
   if(u.role==='admin'){
     const xl=toolbar.querySelector('#xlFile');
-    toolbar.querySelector('#btnXl').onclick=()=>xl.click();
+    toolbar.querySelector('#btnXl').onclick=()=>openImportModal();
     xl.onchange=(e)=>{handleExcelImport(e.target.files[0]); e.target.value='';};
     toolbar.querySelector('#btnClear').onclick=clearAll;
     toolbar.querySelector('#btnLists').onclick=openListsModal;
@@ -2547,6 +2663,101 @@ const DEPT_MAP=[['architectural','القسم المعماري','arch'],['structu
 const MONTH_NAMES=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 /* يستخرج YYYY-MM من تاريخ تسليم القسم */
 function ym(dateStr){ return (dateStr && dateStr.length>=7) ? dateStr.slice(0,7) : null; }
+/* تسمية الشهر من YYYY-MM (نسخة مستقلة للمصدّرات) */
+function monthLabelStd(m){
+  if(!m) return ''; const [y,mo]=m.split('-'); return `${MONTH_NAMES[Number(mo)-1]||''} ${y}`;
+}
+/* يبني محتوى HTML للتقرير حسب النوع والشهر (يُستخدم لـ PDF و Word) */
+function buildReportHTML(selType, selMonth){
+  const label=monthLabelStd(selMonth);
+  const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  let out='';
+  // جدول المشاريع
+  if(selType==='projects' || selType==='all'){
+    const doneRows=[], wipRows=[];
+    DEPT_MAP.forEach(([key,label])=>{
+      state.projects.filter(p=>ym(p[key]?.endDate)===selMonth && p[key]?.status==='مكتمل')
+        .forEach(p=>doneRows.push([label,p.name||'',p.projectNo||'',p[key]?.engineer||'',p.requestingEntity||'',p[key]?.startDate||'',p[key]?.endDate||'',p[key]?.actualDate||'']));
+      state.projects.filter(p=>p[key]?.status==='قيد العمل')
+        .forEach(p=>wipRows.push([label,p.name||'',p.projectNo||'',p[key]?.engineer||'',p.requestingEntity||'',p[key]?.startDate||'',p[key]?.endDate||'','—']));
+    });
+    const head=['القسم','المشروع','الرقم','المهندس','الجهة','الاستلام','المتوقع','الفعلي'];
+    const tbl=(rows)=> rows.length? `<table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<p class="empty">لا توجد بيانات.</p>';
+    out+=`<h2>تقرير المشاريع — ${esc(label)}</h2>
+      <h3>الأعمال المنجزة هذا الشهر (${doneRows.length})</h3>${tbl(doneRows)}
+      <h3>المشاريع قيد العمل حالياً (${wipRows.length})</h3>${tbl(wipRows)}`;
+  }
+  // الاجتماعات
+  if(selType==='meetings' || selType==='all'){
+    const list=state.meetings.filter(m=>ym(m.date)===selMonth).sort((a,b)=>new Date(a.date)-new Date(b.date));
+    const head=['الاسم','القسم','الأشخاص','التاريخ','الموقع','الغرض','المحضر'];
+    const tbl=list.length? `<table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${list.map(m=>`<tr>${[m.title,m.deptLabel,m.personNames,m.date,m.location,m.purpose,m.minutes].map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`:'<p class="empty">لا توجد اجتماعات.</p>';
+    out+=`<h2>تقرير الاجتماعات — ${esc(label)}</h2>${tbl}`;
+  }
+  // الزيارات
+  if(selType==='visits' || selType==='all'){
+    const list=state.visits.filter(v=>ym(v.date)===selMonth).sort((a,b)=>new Date(a.date)-new Date(b.date));
+    const head=['الموقع/الولاية','القسم','الأشخاص','التاريخ','الغرض','ملاحظات'];
+    const tbl=list.length? `<table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${list.map(v=>`<tr>${[v.location,v.deptLabel,v.personNames,v.date,v.purpose,v.notes].map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`:'<p class="empty">لا توجد زيارات.</p>';
+    out+=`<h2>تقرير الزيارات الميدانية — ${esc(label)}</h2>${tbl}`;
+  }
+  return out;
+}
+/* أنماط مشتركة لمستندات التقارير */
+function reportDocStyles(){
+  return `body{font-family:'Tajawal',Arial,sans-serif;color:#16201e;margin:0;padding:0 0 80px}
+    .hd{background:#16443a;color:#fff;padding:18px 22px;border-radius:10px;margin:0 0 18px;display:flex;justify-content:space-between;align-items:center}
+    .hd h1{margin:0;font-size:18px} .hd .sub{font-size:12px;color:#bfe9de}
+    h2{color:#16443a;border-bottom:2px solid #c9a24b;padding-bottom:5px;margin:22px 0 12px;font-size:17px}
+    h3{color:#1f5d4c;font-size:14px;margin:14px 0 8px}
+    table{width:100%;border-collapse:collapse;margin-bottom:8px;font-size:12px}
+    th{background:#1f5d4c;color:#fff;padding:7px 6px;border:1px solid #cfd8d4;text-align:center}
+    td{padding:6px;border:1px solid #d9e2de;text-align:center}
+    tr:nth-child(even) td{background:#f5f7f5}
+    .empty{color:#888;font-size:12.5px;padding:6px 0}`;
+}
+/* تصدير التقرير PDF عبر نافذة طباعة فيها زرّا طباعة ورجوع */
+function exportReportPdf(selType, selMonth){
+  const content=buildReportHTML(selType, selMonth);
+  const today=new Date();
+  const dStr=`${String(today.getDate()).padStart(2,'0')}/${String(today.getMonth()+1).padStart(2,'0')}/${today.getFullYear()}`;
+  const win=window.open('','_blank');
+  if(!win){ alert('فضلاً اسمح بالنوافذ المنبثقة لتصدير PDF.'); return; }
+  win.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>التقرير الشهري</title>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>@page{size:A4;margin:12mm}${reportDocStyles()}
+      .toolbar{position:fixed;top:0;left:0;right:0;background:#16443a;display:flex;gap:10px;justify-content:center;padding:11px;z-index:99}
+      .toolbar button{font-family:'Tajawal';font-size:14px;font-weight:700;border:none;border-radius:9px;padding:9px 18px;cursor:pointer}
+      .b-print{background:#fff;color:#16443a}.b-back{background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.6)}
+      .spacer{height:60px}@media print{.toolbar,.spacer{display:none!important}body{padding:0}}
+    </style></head><body>
+    <div class="toolbar"><button class="b-print" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+      <button class="b-back" onclick="window.close()">رجوع للبرنامج ✕</button></div>
+    <div class="spacer"></div>
+    <div style="padding:0 14px"><div class="hd"><div><h1>التقرير الشهري</h1>
+      <div class="sub">نظام مشاريع التصميم المركزي — بلدية مسقط</div></div>
+      <div class="sub">تاريخ التصدير: ${dStr}</div></div>${content}</div>
+    </body></html>`);
+  win.document.close(); win.focus();
+}
+/* تصدير التقرير Word (.doc) — Word يفتح HTML بامتداد doc مع دعم RTL */
+function exportReportWord(selType, selMonth){
+  const content=buildReportHTML(selType, selMonth);
+  const today=new Date();
+  const dStr=`${String(today.getDate()).padStart(2,'0')}/${String(today.getMonth()+1).padStart(2,'0')}/${today.getFullYear()}`;
+  const label=monthLabelStd(selMonth);
+  const html=`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
+    <style>${reportDocStyles()}</style></head><body>
+    <div class="hd"><div><h1>التقرير الشهري — ${label}</h1>
+      <div class="sub">نظام مشاريع التصميم المركزي — بلدية مسقط</div></div>
+      <div class="sub">تاريخ التصدير: ${dStr}</div></div>${content}</body></html>`;
+  const blob=new Blob(['\ufeff'+html],{type:'application/msword'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`التقرير_الشهري_${label.replace(/ /g,'_')}.doc`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
 
 /* تقرير الاجتماعات لشهر (عرض داخل النافذة) */
 function renderMeetingsReport(list, label){
@@ -2621,7 +2832,11 @@ function openReportsModal(){
         </select>
         <label class="lbl-sm" style="margin:0">الشهر:</label>
         <select class="inp" id="repMonth" style="width:auto;min-width:150px">${monthOpts}</select>
-        ${canExport?`<button class="btn btn-add" id="repExport" style="padding:8px 14px;margin-right:auto">${I.upload} تصدير Excel</button>`:''}
+        ${canExport?`<span style="display:flex;gap:6px;margin-right:auto">
+          <button class="btn btn-add" id="repExport" style="padding:8px 12px">${I.upload} Excel</button>
+          <button class="btn btn-ghost" id="repPdf" style="padding:8px 12px">${I.report} PDF</button>
+          <button class="btn btn-ghost" id="repWord" style="padding:8px 12px">${I.report} Word</button>
+        </span>`:''}
       </div>`;
 
     if(!months.length && selType==='projects'){
@@ -2719,6 +2934,10 @@ function openReportsModal(){
     if(ts) ts.onchange=()=>{ selType=ts.value; fill(); };
     const exp=body.querySelector('#repExport');
     if(exp) exp.onclick=()=>{ if(overlay._exportExcel) overlay._exportExcel(); };
+    const pdfB=body.querySelector('#repPdf');
+    if(pdfB) pdfB.onclick=()=>exportReportPdf(selType, selMonth);
+    const wordB=body.querySelector('#repWord');
+    if(wordB) wordB.onclick=()=>exportReportWord(selType, selMonth);
   }
   fill();
   overlay._refresh=fill;

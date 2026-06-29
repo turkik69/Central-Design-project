@@ -564,6 +564,7 @@ function applyFilter(){
   const s=state.search.trim().toLowerCase();
   state.filtered = !s ? state.projects : state.projects.filter(p=>
     (p.name||'').toLowerCase().includes(s) ||
+    (p.projectNo||'').toLowerCase().includes(s) ||
     (p.requestingEntity||'').toLowerCase().includes(s) ||
     (p.type||'').toLowerCase().includes(s));
 }
@@ -851,7 +852,7 @@ function renderApp(){
   const header=$(`<header class="topbar"><div class="topbar-inner">
     <div class="brand"><div class="brand-crest"><img src="${LOGO_WHITE}" alt="بلدية مسقط"></div>
       <div><h1>التصميم المركزي</h1><div class="crumb">بلدية مسقط · الشؤون الفنية</div></div></div>
-    <div class="search">${I.search}<input type="text" placeholder="ابحث عن مشروع أو جهة طالبة…" value="${state.search}"></div>
+    <div class="search">${I.search}<input type="text" placeholder="ابحث باسم المشروع أو رقمه أو الجهة…" value="${state.search}"></div>
     <div class="user-box">
       <div class="user-meta"><div class="nm">${u.name}</div><div class="rl">${u.role==='admin'?'مشرف عام':(u.jobTitle||'مهندس مصمم')}</div></div>
       <div class="avatar">${u.profilePic?`<img src="${u.profilePic}">`:I.user}</div>
@@ -1062,6 +1063,7 @@ function renderCard(p){
         <span class="pill" style="color:${sc};background:${sbg};border-color:${sc}33">${p.overallStatus||'قيد التصميم'}</span>
       </div>
       <h3>${p.name||''}</h3>
+      ${p.projectNo?`<div style="font-size:11.5px;color:var(--muted);margin-top:2px">رقم المشروع: <b style="color:var(--oasis-700)">${p.projectNo}</b></div>`:''}
       <div class="entity">${I.pin} ${p.requestingEntity||'—'}</div>
     </div>
     <div class="card-body">
@@ -1072,6 +1074,7 @@ function renderCard(p){
         <div><span class="k">${I.cal} التسليم:</span> <span class="v">${p.endDate||'—'}</span></div>
       </div>
       ${secRow('المعماري',p.architectural)}
+      ${(p.overallStatus==='فكرة مبدئية' && Array.isArray(p.ideaStages) && p.ideaStages.length)?`<div style="font-size:12px;color:var(--oasis-700);background:var(--oasis-50);border-radius:8px;padding:6px 10px;margin-top:6px">مراحل الفكرة: <b>${p.ideaStages.length}</b> · آخر مرحلة: ${p.ideaStages[p.ideaStages.length-1].date||''}</div>`:''}
       ${p.overallStatus==='فكرة مبدئية' ? '' : secRow('الإنشائي',p.structural)}
       ${p.overallStatus==='فكرة مبدئية' ? '' : secRow('الخدمات',p.services)}
     </div>
@@ -1119,6 +1122,7 @@ function openProjectModal(project){
   form.innerHTML=`
     <div class="form-grid">
       <div><label class="lbl-sm">اسم المشروع</label><input class="inp" name="name" required value="${data.name}" ${GDIS}></div>
+      <div><label class="lbl-sm">رقم المشروع (اختياري)</label><input class="inp" name="projectNo" value="${data.projectNo||''}" placeholder="مثال: 2026-104" ${GDIS}></div>
       <div><label class="lbl-sm">الجهة الطالبة</label><select class="inp" name="requestingEntity" ${GDIS}>${opt(opts('entity'),data.requestingEntity)}</select></div>
       <div><label class="lbl-sm">الوضع العام</label><select class="inp" name="overallStatus" style="font-weight:700" ${GDIS}>
         ${opt(['قيد التصميم','فكرة مبدئية','خرائط تفصيلية','رأي فني','مكتمل','متوقف الى اشعار اخر','الغي المشروع'],data.overallStatus)}</select></div>
@@ -1137,6 +1141,7 @@ function openProjectModal(project){
         ${deptCard('قسم الخدمات','services',data.services)}
       </div>
     </div>
+    <div id="ideaStagesBox"></div>
     <div class="modal-foot">
       <button type="button" class="btn btn-ghost" id="cancel">${isObserver()?'إغلاق':'إلغاء'}</button>
       ${isObserver()?'':`<button type="submit" class="btn btn-add">${I.save} حفظ التغييرات</button>`}
@@ -1145,11 +1150,54 @@ function openProjectModal(project){
   form.querySelector('[name=type]').onchange=(e)=>{
     form.querySelector('#ct').classList.toggle('hidden',e.target.value!=='أخرى');
   };
+  // ── مراحل الفكرة (تظهر فقط عند «فكرة مبدئية») ──
+  let ideaStages = Array.isArray(data.ideaStages) ? data.ideaStages.map(s=>({...s})) : [];
+  const stagesBox=form.querySelector('#ideaStagesBox');
+  const canEditIdea = !isObserver();
+  function renderStages(){
+    if(overallSel.value!=='فكرة مبدئية'){ stagesBox.innerHTML=''; return; }
+    const nextNum=ideaStages.length+1;
+    stagesBox.innerHTML=`
+      <div class="divider"></div>
+      <div style="background:var(--sand-50);border:1px solid var(--line);border-radius:14px;padding:16px">
+        <h4 style="margin:0 0 10px;color:var(--oasis-700);font-size:15px">مراحل الفكرة</h4>
+        ${ideaStages.length? ideaStages.map((s,i)=>`
+          <div style="background:#fff;border:1px solid var(--line);border-radius:11px;padding:12px;margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+              <span style="font-weight:700;color:var(--oasis-700)">المرحلة ${s.stage||(i+1)}</span>
+              <span style="display:flex;align-items:center;gap:8px"><span style="font-size:11.5px;color:var(--muted)">${s.date||''}</span>
+              ${canEditIdea?`<button type="button" class="act act-del" data-rmstage="${i}" title="حذف">${I.trash}</button>`:''}</span>
+            </div>
+            ${s.notes?`<div style="font-size:13px;color:var(--ink);margin-top:6px;line-height:1.7">${s.notes}</div>`:''}
+            ${s.by?`<div style="font-size:10.5px;color:var(--muted);margin-top:4px">سجّلها: ${s.by}</div>`:''}
+          </div>`).join('') : '<div style="font-size:12.5px;color:var(--muted);padding:4px 0 10px">لا توجد مراحل بعد. أضِف المرحلة الأولى للفكرة.</div>'}
+        ${canEditIdea?`
+          <div style="border-top:1px dashed var(--line);padding-top:12px;margin-top:6px">
+            <label class="lbl-sm">إضافة المرحلة ${nextNum}</label>
+            <textarea class="inp" id="newStageNotes" rows="3" placeholder="ملاحظات المرحلة ${nextNum} (ما الذي عُدّل أو أُضيف في هذه المرحلة)…" style="resize:vertical"></textarea>
+            <button type="button" class="btn btn-ghost" id="addStageBtn" style="margin-top:8px">${I.plus} إضافة المرحلة ${nextNum}</button>
+          </div>`:''}
+      </div>`;
+    // ربط الأزرار
+    const addBtn=stagesBox.querySelector('#addStageBtn');
+    if(addBtn) addBtn.onclick=()=>{
+      const notes=(stagesBox.querySelector('#newStageNotes').value||'').trim();
+      if(!notes){ alert('اكتب ملاحظات المرحلة.'); return; }
+      const today=new Date().toISOString().slice(0,10);
+      ideaStages.push({stage:ideaStages.length+1, notes, date:today, by:state.appUser?.name||'—'});
+      renderStages();
+    };
+    stagesBox.querySelectorAll('[data-rmstage]').forEach(b=>{
+      b.onclick=()=>{ const i=Number(b.getAttribute('data-rmstage')); ideaStages.splice(i,1);
+        ideaStages.forEach((s,idx)=>s.stage=idx+1); renderStages(); };
+    });
+  }
   // عند «فكرة مبدئية» يبقى القسم المعماري فقط (عمل مقتصر عليه)
   const overallSel=form.querySelector('[name=overallStatus]');
   const otherDepts=form.querySelector('#otherDepts');
   const applyIdeaMode=()=>{
     if(otherDepts) otherDepts.style.display = (overallSel.value==='فكرة مبدئية') ? 'none' : 'contents';
+    renderStages();
   };
   if(overallSel){ overallSel.onchange=applyIdeaMode; applyIdeaMode(); }
   form.onsubmit=async(e)=>{
@@ -1211,7 +1259,8 @@ function openProjectModal(project){
         actualDate:actualVal(pf,key), eval:buildEval(pf,key)};
     };
     const payload={
-      name:get('name'),type:get('type'),customType:get('customType'),
+      name:get('name'),projectNo:get('projectNo'),type:get('type'),customType:get('customType'),
+      ideaStages:ideaStages,
       requestingEntity:get('requestingEntity'),overallStatus:get('overallStatus'),
       area:get('area'),cost:get('cost'),startDate:get('startDate'),endDate:get('endDate'),
       architectural:sectionData('arch','architectural',archEng),

@@ -742,40 +742,53 @@ function offerCompletionEmail(deptKey, payload, head){
   overlay.onclick=(e)=>{if(e.target===overlay)overlay.remove();};
   root.appendChild(overlay);
 }
-async function deleteProject(id){
-  // ينقل المشروع إلى سلة المحذوفات بدل الحذف النهائي
-  try{
-    const p=state.projects.find(x=>x.id===id);
-    if(p){
-      const {id:_omit,...rest}=p;
-      await FB.setDoc(FB.doc(db,'artifacts',APP_ID,'public','data','trash',id),
-        {...rest, deletedAt:new Date().toISOString(), deletedBy:state.appUser?.name||'—'});
-    }
-    await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','projects',id));
-  }catch(e){ console.error('حذف المشروع:',e); alert('تعذّر الحذف.'); }
-}
 const trashRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','trash');
 const visitsRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','visits');
 const meetingsRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','meetings');
-async function restoreFromTrash(id){
+const KIND_COLL={project:'projects', visit:'visits', meeting:'meetings'};
+const KIND_AR={project:'مشروع', visit:'زيارة', meeting:'اجتماع'};
+/* حذف عام: ينقل أي عنصر (مشروع/زيارة/اجتماع) إلى السلة مع نوعه ومن حذفه */
+async function softDelete(kind, id){
   try{
-    const t=state.trash.find(x=>x.id===id); if(!t) return;
-    const {id:_o, deletedAt, deletedBy, ...rest}=t;
-    await FB.setDoc(FB.doc(db,'artifacts',APP_ID,'public','data','projects',id),rest);
-    await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','trash',id));
+    const src = kind==='project'?state.projects : kind==='visit'?state.visits : state.meetings;
+    const item=src.find(x=>x.id===id);
+    if(item){
+      const {id:_omit,...rest}=item;
+      await FB.setDoc(FB.doc(db,'artifacts',APP_ID,'public','data','trash',`${kind}_${id}`),
+        {...rest, _kind:kind, _origId:id, deletedAt:new Date().toISOString(),
+         deletedBy:state.appUser?.name||'—', deletedByUser:state.appUser?.username||'', deletedByAdmin:state.appUser?.role==='admin'});
+    }
+    await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data',KIND_COLL[kind],id));
+  }catch(e){ console.error('حذف:',e); alert('تعذّر الحذف.'); }
+}
+async function deleteProject(id){ return softDelete('project', id); }
+async function restoreFromTrash(trashId){
+  try{
+    const t=state.trash.find(x=>x.id===trashId); if(!t) return;
+    const {id:_o,_kind,_origId,deletedAt,deletedBy,deletedByUser,deletedByAdmin,...rest}=t;
+    const coll=KIND_COLL[_kind]||'projects';
+    await FB.setDoc(FB.doc(db,'artifacts',APP_ID,'public','data',coll,_origId),rest);
+    await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','trash',trashId));
   }catch(e){ console.error('استرجاع:',e); alert('تعذّر الاسترجاع.'); }
 }
-async function deleteFromTrash(id){
-  try{ await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','trash',id)); }
+async function deleteFromTrash(trashId){
+  try{ await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','trash',trashId)); }
   catch(e){ console.error(e); alert('تعذّر الحذف النهائي.'); }
 }
 async function emptyTrash(){
   try{
-    const snap=await FB.getDocs(trashRef());
+    // المشرف يفرّغ الكل؛ غيره يفرّغ محذوفاته فقط
+    const mine = myTrash();
     const batch=FB.writeBatch(db);
-    snap.forEach(d=>batch.delete(d.ref));
+    mine.forEach(t=>batch.delete(FB.doc(db,'artifacts',APP_ID,'public','data','trash',t.id)));
     await batch.commit();
   }catch(e){ console.error(e); alert('تعذّر تفريغ السلة.'); }
+}
+/* محذوفات المستخدم الحالي: المشرف يرى الكل، وغيره يرى ما حذفه هو */
+function myTrash(){
+  const u=state.appUser; if(!u) return [];
+  if(u.role==='admin') return state.trash;
+  return state.trash.filter(t=>t.deletedByUser===u.username);
 }
 
 /* ════════════ أيقونات SVG ════════════ */
@@ -903,6 +916,7 @@ function renderApp(){
       ${isObserver()?'':`<button class="btn btn-add" id="btnAdd">${I.plus}<span class="lbl">إضافة مشروع</span></button>`}
       ${isObserver()?'':`<button class="btn btn-add" id="btnVisit" style="background:var(--clay,#8a6d2f)">${I.pin}<span class="lbl">زيارة موقع</span></button>`}
       ${isObserver()?'':`<button class="btn btn-add" id="btnMeeting" style="background:#3b6ea5">${I.users}<span class="lbl">اجتماع</span></button>`}
+      ${u.role!=='admin'?`<button class="btn btn-ghost" id="btnTrashUser">${I.trashbin}<span class="lbl">سلة المحذوفات</span></button>`:''}
     </div></div>`);
   if(u.role==='admin'){
     const xl=toolbar.querySelector('#xlFile');
@@ -924,6 +938,7 @@ function renderApp(){
   if(canViewReports()){
     const eb=toolbar.querySelector('#btnEngSearch'); if(eb) eb.onclick=openEngineerSearch;
   }
+  { const tb=toolbar.querySelector('#btnTrashUser'); if(tb) tb.onclick=openTrashModal; }
   { const ab=toolbar.querySelector('#btnAdd'); if(ab) ab.onclick=()=>openProjectModal(null); }
   { const mn=toolbar.querySelector('#btnMine'); if(mn) mn.onclick=()=>{ myProjectsView=!myProjectsView; doneView=false; updateGrid(); }; }
   { const ma=toolbar.querySelector('#btnMyActs'); if(ma) ma.onclick=()=>openMyActivitiesModal(); }
@@ -1112,11 +1127,11 @@ function renderCard(p){
       <div class="upd">حدّثه: ${p.lastUpdatedBy||'النظام'}<br>${p.lastUpdatedAt||''}</div>
       <div class="acts">
         <button class="act act-edit" title="${isObserver()?'عرض':'تحديث'}">${isObserver()?I.person:I.edit}</button>
-        ${isAdmin?`<button class="act act-del" title="حذف">${I.trash}</button>`:''}
+        ${canDeleteProject(p)?`<button class="act act-del" title="حذف">${I.trash}</button>`:''}
       </div>
     </div></div>`);
   card.querySelector('.act-edit').onclick=()=>openProjectModal(p);
-  if(isAdmin){
+  if(canDeleteProject(p)){
     const delBtn=card.querySelector('.act-del');
     delBtn.style.position='relative';
     delBtn.onclick=(e)=>{
@@ -1357,6 +1372,14 @@ function projectHasMe(p){
     if(sec.engineerUsername) return sec.engineerUsername===u.username;
     return sec.engineer===u.name;
   });
+}
+/* من يحقّ له حذف المشروع: المشرف، مدير الدائرة، أو مهندس مسنَد إليه */
+function canDeleteProject(p){
+  const u=state.appUser; if(!u) return false;
+  if(u.role==='admin') return true;
+  if(isObserver()) return false;
+  if((u.jobTitle||'')==='مدير الدائرة') return true;
+  return projectHasMe(p);
 }
 
 /* تنبيهات قرب/تجاوز موعد التسليم المتوقع لأقسام المهندس الحالي (غير المكتملة) */
@@ -1715,7 +1738,7 @@ function openVisitModal(){
       }catch(err){ console.error(err); alert('تعذّر حفظ الزيارة.'); }
     };
     body.querySelectorAll('[data-del-activity]').forEach(b=>{
-      b.onclick=async()=>{ if(confirm('حذف هذا السجل؟')){ try{ await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','visits',b.getAttribute('data-del-activity'))); }catch(e){alert('تعذّر الحذف.');} } };
+      b.onclick=async()=>{ if(confirm('سيُنقل إلى سلة المحذوفات. متابعة؟')){ await softDelete('visit', b.getAttribute('data-del-activity')); } };
     });
   }
   fill(); overlay._refresh=fill;
@@ -1776,7 +1799,7 @@ function openMeetingModal(){
       }catch(err){ console.error(err); alert('تعذّر حفظ الاجتماع.'); }
     };
     body.querySelectorAll('[data-del-meeting]').forEach(b=>{
-      b.onclick=async()=>{ if(confirm('حذف هذا السجل؟')){ try{ await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','meetings',b.getAttribute('data-del-meeting'))); }catch(e){alert('تعذّر الحذف.');} } };
+      b.onclick=async()=>{ if(confirm('سيُنقل إلى سلة المحذوفات. متابعة؟')){ await softDelete('meeting', b.getAttribute('data-del-meeting')); } };
     });
   }
   fill(); overlay._refresh=fill;
@@ -1833,6 +1856,10 @@ function openMyActivitiesModal(){
     body.querySelectorAll('[data-edit-act]').forEach(b=>{
       b.onclick=()=>{ const kind=b.getAttribute('data-kind'); const id=b.getAttribute('data-edit-act'); openEditActivity(kind,id,fill); };
     });
+    body.querySelectorAll('[data-del-act]').forEach(b=>{
+      b.onclick=async()=>{ const kind=b.getAttribute('data-kind'); const id=b.getAttribute('data-del-act');
+        if(confirm('سيُنقل إلى سلة المحذوفات. متابعة؟')){ await softDelete(kind,id); fill(); } };
+    });
   }
   fill(); overlay._refresh=fill;
   modal.querySelector('#x').onclick=()=>{myActsModalOpen=false;overlay.remove();};
@@ -1851,7 +1878,10 @@ function myActCard(a,kind){
         ${a.purpose?`<div style="font-size:12.5px;color:var(--muted);margin-top:2px">الغرض: ${a.purpose}</div>`:''}
         ${kind==='meeting'&&a.minutes?`<div style="font-size:12px;color:var(--ink);margin-top:4px;background:var(--sand-100);border-radius:8px;padding:7px 9px"><b>المحضر:</b> ${a.minutes}</div>`:''}
       </div>
-      <button class="act act-edit" data-edit-act="${a.id}" data-kind="${kind}" title="تعديل">${I.edit}</button>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button class="act act-edit" data-edit-act="${a.id}" data-kind="${kind}" title="تعديل">${I.edit}</button>
+        <button class="act act-del" data-del-act="${a.id}" data-kind="${kind}" title="حذف">${I.trash}</button>
+      </div>
     </div>
   </div>`;
 }
@@ -1905,17 +1935,24 @@ function openTrashModal(){
   modal.appendChild(body);overlay.appendChild(modal);
 
   function fill(){
-    const list=[...state.trash].sort((a,b)=> new Date(b.deletedAt||0)-new Date(a.deletedAt||0));
+    const list=[...myTrash()].sort((a,b)=> new Date(b.deletedAt||0)-new Date(a.deletedAt||0));
+    const isAdmin=state.appUser?.role==='admin';
+    const itemTitle=(t)=> t._kind==='meeting' ? (t.title||'اجتماع')
+                        : t._kind==='visit' ? (t.location||'زيارة موقع')
+                        : (t.name||'مشروع');
+    const kindBadge=(t)=>{ const k=t._kind||'project';
+      const col=k==='meeting'?'#3b6ea5':k==='visit'?'#8a6d2f':'#1f5d4c';
+      return `<span style="font-size:11px;font-weight:700;color:${col};background:${col}1a;border-radius:20px;padding:2px 10px">${KIND_AR[k]||'مشروع'}</span>`; };
     body.innerHTML=`
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-        <div style="font-size:13px;color:var(--muted)">المشاريع المحذوفة (${list.length}) — يمكن استرجاعها أو حذفها نهائياً.</div>
+        <div style="font-size:13px;color:var(--muted)">${isAdmin?'كل المحذوفات':'محذوفاتك'} (${list.length}) — يمكن استرجاعها أو حذفها نهائياً.</div>
         ${list.length?`<button class="btn btn-del" id="emptyTrash">${I.trashbin} تفريغ السلة</button>`:''}
       </div>
       ${list.length? list.map(t=>`
         <div style="background:var(--sand-50);border:1px solid var(--line);border-radius:11px;padding:12px;margin-bottom:10px">
           <div style="display:flex;justify-content:space-between;align-items:start;gap:10px">
             <div>
-              <div style="font-weight:700;color:var(--ink)">${t.name||'—'}</div>
+              <div style="display:flex;align-items:center;gap:8px"><span style="font-weight:700;color:var(--ink)">${itemTitle(t)}</span>${kindBadge(t)}</div>
               <div style="font-size:11.5px;color:var(--muted);margin-top:3px">حُذف: ${fmtDate(t.deletedAt)} · بواسطة: ${t.deletedBy||'—'}</div>
             </div>
             <div style="display:flex;gap:6px;white-space:nowrap">

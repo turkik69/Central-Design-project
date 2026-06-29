@@ -1765,7 +1765,7 @@ function openEditUser(u){
 }
 
 /* ════════════ زيارات المواقع والاجتماعات ════════════ */
-const ACTIVITY_DEPTS=[['administration','الإدارة'],['architectural','القسم المعماري'],['structural','القسم الإنشائي'],['services','قسم تصميم الخدمات']];
+const ACTIVITY_DEPTS=[['all','جميع الأقسام والدائرة'],['administration','الإدارة'],['architectural','القسم المعماري'],['structural','القسم الإنشائي'],['services','قسم تصميم الخدمات']];
 
 /* يبني واجهة اختيار القسم ثم أشخاصه (اختيار متعدد) — مشتركة بين الزيارة والاجتماع */
 function buildPeoplePicker(initialDept, initialUsernames){
@@ -1786,24 +1786,33 @@ function renderPeopleOptions(host, dept, selected){
   // مسميات القيادة التي تظهر أيضاً ضمن «الإدارة»
   const LEAD_TITLES=['رئيس القسم المعماري','رئيس القسم الإنشائي','رئيس قسم تصميم الخدمات','مدير الدائرة','المدير العام'];
   const DEPT_AR_SHORT={architectural:'المعماري',structural:'الإنشائي',services:'الخدمات',administration:'الإدارة'};
-  let people=state.users.filter(u=>u.role!=='admin' && u.dept===dept);
-  if(dept==='administration'){
-    // أضِف رؤساء الأقسام/المدراء أياً كان قسمهم المسجّل (مع تجنّب التكرار)
-    const have=new Set(people.map(u=>u.username));
-    state.users.forEach(u=>{
-      if(u.role!=='admin' && LEAD_TITLES.includes(u.jobTitle||'') && !have.has(u.username)){
-        people.push(u); have.add(u.username);
-      }
-    });
+  let people;
+  if(dept==='all'){
+    // كل موظفي الدائرة (جميع الأقسام)
+    people=state.users.filter(u=>u.role!=='admin');
+  }else{
+    people=state.users.filter(u=>u.role!=='admin' && u.dept===dept);
+    if(dept==='administration'){
+      const have=new Set(people.map(u=>u.username));
+      state.users.forEach(u=>{
+        if(u.role!=='admin' && LEAD_TITLES.includes(u.jobTitle||'') && !have.has(u.username)){
+          people.push(u); have.add(u.username);
+        }
+      });
+    }
   }
   people=people.sort((a,b)=>(a.name||'').localeCompare(b.name||'','ar'));
-  if(!people.length){ host.innerHTML=`<div style="font-size:12px;color:var(--muted);padding:6px 0">لا يوجد أشخاص مسجّلون في هذا القسم.</div>`; return; }
-  host.innerHTML=`<div class="eng-multi">${people.map(u=>{
-    // في الإدارة، بيّن قسم رئيس القسم الأصلي بجانب اسمه
-    const showHint = dept==='administration' && u.dept && u.dept!=='administration';
+  if(!people.length){ host.innerHTML=`<div style="font-size:12px;color:var(--muted);padding:6px 0">لا يوجد أشخاص مسجّلون.</div>`; return; }
+  // عند «الجميع» أضِف زر تحديد الكل
+  const selectAll = dept==='all' ? `<label class="eng-opt" style="background:var(--oasis-50);font-weight:700"><input type="checkbox" id="ap_all"> تحديد جميع الموظفين</label>` : '';
+  host.innerHTML=`<div class="eng-multi">${selectAll}${people.map(u=>{
+    const showHint = (dept==='administration'||dept==='all') && u.dept && u.dept!=='administration';
     const hint = showHint ? ` <span style="color:var(--muted);font-size:11px">(${DEPT_AR_SHORT[u.dept]||''})</span>` : '';
     return `<label class="eng-opt"><input type="checkbox" value="${u.username}" ${selected.includes(u.username)?'checked':''}> ${u.name}${hint}</label>`;
   }).join('')}</div>`;
+  // ربط زر تحديد الكل
+  const allCb=host.querySelector('#ap_all');
+  if(allCb) allCb.onchange=()=>{ host.querySelectorAll('input[type="checkbox"][value]').forEach(cb=>cb.checked=allCb.checked); };
 }
 /* يجمع الأشخاص المختارين {username,name} */
 function collectPeople(host){

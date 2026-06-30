@@ -829,7 +829,35 @@ async function detectCompletions(payload, prev){
       }
       // اعرض للمهندس زر بريد جاهز لرئيس القسم
       offerCompletionEmail(key, payload, head);
+      // أبلغ مهندسي الأقسام الأخرى في نفس المشروع
+      await notifyOtherDeptsEngineers(key, payload);
     }
+  }
+}
+/* أسماء مستخدمي مهندسي قسم في مشروع */
+function sectionEngineerUsernames(sec){
+  if(!sec) return [];
+  if(Array.isArray(sec.engineers)) return sec.engineers.map(e=>e.username).filter(Boolean);
+  if(sec.engineerUsername) return [sec.engineerUsername];
+  return [];
+}
+/* يُشعِر مهندسي الأقسام الأخرى في نفس المشروع بأن قسماً أنجز عمله */
+async function notifyOtherDeptsEngineers(completedKey, payload){
+  const me=state.appUser?.username;
+  const completedLabel=DEPT_AR[completedKey];
+  const link=(payload[completedKey]?.workLink||'').trim();
+  const linkHint = link ? ' (رابط مسار العمل متاح في البطاقة)' : '';
+  const recipients=new Set();
+  for(const key of ['architectural','structural','services']){
+    if(key===completedKey) continue;
+    sectionEngineerUsernames(payload[key]).forEach(un=>{ if(un && un!==me) recipients.add(un); });
+  }
+  for(const un of recipients){
+    await addNotif({
+      toUser:un, toRole:'engineer', deptKey:completedKey,
+      projectName:payload.name||'', byUser:state.appUser.name,
+      text:`أُنجز عمل «${completedLabel}» في مشروع «${payload.name}»${linkHint}. يمكنك متابعة عمل قسمك بناءً عليه.`
+    });
   }
 }
 /* يفتح بريداً جاهزاً لرئيس القسم (يرسله المرسِل بضغطة) */
@@ -925,6 +953,7 @@ const I={
   trash:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>',
   edit:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
   pin:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>',
+  link:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>',
   cal:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
   close:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6 6 18M6 6l12 12"/></svg>',
   save:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>',
@@ -994,7 +1023,7 @@ function renderApp(){
     <div class="user-box">
       <div class="user-meta"><div class="nm">${u.name}</div><div class="rl">${u.role==='admin'?'مشرف عام':(u.jobTitle||'مهندس مصمم')}</div></div>
       <div class="avatar">${u.profilePic?`<img src="${u.profilePic}">`:I.user}</div>
-      ${canViewEval()?`<button class="icon-btn" id="notifBell" title="الإشعارات" style="position:relative">${I.bell}<span id="notifDot" class="hidden" style="position:absolute;top:3px;left:3px;min-width:16px;height:16px;background:var(--danger);color:#fff;border-radius:9px;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px"></span></button>`:''}
+      ${(canViewEval()||isEngineer())?`<button class="icon-btn" id="notifBell" title="الإشعارات" style="position:relative">${I.bell}<span id="notifDot" class="hidden" style="position:absolute;top:3px;left:3px;min-width:16px;height:16px;background:var(--danger);color:#fff;border-radius:9px;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px"></span></button>`:''}
       <button class="icon-btn" id="btnProfile" title="إعدادات الحساب">${I.settings}</button>
       <button class="icon-btn" id="btnLogout" title="تسجيل الخروج">${I.logout}</button>
     </div></div></header>`);
@@ -1002,7 +1031,7 @@ function renderApp(){
   searchInp.oninput=(e)=>{state.search=e.target.value;applyFilter();updateGrid();};
   header.querySelector('#btnLogout').onclick=logout;
   header.querySelector('#btnProfile').onclick=openProfile;
-  if(canViewEval()){
+  if(canViewEval()||isEngineer()){
     const bell=header.querySelector('#notifBell');
     if(bell){ bell.onclick=toggleNotifPanel; setTimeout(updateBell,0); }
   }
@@ -1213,12 +1242,17 @@ function secRow(title,data){
   const actualLine = ad ? `<div class="sec-dates" style="display:flex;justify-content:space-between;align-items:center;gap:6px"><span>تسليم فعلي: ${ad}</span>${deliveryBadge(ed,ad)}</div>` : '';
   const avg=ratingAvg(data?.eval);
   const rateLine = (avg && canViewEval()) ? `<div class="sec-rate">تقييم رئيس القسم: <b>${avg}</b> <span style="color:var(--stop)">★</span></div>` : '';
+  const wl=(data?.workLink||'').trim();
+  const isWeb=/^https?:\/\//i.test(wl);
+  const linkLine = wl ? (isWeb
+      ? `<a href="${wl.replace(/"/g,'&quot;')}" target="_blank" rel="noopener" class="work-link" style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--oasis-700);margin-top:5px;text-decoration:none;word-break:break-all">${I.link||'🔗'} فتح مسار العمل</a>`
+      : `<a href="#" class="work-link" data-copy="${wl.replace(/"/g,'&quot;')}" style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--oasis-700);margin-top:5px;text-decoration:none;word-break:break-all" title="${wl.replace(/"/g,'&quot;')}">${I.link||'🔗'} نسخ مسار العمل</a>`) : '';
   return `<div class="sec sec-col"><div class="sec-row">
       <div class="sec-l">
         <span class="dot" style="background:${c}"></span>
         <div><div class="ttl">${title}</div><div class="eng">${data?.engineer||'لم يُسنَد'}</div></div>
       </div><span class="sec-badge" style="color:${c};background:${bg}">${st}</span>
-    </div>${dateLine}${actualLine}${rateLine}</div>`;
+    </div>${dateLine}${actualLine}${rateLine}${linkLine}</div>`;
 }
 
 function renderCard(p){
@@ -1254,6 +1288,16 @@ function renderCard(p){
       </div>
     </div></div>`);
   card.querySelector('.act-edit').onclick=()=>openProjectModal(p);
+  // روابط الشبكة المحلية: نسخ المسار للحافظة (المتصفح يمنع فتحها مباشرة)
+  card.querySelectorAll('.work-link[data-copy]').forEach(a=>{
+    a.onclick=(e)=>{
+      e.preventDefault();
+      const path=a.getAttribute('data-copy');
+      const done=()=>{ const o=a.textContent; a.textContent='✓ تم نسخ المسار — الصقه في مستكشف الملفات'; setTimeout(()=>{a.innerHTML=`${I.link} نسخ مسار العمل`;},2200); };
+      if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(path).then(done).catch(()=>{prompt('انسخ المسار:',path);}); }
+      else { prompt('انسخ المسار:',path); }
+    };
+  });
   if(canDeleteProject(p)){
     const delBtn=card.querySelector('.act-del');
     delBtn.style.position='relative';
@@ -1422,7 +1466,7 @@ function openProjectModal(project){
         return (data[key]) ? {...data[key]} : {};   // قسم غير مخوّل ⇒ لا تغيير إطلاقاً
       }
       return {...engObj,
-        status:get(pf+'_status'), notes:get(pf+'_notes'),
+        status:get(pf+'_status'), notes:get(pf+'_notes'), workLink:(get(pf+'_workLink')||'').trim(),
         startDate:dateVal(pf,key,'startDate'), endDate:dateVal(pf,key,'endDate'),
         actualDate:actualVal(pf,key), eval:buildEval(pf,key)};
     };
@@ -1607,6 +1651,8 @@ function deptCard(title,prefixKey,d){
       <div class="inp" style="background:var(--sand-100);display:flex;justify-content:space-between;align-items:center">
         <span>${d.actualDate}</span>${deliveryBadge(d.endDate,d.actualDate)}</div>`):''}
     <textarea class="inp" name="${pf}_notes" rows="2" placeholder="ملاحظات…" style="resize:none;margin-top:4px" ${DIS}>${d.notes||''}</textarea>
+    <label class="lbl-sm" style="margin-top:4px">رابط مسار العمل (مجلّد القسم على الشبكة)</label>
+    <input class="inp" name="${pf}_workLink" value="${(d.workLink||'').replace(/"/g,'&quot;')}" placeholder="مثال: \\\\server\\projects\\... أو https://" style="direction:ltr;text-align:left;font-size:12px" ${DIS}>
     ${rateBlock}
   </div>`;
 }

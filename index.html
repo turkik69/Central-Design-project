@@ -113,6 +113,7 @@
     box-shadow:0 2px 12px rgba(24,74,60,.25);
   }
   .topbar-inner{max-width:1200px;margin:0 auto;padding:12px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  @media(max-width:640px){ .eom-badge{order:5;width:100%;justify-content:center} }
   .brand{display:flex;align-items:center;gap:11px}
   .brand-crest{height:40px;width:auto;display:flex;align-items:center;justify-content:center}
   .brand-crest img{height:100%;width:auto;object-fit:contain}
@@ -1023,6 +1024,11 @@ function renderApp(){
     <div class="brand"><div class="brand-crest"><img src="${LOGO_WHITE}" alt="بلدية مسقط"></div>
       <div><h1>التصميم المركزي</h1><div class="crumb">بلدية مسقط · الشؤون الفنية</div></div></div>
     <div class="search">${I.search}<input type="text" placeholder="ابحث باسم المشروع أو رقمه أو الجهة…" value="${state.search}"></div>
+    ${(()=>{ const a=announcedEmployee(); if(!a||!a.winner) return '';
+      return `<div class="eom-badge" title="موظف شهر ${a.label}" style="display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,var(--oasis),var(--oasis-700));color:#fff;border-radius:22px;padding:6px 14px;font-size:12.5px;white-space:nowrap">
+        <span style="font-size:15px">🏆</span>
+        <span>موظف شهر ${a.label}: <b>${a.winner.name}</b></span></div>`;
+    })()}
     <div class="user-box">
       <div class="user-meta"><div class="nm">${u.name}</div><div class="rl">${u.role==='admin'?'مشرف عام':(u.jobTitle||'مهندس مصمم')}</div></div>
       <div class="avatar">${u.profilePic?`<img src="${u.profilePic}">`:I.user}</div>
@@ -2506,8 +2512,74 @@ function engineerKpiList(){
     const completion=total?Math.round(done/total*100):0;
     const punctuality=(onTime+late)?Math.round(onTime/(onTime+late)*100):null;
     const avgRating=ratings.length?(ratings.reduce((a,b)=>a+b,0)/ratings.length).toFixed(1):null;
-    return {name:u.name,username:u.username,total,done,completion,punctuality,avgRating};
+    return {name:u.name,username:u.username,total,done,completion,punctuality,avgRating,onTime,doneCount:done};
   }).filter(e=>e.total>0).sort((a,b)=>b.completion-a.completion);
+}
+/* بداية احتساب موظف الشهر: لا تُحتسب الأعمال المؤرشفة قبل انطلاق التطبيق فعلياً */
+const EOM_START = new Date(2026, 6, 1);   // 1 يوليو 2026 (الشهر = 6)
+/* يحسب موظف الشهر لنطاق شهري محدّد {from,to} (مستقل عن فلتر اللوحة) */
+function employeeOfMonthFor(from, to){
+  // اقصر بداية النطاق عند تاريخ انطلاق الاحتساب (منعاً لاحتساب الأعمال السابقة المؤرشفة)
+  if(from < EOM_START) from = EOM_START;
+  if(to < EOM_START) return null;   // نطاق كامل قبل الانطلاق ⇒ لا احتساب
+  const engs=state.users.filter(u=>u.role!=='admin' && ['architectural','structural','services'].includes(u.dept));
+  const inRange=(dateStr)=>{ if(!dateStr) return false; const d=new Date(dateStr); return !isNaN(d)&&d>=from&&d<=to; };
+  const list=engs.map(u=>{
+    let done=0,onTime=0,late=0; const ratings=[];
+    state.projects.forEach(p=>DEPT_MAP.forEach(([key])=>{
+      const sec=p[key]; if(!sec) return;
+      let mine=false;
+      if(Array.isArray(sec.engineers)) mine=sec.engineers.some(e=>e.username===u.username);
+      else if(sec.engineerUsername) mine=(sec.engineerUsername===u.username);
+      else if(sec.engineer===u.name) mine=true;
+      if(!mine) return;
+      if((sec.status||'')!=='مكتمل') return;
+      // العدالة: يُحتسب فقط المشروع الذي تاريخ استلامه ضمن فترة الاحتساب (لا الأعمال المؤرشفة السابقة)
+      const recv = sec.startDate ? new Date(sec.startDate) : null;
+      if(!recv || isNaN(recv) || recv < EOM_START) return;
+      // وأن يقع إنجازه ضمن الشهر المحسوب
+      if(!inRange(secRefDate(sec))) return;
+      done++;
+      if(sec.endDate&&sec.actualDate){ const d=daysBetween(sec.endDate,sec.actualDate); if(d!==null){ if(d<=0)onTime++; else late++; } }
+      const a=ratingAvg(sec.eval); if(a) ratings.push(Number(a));
+    }));
+    const punctuality=(onTime+late)?Math.round(onTime/(onTime+late)*100):null;
+    const avgRating=ratings.length?(ratings.reduce((a,b)=>a+b,0)/ratings.length).toFixed(1):null;
+    return {name:u.name,username:u.username,doneCount:done,punctuality,avgRating};
+  }).filter(e=>e.doneCount>0);
+  if(!list.length) return null;
+  const maxDone=Math.max(...list.map(e=>e.doneCount),1);
+  const scored=list.map(e=>{
+    const qtyN=e.doneCount/maxDone, punctN=(e.punctuality==null?0:e.punctuality)/100, qualN=(e.avgRating?Number(e.avgRating):0)/5;
+    // أوزان: كمية الإنجاز 40% (موضوعي) + الالتزام بالوقت 30% + الجودة/التقييم 30%
+    const score=qtyN*0.40+punctN*0.30+qualN*0.30;
+    return {...e, score:Math.round(score*1000)/10};
+  }).sort((a,b)=> b.score-a.score || b.doneCount-a.doneCount);
+  return scored[0];
+}
+/* موظف الشهر المُعلَن رسمياً = الشهر المُنقضي (يظهر في أول الشهر التالي) */
+function announcedEmployee(){
+  const now=new Date(); const y=now.getFullYear(), m=now.getMonth();
+  // الشهر المنقضي: الشهر السابق للحالي
+  const from=new Date(y, m-1, 1), to=new Date(y, m, 0);
+  const monthName=MONTH_NAMES[(m-1+12)%12];
+  const yearOfPrev = (m-1<0)? y-1 : y;
+  return { winner:employeeOfMonthFor(from,to), label:`${monthName} ${yearOfPrev}` };
+}
+function employeeOfMonth(){
+  const list=engineerKpiList().filter(e=>e.doneCount>0);   // من أنجز عملاً فعلياً
+  if(!list.length) return null;
+  // القيم القصوى للتطبيع
+  const maxDone=Math.max(...list.map(e=>e.doneCount),1);
+  const scored=list.map(e=>{
+    const qtyN = e.doneCount/maxDone;                        // كمية الإنجاز (0..1)
+    const punctN = (e.punctuality==null?0:e.punctuality)/100; // الالتزام (0..1)
+    const qualN = (e.avgRating?Number(e.avgRating):0)/5;      // الجودة (0..1)
+    // أوزان: كمية الإنجاز 40% (موضوعي) + الالتزام بالوقت 30% + الجودة/التقييم 30%
+    const score = qtyN*0.40 + punctN*0.30 + qualN*0.30;
+    return {...e, score:Math.round(score*1000)/10};          // نسبة مئوية بخانة عشرية
+  }).sort((a,b)=> b.score-a.score || b.doneCount-a.doneCount);
+  return {winner:scored[0], ranking:scored};
 }
 /* رسم حلقي SVG لنسبة مئوية */
 function donutSVG(pct,color,label,sub){
@@ -2576,6 +2648,25 @@ function openKpiModal(){
         </select>
         <span style="font-size:13px;color:var(--oasis-700);font-weight:700;margin-right:auto">${rangeLabel}</span>
       </div>
+      ${(()=>{
+        const eom=employeeOfMonth();
+        if(!eom) return '';
+        const w=eom.winner;
+        const periodTxt = kpiPeriod==='all' ? 'الأداء العام' : rangeLabel;
+        return `<div style="background:linear-gradient(135deg,var(--oasis),var(--oasis-700));color:#fff;border-radius:16px;padding:18px 20px;margin-bottom:18px;position:relative;overflow:hidden">
+          <div style="position:absolute;top:-20px;left:-10px;font-size:120px;opacity:.08">🏆</div>
+          <div style="position:relative">
+            <div style="font-size:12px;letter-spacing:.1em;color:#bfe9de;font-weight:700">🏆 موظف الشهر · ${periodTxt}</div>
+            <div style="font-size:24px;font-weight:800;margin:6px 0 2px">${w.name}</div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:#eafaf5;margin-top:8px">
+              <span>الأعمال المنجزة: <b>${w.doneCount}</b></span>
+              <span>الالتزام بالوقت: <b>${w.punctuality==null?'—':w.punctuality+'%'}</b></span>
+              <span>التقييم: <b>${w.avgRating?w.avgRating+' ★':'—'}</b></span>
+              <span>الدرجة المركّبة: <b>${w.score}%</b></span>
+            </div>
+          </div>
+        </div>`;
+      })()}
       <h3 style="font-size:15px;color:var(--oasis-700);margin-bottom:12px">أداء الدائرة العام</h3>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
         ${statCard(projTotal,'إجمالي المشاريع')}

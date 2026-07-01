@@ -1921,6 +1921,9 @@ function openVisitModal(){
     body.querySelectorAll('[data-del-activity]').forEach(b=>{
       b.onclick=async()=>{ if(confirm('سيُنقل إلى سلة المحذوفات. متابعة؟')){ await softDelete('visit', b.getAttribute('data-del-activity')); } };
     });
+    body.querySelectorAll('[data-edit-actrec]').forEach(b=>{
+      b.onclick=()=>openEditActivity(b.getAttribute('data-kind'), b.getAttribute('data-edit-actrec'), fill);
+    });
   }
   fill(); overlay._refresh=fill;
   modal.querySelector('#x').onclick=()=>{visitModalOpen=false;overlay.remove();};
@@ -1982,6 +1985,9 @@ function openMeetingModal(){
     body.querySelectorAll('[data-del-meeting]').forEach(b=>{
       b.onclick=async()=>{ if(confirm('سيُنقل إلى سلة المحذوفات. متابعة؟')){ await softDelete('meeting', b.getAttribute('data-del-meeting')); } };
     });
+    body.querySelectorAll('[data-edit-actrec]').forEach(b=>{
+      b.onclick=()=>openEditActivity(b.getAttribute('data-kind'), b.getAttribute('data-edit-actrec'), fill);
+    });
   }
   fill(); overlay._refresh=fill;
   modal.querySelector('#x').onclick=()=>{meetingModalOpen=false;overlay.remove();};
@@ -1991,9 +1997,15 @@ function openMeetingModal(){
 function refreshMeetingModal(){ const ov=document.getElementById('meetingOverlay'); if(ov&&ov._refresh) ov._refresh(); }
 
 /* بطاقة عرض زيارة/اجتماع في السجل */
+/* موظف التنسيق والمتابعة (أو المشرف): يعدّل كل الاجتماعات والزيارات */
+function canManageActivities(){
+  const u=state.appUser; if(!u) return false;
+  return u.role==='admin' || (u.jobTitle||'')==='تنسيق ومتابعة';
+}
 function activityCard(a, kind){
   const delAttr = kind==='meeting' ? `data-del-meeting="${a.id}"` : `data-del-activity="${a.id}"`;
   const titleLine = kind==='meeting' ? `<div style="font-weight:700;color:var(--ink)">${a.title||'اجتماع'}</div>` : '';
+  const editBtn = canManageActivities() ? `<button class="act act-edit" data-edit-actrec="${a.id}" data-kind="${kind}" title="تعديل">${I.edit}</button>` : '';
   return `<div style="background:var(--sand-50);border:1px solid var(--line);border-radius:11px;padding:12px;margin-bottom:10px">
     <div style="display:flex;justify-content:space-between;align-items:start;gap:10px">
       <div style="flex:1">
@@ -2006,7 +2018,10 @@ function activityCard(a, kind){
         ${a.notes?`<div style="font-size:12.5px;color:var(--muted);margin-top:2px">ملاحظات: ${a.notes}</div>`:''}
         <div style="font-size:10.5px;color:var(--muted);margin-top:5px">سجّله: ${a.createdBy||'—'}</div>
       </div>
-      <button class="act act-del" ${delAttr} title="حذف">${I.trash}</button>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${editBtn}
+        <button class="act act-del" ${delAttr} title="حذف">${I.trash}</button>
+      </div>
     </div>
   </div>`;
 }

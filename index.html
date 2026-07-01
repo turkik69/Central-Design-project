@@ -1482,6 +1482,25 @@ function openProjectModal(project){
       structural:sectionData('str','structural',strEng),
       services:sectionData('srv','services',srvEng)
     };
+    // تحقق: أي تاريخ استلام يستوجب تاريخ تسليم متوقع (يُطبَّق على المهندسين فقط)
+    // المعفَون: المشرف، التنسيق والمتابعة، مدير الدائرة، ورؤساء الأقسام
+    // (قد يسجّلون المشروع ويكلّفون مهندساً، تاركين التاريخ المتوقع ليُدخله المهندس عند الاستلام)
+    const jt=(state.appUser?.jobTitle||'');
+    const exemptFromDateRule = state.appUser?.role==='admin'
+      || jt==='تنسيق ومتابعة' || jt==='مدير الدائرة' || jt.indexOf('رئيس')!==-1;
+    if(!exemptFromDateRule){
+      const missing=[];
+      if(payload.startDate && !payload.endDate) missing.push('المشروع (عام)');
+      const deptChecks=[['architectural','القسم المعماري'],['structural','القسم الإنشائي'],['services','قسم تصميم الخدمات']];
+      deptChecks.forEach(([k,lbl])=>{
+        const s=payload[k]; if(!s) return;
+        if(s.startDate && !s.endDate) missing.push(lbl);
+      });
+      if(missing.length){
+        alert('يجب تسجيل «تاريخ التسليم المتوقع» عند إدخال «تاريخ الاستلام» في:\n• '+missing.join('\n• ')+'\n\nأكمل التواريخ المتوقعة ثم احفظ.');
+        return;
+      }
+    }
     if(!CONFIGURED){alert('قاعدة البيانات غير مُعدّة بعد — أضِف مفاتيح Firebase أولاً لحفظ المشاريع.');return;}
     overlay.remove();
     await saveProject(payload, project?.id, project);

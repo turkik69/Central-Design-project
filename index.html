@@ -2707,23 +2707,23 @@ function openCertificate(){
       .topband .pat{position:absolute;inset:0;opacity:.10;background-image:radial-gradient(circle at 15% 40%,#fff 0 2px,transparent 2px),radial-gradient(circle at 60% 70%,#fff 0 2px,transparent 2px);background-size:44px 44px}
       .topband h1{font-family:'Cairo';font-size:21px;font-weight:800;position:relative;text-align:center;line-height:1.55}
       .topband h1 span{display:block;font-size:13px;font-weight:600;color:#bfe9de}
-      .frame{position:absolute;top:120px;bottom:34px;left:38px;right:38px;border:2px solid #c9a24b;border-radius:8px;
-             padding:16px 44px;display:flex;flex-direction:column;align-items:center;text-align:center;background:rgba(255,255,255,.55)}
+      .frame{position:absolute;top:118px;bottom:30px;left:38px;right:38px;border:2px solid #c9a24b;border-radius:8px;
+             padding:14px 44px 18px;display:flex;flex-direction:column;align-items:center;text-align:center;background:rgba(255,255,255,.55)}
       .frame::before{content:'';position:absolute;top:8px;bottom:8px;left:8px;right:8px;border:1px solid #e0cfa0;border-radius:5px;pointer-events:none}
-      .seal{display:flex;align-items:center;justify-content:center;margin:2px 0 4px}
-      .seal img{width:104px;height:auto;object-fit:contain}
-      .cert-title{font-family:'Cairo';font-size:32px;font-weight:800;color:#16443a;margin:4px 0}
-      .cert-sub{font-size:14px;color:#8a6d2f;letter-spacing:.15em;font-weight:700;margin-bottom:14px}
-      .intro{font-size:15px;color:#3a463f;line-height:1.9;max-width:82%}
-      .name{font-family:'Cairo';font-size:34px;font-weight:800;color:#1f5d4c;margin:12px 0;padding:6px 40px;border-bottom:3px solid #c9a24b}
-      .name .pre{display:block;font-size:16px;font-weight:700;color:#8a6d2f;letter-spacing:.02em;margin-bottom:2px}
-      .reason{font-size:15px;color:#3a463f;line-height:2;max-width:86%;margin-bottom:6px}
-      .month-badge{display:inline-block;background:#1f5d4c;color:#fff;font-weight:700;border-radius:24px;padding:7px 26px;font-size:15px;margin:6px 0 16px}
-      .stats{display:flex;gap:44px;justify-content:center;margin:2px 0 12px;flex-wrap:wrap}
-      .stat{text-align:center}.stat b{display:block;font-size:23px;color:#16443a;font-family:'Cairo'}.stat span{font-size:12px;color:#8a6d2f}
-      .signs{display:flex;justify-content:space-around;width:100%;margin-top:auto;padding-top:10px}
-      .sign{text-align:center;font-size:13px;color:#3a463f}.sign .line{width:170px;border-top:1.5px solid #16443a;margin:26px auto 6px}
-      .foot{position:absolute;bottom:12px;left:0;right:0;text-align:center;font-size:11px;color:#98a29c}
+      .seal{display:flex;align-items:center;justify-content:center;margin:0 0 2px}
+      .seal img{width:92px;height:auto;object-fit:contain}
+      .cert-title{font-family:'Cairo';font-size:30px;font-weight:800;color:#16443a;margin:2px 0}
+      .cert-sub{font-size:13px;color:#8a6d2f;letter-spacing:.15em;font-weight:700;margin-bottom:10px}
+      .intro{font-size:14.5px;color:#3a463f;line-height:1.8;max-width:82%}
+      .name{font-family:'Cairo';font-size:32px;font-weight:800;color:#1f5d4c;margin:8px 0;padding:4px 40px;border-bottom:3px solid #c9a24b}
+      .name .pre{display:block;font-size:15px;font-weight:700;color:#8a6d2f;letter-spacing:.02em;margin-bottom:2px}
+      .reason{font-size:14.5px;color:#3a463f;line-height:1.9;max-width:86%;margin-bottom:4px}
+      .month-badge{display:inline-block;background:#1f5d4c;color:#fff;font-weight:700;border-radius:24px;padding:6px 26px;font-size:14.5px;margin:6px 0 12px}
+      .stats{display:flex;gap:44px;justify-content:center;margin:2px 0 10px;flex-wrap:wrap}
+      .stat{text-align:center}.stat b{display:block;font-size:22px;color:#16443a;font-family:'Cairo'}.stat span{font-size:12px;color:#8a6d2f}
+      .signs{display:flex;justify-content:space-around;width:100%;margin-top:auto;padding-top:6px}
+      .sign{text-align:center;font-size:13px;color:#3a463f}.sign .line{width:170px;border-top:1.5px solid #16443a;margin:22px auto 6px}
+      .foot{position:absolute;bottom:9px;left:0;right:0;text-align:center;font-size:10.5px;color:#98a29c}
       @media print{ body{background:#fff} .toolbar,.spacer{display:none!important} .page{box-shadow:none;margin:0} }
     </style></head><body>
     <div class="toolbar">
@@ -2753,8 +2753,8 @@ function openCertificate(){
           <div class="sign"><div class="line"></div>${headTitle}</div>
           <div class="sign"><div class="line"></div>مدير الدائرة</div>
         </div>
-        <div class="foot">صدرت هذه الشهادة بتاريخ ${dStr} · نظام مشاريع التصميم المركزي</div>
       </div>
+      <div class="foot">صدرت هذه الشهادة بتاريخ ${dStr} · نظام مشاريع التصميم المركزي</div>
     </div>
     </body></html>`);
   win.document.close(); win.focus();

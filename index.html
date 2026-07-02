@@ -1286,6 +1286,7 @@ function renderCard(p){
       </div>
       ${secRow('المعماري',p.architectural)}
       ${(p.overallStatus==='فكرة مبدئية' && Array.isArray(p.ideaStages) && p.ideaStages.length)?`<div style="font-size:12px;color:var(--oasis-700);background:var(--oasis-50);border-radius:8px;padding:6px 10px;margin-top:6px">مراحل الفكرة: <b>${p.ideaStages.length}</b> · آخر مرحلة: ${p.ideaStages[p.ideaStages.length-1].date||''}</div>`:''}
+      ${(p.overallStatus==='رأي فني' && Array.isArray(p.opinionStages) && p.opinionStages.length)?`<div style="font-size:12px;color:#8a6d2f;background:#f3e9d7;border-radius:8px;padding:6px 10px;margin-top:6px">مراحل الرأي الفني: <b>${p.opinionStages.length}</b> · آخر مرحلة: ${p.opinionStages[p.opinionStages.length-1].date||''}</div>`:''}
       ${p.overallStatus==='فكرة مبدئية' ? '' : secRow('الإنشائي',p.structural)}
       ${p.overallStatus==='فكرة مبدئية' ? '' : secRow('الخدمات',p.services)}
     </div>
@@ -1363,6 +1364,7 @@ function openProjectModal(project){
       </div>
     </div>
     <div id="ideaStagesBox"></div>
+    <div id="opinionStagesBox"></div>
     <div class="modal-foot">
       <button type="button" class="btn btn-ghost" id="cancel">${isObserver()?'إغلاق':'إلغاء'}</button>
       ${isObserver()?'':`<button type="submit" class="btn btn-add">${I.save} حفظ التغييرات</button>`}
@@ -1413,12 +1415,53 @@ function openProjectModal(project){
         ideaStages.forEach((s,idx)=>s.stage=idx+1); renderStages(); };
     });
   }
+  // ── مراحل الرأي الفني (تظهر فقط عند «رأي فني») ──
+  let opinionStages = Array.isArray(data.opinionStages) ? data.opinionStages.map(s=>({...s})) : [];
+  const opnBox=form.querySelector('#opinionStagesBox');
+  function renderOpinionStages(){
+    if(overallSel.value!=='رأي فني'){ opnBox.innerHTML=''; return; }
+    const nextNum=opinionStages.length+1;
+    opnBox.innerHTML=`
+      <div class="divider"></div>
+      <div style="background:var(--sand-50);border:1px solid var(--line);border-radius:14px;padding:16px">
+        <h4 style="margin:0 0 10px;color:var(--oasis-700);font-size:15px">مراحل الرأي الفني</h4>
+        ${opinionStages.length? opinionStages.map((s,i)=>`
+          <div style="background:#fff;border:1px solid var(--line);border-radius:11px;padding:12px;margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+              <span style="font-weight:700;color:var(--oasis-700)">المرحلة ${s.stage||(i+1)}</span>
+              <span style="display:flex;align-items:center;gap:8px"><span style="font-size:11.5px;color:var(--muted)">${s.date||''}</span>
+              ${canEditIdea?`<button type="button" class="act act-del" data-rmopn="${i}" title="حذف">${I.trash}</button>`:''}</span>
+            </div>
+            ${s.notes?`<div style="font-size:13px;color:var(--ink);margin-top:6px;line-height:1.7">${s.notes}</div>`:''}
+            ${s.by?`<div style="font-size:10.5px;color:var(--muted);margin-top:4px">سجّلها: ${s.by}</div>`:''}
+          </div>`).join('') : '<div style="font-size:12.5px;color:var(--muted);padding:4px 0 10px">لا توجد مراحل بعد. أضِف المرحلة الأولى للرأي الفني.</div>'}
+        ${canEditIdea?`
+          <div style="border-top:1px dashed var(--line);padding-top:12px;margin-top:6px">
+            <label class="lbl-sm">إضافة المرحلة ${nextNum}</label>
+            <textarea class="inp" id="newOpnNotes" rows="3" placeholder="ملاحظات المرحلة ${nextNum} (تفاصيل الرأي الفني في هذه المرحلة)…" style="resize:vertical"></textarea>
+            <button type="button" class="btn btn-ghost" id="addOpnBtn" style="margin-top:8px">${I.plus} إضافة المرحلة ${nextNum}</button>
+          </div>`:''}
+      </div>`;
+    const addBtn=opnBox.querySelector('#addOpnBtn');
+    if(addBtn) addBtn.onclick=()=>{
+      const notes=(opnBox.querySelector('#newOpnNotes').value||'').trim();
+      if(!notes){ alert('اكتب ملاحظات المرحلة.'); return; }
+      const today=new Date().toISOString().slice(0,10);
+      opinionStages.push({stage:opinionStages.length+1, notes, date:today, by:state.appUser?.name||'—'});
+      renderOpinionStages();
+    };
+    opnBox.querySelectorAll('[data-rmopn]').forEach(b=>{
+      b.onclick=()=>{ const i=Number(b.getAttribute('data-rmopn')); opinionStages.splice(i,1);
+        opinionStages.forEach((s,idx)=>s.stage=idx+1); renderOpinionStages(); };
+    });
+  }
   // عند «فكرة مبدئية» يبقى القسم المعماري فقط (عمل مقتصر عليه)
   const overallSel=form.querySelector('[name=overallStatus]');
   const otherDepts=form.querySelector('#otherDepts');
   const applyIdeaMode=()=>{
     if(otherDepts) otherDepts.style.display = (overallSel.value==='فكرة مبدئية') ? 'none' : 'contents';
     renderStages();
+    renderOpinionStages();
   };
   if(overallSel){ overallSel.onchange=applyIdeaMode; applyIdeaMode(); }
   form.onsubmit=async(e)=>{
@@ -1482,6 +1525,7 @@ function openProjectModal(project){
     const payload={
       name:get('name'),projectNo:get('projectNo'),type:get('type'),customType:get('customType'),
       ideaStages:ideaStages,
+      opinionStages:opinionStages,
       requestingEntity:get('requestingEntity'),overallStatus:get('overallStatus'),
       area:get('area'),cost:get('cost'),startDate:get('startDate'),endDate:get('endDate'),
       architectural:sectionData('arch','architectural',archEng),

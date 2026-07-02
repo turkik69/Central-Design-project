@@ -2731,22 +2731,21 @@ function openCertificate(){
       .topband h1{font-family:'Cairo';font-size:21px;font-weight:800;position:relative;text-align:center;line-height:1.55}
       .topband h1 span{display:block;font-size:13px;font-weight:600;color:#bfe9de}
       .frame{position:absolute;top:116px;bottom:52px;left:38px;right:38px;border:2px solid #c9a24b;border-radius:8px;
-             padding:14px 44px 20px;display:flex;flex-direction:column;align-items:center;text-align:center;background:rgba(255,255,255,.55);overflow:hidden}
+             padding:16px 44px 22px;display:flex;flex-direction:column;align-items:center;text-align:center;background:rgba(255,255,255,.55);overflow:hidden}
       .frame::before{content:'';position:absolute;top:8px;bottom:8px;left:8px;right:8px;border:1px solid #e0cfa0;border-radius:5px;pointer-events:none}
-      .seal{display:flex;align-items:center;justify-content:center;margin:0 0 2px}
-      .seal img{width:88px;height:auto;object-fit:contain}
-      .cert-title{font-family:'Cairo';font-size:29px;font-weight:800;color:#16443a;margin:2px 0}
-      .cert-sub{font-size:13px;color:#8a6d2f;letter-spacing:.15em;font-weight:700;margin-bottom:9px}
-      .intro{font-size:14px;color:#3a463f;line-height:1.75;max-width:82%}
-      .name{font-family:'Cairo';font-size:31px;font-weight:800;color:#1f5d4c;margin:7px 0;padding:4px 40px;border-bottom:3px solid #c9a24b}
-      .name .pre{display:block;font-size:15px;font-weight:700;color:#8a6d2f;letter-spacing:.02em;margin-bottom:2px}
-      .reason{font-size:14px;color:#3a463f;line-height:1.85;max-width:86%;margin-bottom:4px}
-      .month-badge{display:inline-block;background:#1f5d4c;color:#fff;font-weight:700;border-radius:24px;padding:6px 26px;font-size:14px;margin:5px 0 10px}
-      .stats{display:flex;gap:44px;justify-content:center;margin:2px 0 8px;flex-wrap:wrap}
-      .stat{text-align:center}.stat b{display:block;font-size:21px;color:#16443a;font-family:'Cairo'}.stat span{font-size:11.5px;color:#8a6d2f}
+      .seal{display:flex;align-items:center;justify-content:center;margin:0 0 4px}
+      .seal img{width:92px;height:auto;object-fit:contain}
+      .cert-title{font-family:'Cairo';font-size:34px;font-weight:800;color:#1f5d4c;margin:4px 0 12px}
+      .intro{font-family:'Cairo';font-size:15px;font-weight:700;color:#1f3b33;line-height:2.1;max-width:88%}
+      .name{font-family:'Cairo';font-size:30px;font-weight:800;color:#c9a24b;margin:14px 0 8px;padding:0 40px 10px;border-bottom:2px solid #c9a24b;line-height:1.4}
+      .name .pre{color:#c9a24b}
+      .reason{font-family:'Cairo';font-size:15px;font-weight:700;color:#1f3b33;line-height:2.15;max-width:90%;margin:6px 0 4px}
+      .month-badge{display:inline-block;background:#1f5d4c;color:#fff;font-weight:700;border-radius:24px;padding:6px 30px;font-size:14px;margin:6px 0 12px}
+      .stats{display:flex;gap:48px;justify-content:center;margin:2px 0 8px;flex-wrap:wrap}
+      .stat{text-align:center}.stat b{display:block;font-size:22px;color:#16443a;font-family:'Cairo';font-weight:800}.stat span{font-size:12px;color:#8a6d2f;font-weight:600}
       .signs{display:flex;justify-content:space-around;width:100%;margin-top:auto;padding-top:4px;padding-bottom:2px}
-      .sign{text-align:center;font-size:13px;color:#3a463f}.sign .line{width:170px;border-top:1.5px solid #16443a;margin:20px auto 6px}
-      .foot{position:absolute;bottom:0;left:0;right:0;height:44px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:10.5px;color:#98a29c}
+      .sign{text-align:center;font-size:13px;font-weight:700;color:#3a463f}.sign .line{width:180px;border-top:1.5px solid #16443a;margin:20px auto 6px}
+      .foot{position:absolute;bottom:0;right:0;height:44px;display:flex;align-items:center;padding-right:40px;text-align:right;font-size:12px;font-weight:700;color:#8a6d2f;font-family:'Cairo'}
       @media print{ body{background:#fff} .toolbar,.spacer{display:none!important} .page{box-shadow:none;margin:0} }
     </style></head><body>
     <div class="toolbar">
@@ -2762,9 +2761,8 @@ function openCertificate(){
       <div class="frame">
         <div class="seal"><img src="${LOGO_CERT}" alt="بلدية مسقط"></div>
         <div class="cert-title">شهادة شكر وتقدير</div>
-        <div class="cert-sub">${certSub}</div>
         <div class="intro">${introHTML}</div>
-        <div class="name"><span class="pre">${engTitle}</span>${winner.name}</div>
+        <div class="name"><span class="pre">${engTitle}</span> ${winner.name}</div>
         <div class="reason">${reasonHTML}</div>
         <div class="month-badge">${label}</div>
         <div class="stats">
@@ -2777,7 +2775,7 @@ function openCertificate(){
           <div class="sign"><div class="line"></div>مدير الدائرة</div>
         </div>
       </div>
-      <div class="foot">صدرت هذه الشهادة بتاريخ ${dStr} · نظام مشاريع التصميم المركزي</div>
+      <div class="foot">صدرت هذه الشهادة بتاريخ ${dStr}</div>
     </div>
     </body></html>`);
   win.document.close(); win.focus();

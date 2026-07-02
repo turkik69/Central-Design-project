@@ -1468,7 +1468,7 @@ function openProjectModal(project){
       const dateInp=opnBox.querySelector('#newOpnDate');
       const date = first ? (expectedDeliveryO || new Date().toISOString().slice(0,10))
                          : (dateInp && dateInp.value ? dateInp.value : new Date().toISOString().slice(0,10));
-      opinionStages.push({stage:opinionStages.length+1, notes, date, by:state.appUser?.name||'—'});
+      opinionStages.push({stage:opinionStages.length+1, notes, date, by:state.appUser?.name||'—', byUsername:state.appUser?.username||''});
       renderOpinionStages();
     };
     opnBox.querySelectorAll('[data-rmopn]').forEach(b=>{
@@ -2557,6 +2557,21 @@ function deptKpi(key){
   const avgRating = ratings.length? (ratings.reduce((a,b)=>a+b,0)/ratings.length).toFixed(1):null;
   return {total,done,wip,waiting,completion,punctuality,avgDelay,avgRating,onTime,late};
 }
+/* عدد مراحل الرأي الفني التي قدّمها المهندس — تُحتسب كمنجزات مستقلة (جهد ووقت لكل رأي)
+   accept(dateStr) دالة تقرّر إن كانت المرحلة ضمن الفترة المطلوبة. */
+function opinionCreditFor(u, accept){
+  let n=0;
+  state.projects.forEach(p=>{
+    if(!Array.isArray(p.opinionStages)) return;
+    p.opinionStages.forEach(s=>{
+      const mine = (s.by && u.name && s.by===u.name) || (s.byUsername && s.byUsername===u.username);
+      if(!mine) return;
+      if(accept && !accept(s.date)) return;
+      n++;
+    });
+  });
+  return n;
+}
 /* مؤشرات مهندس (ضمن الفترة المختارة) */
 function engineerKpiList(){
   const engs=state.users.filter(u=>u.role!=='admin' && ['architectural','structural','services'].includes(u.dept));
@@ -2577,7 +2592,12 @@ function engineerKpiList(){
     const completion=total?Math.round(done/total*100):0;
     const punctuality=(onTime+late)?Math.round(onTime/(onTime+late)*100):null;
     const avgRating=ratings.length?(ratings.reduce((a,b)=>a+b,0)/ratings.length).toFixed(1):null;
-    return {name:u.name,username:u.username,total,done,completion,punctuality,avgRating,onTime,doneCount:done};
+    // رصيد مراحل الرأي الفني: كل مرحلة رأي = منجَز مستقل (يُضاف للكمّية دون المساس بالالتزام/التقييم)
+    const opinionCount = opinionCreditFor(u, (d)=>inKpiPeriod(d));
+    const total2 = total + opinionCount;
+    const done2  = done + opinionCount;
+    const completion2 = total2?Math.round(done2/total2*100):0;
+    return {name:u.name,username:u.username,total:total2,done:done2,completion:completion2,punctuality,avgRating,onTime,doneCount:done2,opinionCount};
   }).filter(e=>e.total>0).sort((a,b)=>b.completion-a.completion);
 }
 /* بداية احتساب موظف الشهر: لا تُحتسب الأعمال المؤرشفة قبل انطلاق التطبيق فعلياً */
@@ -2610,7 +2630,10 @@ function employeeOfMonthFor(from, to){
     }));
     const punctuality=(onTime+late)?Math.round(onTime/(onTime+late)*100):null;
     const avgRating=ratings.length?(ratings.reduce((a,b)=>a+b,0)/ratings.length).toFixed(1):null;
-    return {name:u.name,username:u.username,doneCount:done,punctuality,avgRating};
+    // رصيد مراحل الرأي الفني ضمن الفترة (مع احترام تاريخ انطلاق الاحتساب)
+    const opinionCount = opinionCreditFor(u, (d)=>{ if(!d) return false; const dd=new Date(d); return !isNaN(dd)&&dd>=from&&dd<=to&&dd>=EOM_START; });
+    const doneTotal = done + opinionCount;
+    return {name:u.name,username:u.username,doneCount:doneTotal,punctuality,avgRating,opinionCount};
   }).filter(e=>e.doneCount>0);
   if(!list.length) return null;
   const maxDone=Math.max(...list.map(e=>e.doneCount),1);
@@ -2895,12 +2918,13 @@ function openKpiModal(){
       <h3 style="font-size:15px;color:var(--oasis-700);margin-bottom:12px">مؤشرات المهندسين</h3>
       ${engs.length? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="background:var(--oasis);color:#fff">
-          <th style="padding:9px;text-align:right">المهندس</th><th style="padding:9px">الأعمال</th><th style="padding:9px">المنجز</th><th style="padding:9px">الإنجاز</th><th style="padding:9px">الالتزام</th><th style="padding:9px">التقييم</th>
+          <th style="padding:9px;text-align:right">المهندس</th><th style="padding:9px">الأعمال</th><th style="padding:9px">المنجز</th><th style="padding:9px">منها آراء فنية</th><th style="padding:9px">الإنجاز</th><th style="padding:9px">الالتزام</th><th style="padding:9px">التقييم</th>
         </tr></thead><tbody>
         ${engs.map((e,i)=>`<tr style="background:${i%2?'var(--sand-50)':'#fff'};border-bottom:1px solid var(--line)">
           <td style="padding:9px;text-align:right;font-weight:600">${e.name}</td>
           <td style="padding:9px;text-align:center">${e.total}</td>
           <td style="padding:9px;text-align:center">${e.done}</td>
+          <td style="padding:9px;text-align:center;color:#8a6d2f;font-weight:700">${e.opinionCount||0}</td>
           <td style="padding:9px;text-align:center;font-weight:700;color:#1f5d4c">${e.completion}%</td>
           <td style="padding:9px;text-align:center;color:#3b6ea5">${e.punctuality==null?'—':e.punctuality+'%'}</td>
           <td style="padding:9px;text-align:center;color:#b8860b">${e.avgRating?e.avgRating+' ★':'—'}</td>
@@ -2909,7 +2933,8 @@ function openKpiModal(){
         : '<div style="text-align:center;color:var(--muted);padding:20px">لا توجد بيانات مهندسين بعد.</div>'}
 
       <p style="font-size:11px;color:var(--muted);margin-top:16px;line-height:1.7">
-        تُحتسب المؤشرات تلقائياً من حالات الأقسام وتواريخ التسليم والتقييمات. «الالتزام بالوقت» = نسبة الأقسام المسلَّمة في موعدها من إجمالي المسلَّمة.</p>`;
+        تُحتسب المؤشرات تلقائياً من حالات الأقسام وتواريخ التسليم والتقييمات. «الالتزام بالوقت» = نسبة الأقسام المسلَّمة في موعدها من إجمالي المسلَّمة.
+        كما تُحتسب كل مرحلة رأي فني يقدّمها المهندس كعمل منجَز مستقل ضمن رصيده (لِما تتطلبه من جهد ووقت)؛ وعمود «منها آراء فنية» يبيّن عددها.</p>`;
     body.innerHTML=html;
     const ps=body.querySelector('#kpiPeriodSel');
     if(ps) ps.onchange=()=>{ kpiPeriod=ps.value; fill(); };
@@ -3003,8 +3028,8 @@ function exportKpiExcel(){
     ...deptData.map(d=>[d.label,d.k.total,d.k.done,d.k.wip,d.k.completion,(d.k.punctuality==null?'—':d.k.punctuality),(d.k.avgDelay||'—'),(d.k.avgRating||'—')]),
     [],
     ['مؤشرات المهندسين'],
-    ['المهندس','الرقم الوظيفي','الأعمال','المنجز','نسبة الإنجاز %','الالتزام بالوقت %','متوسط التقييم'],
-    ...engs.map(e=>[e.name,e.username,e.total,e.done,e.completion,(e.punctuality==null?'—':e.punctuality),(e.avgRating||'—')])
+    ['المهندس','الرقم الوظيفي','الأعمال','المنجز','منها آراء فنية','نسبة الإنجاز %','الالتزام بالوقت %','متوسط التقييم'],
+    ...engs.map(e=>[e.name,e.username,e.total,e.done,(e.opinionCount||0),e.completion,(e.punctuality==null?'—':e.punctuality),(e.avgRating||'—')])
   ];
   const ws=X.utils.aoa_to_sheet(aoa);
   ws['!cols']=[{wch:26},{wch:16},{wch:12},{wch:14},{wch:16},{wch:18},{wch:16},{wch:14}];

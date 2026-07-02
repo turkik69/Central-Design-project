@@ -2633,11 +2633,42 @@ function announcedEmployee(){
 /* شهادة شكر وتقدير لموظف الشهر — A4، بثيم البرنامج، تصدير PDF/طباعة (المشرف فقط) */
 function openCertificate(){
   if(state.appUser?.role!=='admin'){ alert('إصدار الشهادة من صلاحية المشرف فقط.'); return; }
-  const a=announcedEmployee();
-  const eom=employeeOfMonth();
-  const winner = (a&&a.winner) ? a.winner : (eom?eom.winner:null);
-  const label = (a&&a.winner) ? a.label : (kpiRange(kpiPeriod).label);
-  if(!winner){ alert('لا يوجد موظف شهر لإصدار شهادته بعد — لا توجد أعمال منجزة مؤهّلة في الفترة.'); return; }
+  // تحديد الفائز والفترة تبعاً للفترة المختارة في لوحة المؤشرات (شهر/ربع/نصف/عام/الكل)
+  let winner, label, kind;
+  if(kpiPeriod==='all'){
+    // «الكل» = موظف الشهر المنقضي (السلوك الافتراضي)
+    const a=announcedEmployee();
+    winner = a&&a.winner ? a.winner : (employeeOfMonth()?employeeOfMonth().winner:null);
+    label  = a&&a.winner ? a.label : (employeeOfMonth()?'':'');
+    kind='month';
+  } else {
+    const r=kpiRange(kpiPeriod);
+    winner = employeeOfMonthFor(r.from, r.to);
+    label  = r.label;
+    kind   = kpiPeriod;   // month | quarter | half | year
+  }
+  if(!winner){ alert('لا يوجد فائز لإصدار شهادته في هذه الفترة — لا توجد أعمال منجزة مؤهّلة.'); return; }
+  // كشف الجنس تلقائياً من آخر حرف في لقب العائلة (ة = أنثى)
+  const nm=(winner.name||'').trim();
+  const isFemale = /ة$/.test(nm);
+  const engTitle = isFemale ? 'المهندسة' : 'المهندس';
+  // صيغة اللقب حسب الفترة (شهر/ربع/نصف/عام) مع التذكير/التأنيث
+  const AWARD = {
+    month:   isFemale?'موظفة الشهر' :'موظف الشهر',
+    quarter: isFemale?'موظفة الربع' :'موظف الربع',
+    half:    isFemale?'موظفة نصف السنة':'موظف نصف السنة',
+    year:    isFemale?'موظفة العام' :'موظف العام'
+  };
+  const awardTitle = AWARD[kind] || AWARD.month;
+  const certSub = isFemale
+    ? { month:'EMPLOYEE OF THE MONTH', quarter:'EMPLOYEE OF THE QUARTER', half:'EMPLOYEE OF THE HALF-YEAR', year:'EMPLOYEE OF THE YEAR' }[kind]
+    : { month:'EMPLOYEE OF THE MONTH', quarter:'EMPLOYEE OF THE QUARTER', half:'EMPLOYEE OF THE HALF-YEAR', year:'EMPLOYEE OF THE YEAR' }[kind];
+  // نصّ السبب: يُصاغ تلقائياً حسب الفترة والجنس («مما جعلها الأجدر بلقب موظفة العام» ...)
+  const pron = isFemale ? 'جعلها' : 'جعله';
+  const verb1= isFemale ? 'تميّزها واجتهادها' : 'تميّزه واجتهاده';
+  const verb2= isFemale ? 'التزامها' : 'التزامه';
+  const reasonHTML = `تقديراً ل${verb1} في إنجاز مشاريع وأعمال الدائرة، و${verb2} بالجودة والمواعيد،<br>مما ${pron} الأجدر بلقب <b>${awardTitle}</b> عن ${label}`;
+  const introHTML = `تتقدّم المديرية العامة للشؤون الفنية بدائرة التصميم المركزي بخالص الشكر والتقدير إلى`;
   // تحديد قسم الفائز ومسمّى رئيس قسمه
   const winnerUser = state.users.find(u=>u.username===winner.username);
   const HEAD_AR={architectural:'رئيس القسم المعماري',structural:'رئيس القسم الإنشائي',services:'رئيس قسم تصميم الخدمات'};
@@ -2649,50 +2680,69 @@ function openCertificate(){
   win.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>شهادة شكر وتقدير — ${winner.name}</title>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
-      @page{size:A4;margin:0}
+      @page{size:A4 landscape;margin:0}
       *{box-sizing:border-box;margin:0;padding:0}
-      body{font-family:'Tajawal',Arial,sans-serif;background:#e9ecef;display:flex;flex-direction:column;align-items:center}
+      body{font-family:'Tajawal',Arial,sans-serif;background:#e5ded1;display:flex;flex-direction:column;align-items:center}
       .toolbar{position:fixed;top:0;left:0;right:0;background:#16443a;display:flex;gap:10px;justify-content:center;padding:11px;z-index:99;box-shadow:0 3px 12px rgba(0,0,0,.25)}
       .toolbar button{font-family:'Tajawal';font-size:14px;font-weight:700;border:none;border-radius:9px;padding:9px 20px;cursor:pointer}
       .b-print{background:#c9a24b;color:#16201e}.b-back{background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.6)}
       .spacer{height:62px}
-      .page{width:210mm;height:297mm;background:#fff;position:relative;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.2)}
-      .topband{background:linear-gradient(135deg,#1f5d4c,#16443a);height:120px;display:flex;align-items:center;justify-content:center;color:#fff;position:relative}
+      /* A4 أفقي (Landscape) */
+      .page{width:297mm;height:210mm;position:relative;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.2);
+            background:#faf7f1;}
+      /* طبقة النقوش الذهبية الخفيفة خلف اللون الفاتح */
+      .goldpat{position:absolute;inset:0;pointer-events:none;opacity:.5;
+        background-image:
+          radial-gradient(circle at 12% 20%, rgba(201,162,75,.14) 0 3px, transparent 3px),
+          radial-gradient(circle at 38% 62%, rgba(201,162,75,.10) 0 2px, transparent 2px),
+          radial-gradient(circle at 72% 28%, rgba(201,162,75,.12) 0 3px, transparent 3px),
+          radial-gradient(circle at 88% 78%, rgba(201,162,75,.10) 0 2px, transparent 2px),
+          repeating-linear-gradient(45deg, rgba(201,162,75,.05) 0 1px, transparent 1px 26px);
+        background-size:120px 120px,120px 120px,120px 120px,120px 120px,auto;}
+      /* بريق ذهبي زاوي خفيف */
+      .glow{position:absolute;inset:0;pointer-events:none;
+        background:radial-gradient(ellipse at 50% 0%, rgba(201,162,75,.10), transparent 55%);}
+      .topband{background:linear-gradient(135deg,#1f5d4c,#16443a);height:96px;display:flex;align-items:center;justify-content:center;color:#fff;position:relative}
       .topband .pat{position:absolute;inset:0;opacity:.10;background-image:radial-gradient(circle at 15% 40%,#fff 0 2px,transparent 2px),radial-gradient(circle at 60% 70%,#fff 0 2px,transparent 2px);background-size:44px 44px}
-      .topband h1{font-family:'Cairo';font-size:22px;font-weight:800;position:relative;text-align:center;line-height:1.6}
-      .topband h1 span{display:block;font-size:14px;font-weight:600;color:#bfe9de}
-      .frame{position:absolute;top:150px;bottom:40px;left:40px;right:40px;border:2px solid #c9a24b;border-radius:8px;padding:30px 40px;display:flex;flex-direction:column;align-items:center;text-align:center}
+      .topband h1{font-family:'Cairo';font-size:21px;font-weight:800;position:relative;text-align:center;line-height:1.55}
+      .topband h1 span{display:block;font-size:13px;font-weight:600;color:#bfe9de}
+      .frame{position:absolute;top:120px;bottom:34px;left:38px;right:38px;border:2px solid #c9a24b;border-radius:8px;
+             padding:16px 44px;display:flex;flex-direction:column;align-items:center;text-align:center;background:rgba(255,255,255,.55)}
       .frame::before{content:'';position:absolute;top:8px;bottom:8px;left:8px;right:8px;border:1px solid #e0cfa0;border-radius:5px;pointer-events:none}
-      .seal{font-size:64px;margin:6px 0 2px}
-      .cert-title{font-family:'Cairo';font-size:40px;font-weight:800;color:#16443a;margin:6px 0}
-      .cert-sub{font-size:16px;color:#8a6d2f;letter-spacing:.15em;font-weight:700;margin-bottom:30px}
-      .intro{font-size:16px;color:#3a463f;line-height:2;max-width:80%}
-      .name{font-family:'Cairo';font-size:38px;font-weight:800;color:#1f5d4c;margin:22px 0;padding:10px 40px;border-bottom:3px solid #c9a24b}
-      .reason{font-size:15.5px;color:#3a463f;line-height:2.1;max-width:82%;margin-bottom:10px}
-      .month-badge{display:inline-block;background:#1f5d4c;color:#fff;font-weight:700;border-radius:24px;padding:8px 26px;font-size:16px;margin:8px 0 26px}
-      .stats{display:flex;gap:34px;justify-content:center;margin:6px 0 22px;flex-wrap:wrap}
-      .stat{text-align:center}.stat b{display:block;font-size:24px;color:#16443a;font-family:'Cairo'}.stat span{font-size:12px;color:#8a6d2f}
-      .signs{display:flex;justify-content:space-around;width:100%;margin-top:auto;padding-top:20px}
-      .sign{text-align:center;font-size:13px;color:#3a463f}.sign .line{width:150px;border-top:1.5px solid #16443a;margin:34px auto 6px}
-      .foot{position:absolute;bottom:14px;left:0;right:0;text-align:center;font-size:11px;color:#98a29c}
+      .seal{width:78px;height:78px;border-radius:50%;background:#fff;border:2px solid #c9a24b;
+            display:flex;align-items:center;justify-content:center;margin:2px 0 2px;box-shadow:0 2px 8px rgba(201,162,75,.35)}
+      .seal img{width:56px;height:56px;object-fit:contain}
+      .cert-title{font-family:'Cairo';font-size:32px;font-weight:800;color:#16443a;margin:4px 0}
+      .cert-sub{font-size:14px;color:#8a6d2f;letter-spacing:.15em;font-weight:700;margin-bottom:14px}
+      .intro{font-size:15px;color:#3a463f;line-height:1.9;max-width:82%}
+      .name{font-family:'Cairo';font-size:34px;font-weight:800;color:#1f5d4c;margin:12px 0;padding:6px 40px;border-bottom:3px solid #c9a24b}
+      .name .pre{display:block;font-size:16px;font-weight:700;color:#8a6d2f;letter-spacing:.02em;margin-bottom:2px}
+      .reason{font-size:15px;color:#3a463f;line-height:2;max-width:86%;margin-bottom:6px}
+      .month-badge{display:inline-block;background:#1f5d4c;color:#fff;font-weight:700;border-radius:24px;padding:7px 26px;font-size:15px;margin:6px 0 16px}
+      .stats{display:flex;gap:44px;justify-content:center;margin:2px 0 12px;flex-wrap:wrap}
+      .stat{text-align:center}.stat b{display:block;font-size:23px;color:#16443a;font-family:'Cairo'}.stat span{font-size:12px;color:#8a6d2f}
+      .signs{display:flex;justify-content:space-around;width:100%;margin-top:auto;padding-top:10px}
+      .sign{text-align:center;font-size:13px;color:#3a463f}.sign .line{width:170px;border-top:1.5px solid #16443a;margin:26px auto 6px}
+      .foot{position:absolute;bottom:12px;left:0;right:0;text-align:center;font-size:11px;color:#98a29c}
       @media print{ body{background:#fff} .toolbar,.spacer{display:none!important} .page{box-shadow:none;margin:0} }
     </style></head><body>
     <div class="toolbar">
-      <button class="b-print" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+      <button class="b-print" onclick="window.print()">🖨️ طباعة / حفظ PDF (بالعرض)</button>
       <button class="b-back" onclick="window.close()">رجوع ✕</button>
     </div>
     <div class="spacer"></div>
     <div class="page">
+      <div class="goldpat"></div><div class="glow"></div>
       <div class="topband"><div class="pat"></div>
         <h1>سلطنة عُمان — بلدية مسقط<span>المديرية العامة للشؤون الفنية · دائرة التصميم المركزي</span></h1>
       </div>
       <div class="frame">
-        <div class="seal">🏆</div>
+        <div class="seal"><img src="${LOGO_DARK}" alt="بلدية مسقط"></div>
         <div class="cert-title">شهادة شكر وتقدير</div>
-        <div class="cert-sub">EMPLOYEE OF THE MONTH</div>
-        <div class="intro">تتقدّم المديرية العامة للشؤون الفنية بدائرة التصميم المركزي بخالص الشكر والتقدير إلى</div>
-        <div class="name">${winner.name}</div>
-        <div class="reason">تقديراً لتميّزه واجتهاده في إنجاز مشاريع وأعمال الدائرة، والتزامه بالجودة والمواعيد،<br>مما جعله الأجدر بلقب <b>موظف الشهر</b> عن شهر</div>
+        <div class="cert-sub">${certSub}</div>
+        <div class="intro">${introHTML}</div>
+        <div class="name"><span class="pre">${engTitle}</span>${winner.name}</div>
+        <div class="reason">${reasonHTML}</div>
         <div class="month-badge">${label}</div>
         <div class="stats">
           <div class="stat"><b>${winner.doneCount}</b><span>عمل منجز</span></div>
@@ -2755,7 +2805,7 @@ function openKpiModal(){
   const overlay=$(`<div class="overlay" id="kpiOverlay"></div>`);
   const modal=$(`<div class="modal" style="max-width:760px"><div class="modal-head"><h2>لوحة مؤشرات الأداء</h2>
     <div style="display:flex;gap:8px;align-items:center">
-      ${state.appUser?.role==='admin'?`<button class="btn btn-add" id="kpiCert" style="padding:7px 12px;font-size:13px">🏆 شهادة موظف الشهر</button>`:''}
+      ${state.appUser?.role==='admin'?`<button class="btn btn-add" id="kpiCert" style="padding:7px 12px;font-size:13px">🏆 شهادة تميّز (حسب الفترة المختارة)</button>`:''}
       <button class="btn btn-ghost" id="kpiPdf" style="padding:7px 12px;font-size:13px">${I.report} PDF</button>
       <button class="btn btn-ghost" id="kpiXls" style="padding:7px 12px;font-size:13px">${I.upload} Excel</button>
       <button class="icon-btn" id="x">${I.close}</button>

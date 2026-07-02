@@ -2638,6 +2638,10 @@ function openCertificate(){
   const winner = (a&&a.winner) ? a.winner : (eom?eom.winner:null);
   const label = (a&&a.winner) ? a.label : (kpiRange(kpiPeriod).label);
   if(!winner){ alert('لا يوجد موظف شهر لإصدار شهادته بعد — لا توجد أعمال منجزة مؤهّلة في الفترة.'); return; }
+  // تحديد قسم الفائز ومسمّى رئيس قسمه
+  const winnerUser = state.users.find(u=>u.username===winner.username);
+  const HEAD_AR={architectural:'رئيس القسم المعماري',structural:'رئيس القسم الإنشائي',services:'رئيس قسم تصميم الخدمات'};
+  const headTitle = (winnerUser && HEAD_AR[winnerUser.dept]) ? HEAD_AR[winnerUser.dept] : 'رئيس القسم';
   const today=new Date();
   const dStr=`${String(today.getDate()).padStart(2,'0')}/${String(today.getMonth()+1).padStart(2,'0')}/${today.getFullYear()}`;
   const win=window.open('','_blank');
@@ -2696,8 +2700,8 @@ function openCertificate(){
           <div class="stat"><b>${winner.avgRating?winner.avgRating:'—'}</b><span>متوسط التقييم</span></div>
         </div>
         <div class="signs">
-          <div class="sign"><div class="line"></div>رئيس الدائرة</div>
-          <div class="sign"><div class="line"></div>مدير عام الشؤون الفنية</div>
+          <div class="sign"><div class="line"></div>${headTitle}</div>
+          <div class="sign"><div class="line"></div>مدير الدائرة</div>
         </div>
         <div class="foot">صدرت هذه الشهادة بتاريخ ${dStr} · نظام مشاريع التصميم المركزي</div>
       </div>

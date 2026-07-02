@@ -1377,9 +1377,12 @@ function openProjectModal(project){
   let ideaStages = Array.isArray(data.ideaStages) ? data.ideaStages.map(s=>({...s})) : [];
   const stagesBox=form.querySelector('#ideaStagesBox');
   const canEditIdea = !isObserver();
+  const expectedDelivery = (data.architectural?.endDate) || data.endDate || '';
   function renderStages(){
     if(overallSel.value!=='فكرة مبدئية'){ stagesBox.innerHTML=''; return; }
     const nextNum=ideaStages.length+1;
+    const isFirst = nextNum===1;
+    const todayStr=new Date().toISOString().slice(0,10);
     stagesBox.innerHTML=`
       <div class="divider"></div>
       <div style="background:var(--sand-50);border:1px solid var(--line);border-radius:14px;padding:16px">
@@ -1388,7 +1391,7 @@ function openProjectModal(project){
           <div style="background:#fff;border:1px solid var(--line);border-radius:11px;padding:12px;margin-bottom:8px">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
               <span style="font-weight:700;color:var(--oasis-700)">المرحلة ${s.stage||(i+1)}</span>
-              <span style="display:flex;align-items:center;gap:8px"><span style="font-size:11.5px;color:var(--muted)">${s.date||''}</span>
+              <span style="display:flex;align-items:center;gap:8px"><span style="font-size:11.5px;color:var(--muted)">${(i===0)?'تاريخ التسليم المتوقع: ':''}${s.date||'—'}</span>
               ${canEditIdea?`<button type="button" class="act act-del" data-rmstage="${i}" title="حذف">${I.trash}</button>`:''}</span>
             </div>
             ${s.notes?`<div style="font-size:13px;color:var(--ink);margin-top:6px;line-height:1.7">${s.notes}</div>`:''}
@@ -1398,6 +1401,10 @@ function openProjectModal(project){
           <div style="border-top:1px dashed var(--line);padding-top:12px;margin-top:6px">
             <label class="lbl-sm">إضافة المرحلة ${nextNum}</label>
             <textarea class="inp" id="newStageNotes" rows="3" placeholder="ملاحظات المرحلة ${nextNum} (ما الذي عُدّل أو أُضيف في هذه المرحلة)…" style="resize:vertical"></textarea>
+            ${isFirst
+              ? `<div style="font-size:11.5px;color:var(--muted);margin-top:6px">تاريخ المرحلة الأولى = تاريخ التسليم المتوقع: <b>${expectedDelivery||'غير محدّد'}</b></div>`
+              : `<label class="lbl-sm" style="margin-top:6px">تاريخ تقديم هذه المرحلة</label>
+                 <input class="inp" type="date" id="newStageDate" value="${todayStr}">`}
             <button type="button" class="btn btn-ghost" id="addStageBtn" style="margin-top:8px">${I.plus} إضافة المرحلة ${nextNum}</button>
           </div>`:''}
       </div>`;
@@ -1406,8 +1413,11 @@ function openProjectModal(project){
     if(addBtn) addBtn.onclick=()=>{
       const notes=(stagesBox.querySelector('#newStageNotes').value||'').trim();
       if(!notes){ alert('اكتب ملاحظات المرحلة.'); return; }
-      const today=new Date().toISOString().slice(0,10);
-      ideaStages.push({stage:ideaStages.length+1, notes, date:today, by:state.appUser?.name||'—'});
+      const first = ideaStages.length===0;
+      const dateInp=stagesBox.querySelector('#newStageDate');
+      const date = first ? (expectedDelivery || new Date().toISOString().slice(0,10))
+                         : (dateInp && dateInp.value ? dateInp.value : new Date().toISOString().slice(0,10));
+      ideaStages.push({stage:ideaStages.length+1, notes, date, by:state.appUser?.name||'—'});
       renderStages();
     };
     stagesBox.querySelectorAll('[data-rmstage]').forEach(b=>{
@@ -1421,6 +1431,9 @@ function openProjectModal(project){
   function renderOpinionStages(){
     if(overallSel.value!=='رأي فني'){ opnBox.innerHTML=''; return; }
     const nextNum=opinionStages.length+1;
+    const isFirst = nextNum===1;
+    const todayStr=new Date().toISOString().slice(0,10);
+    const expectedDeliveryO = (data.architectural?.endDate) || data.endDate || '';
     opnBox.innerHTML=`
       <div class="divider"></div>
       <div style="background:var(--sand-50);border:1px solid var(--line);border-radius:14px;padding:16px">
@@ -1429,7 +1442,7 @@ function openProjectModal(project){
           <div style="background:#fff;border:1px solid var(--line);border-radius:11px;padding:12px;margin-bottom:8px">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
               <span style="font-weight:700;color:var(--oasis-700)">المرحلة ${s.stage||(i+1)}</span>
-              <span style="display:flex;align-items:center;gap:8px"><span style="font-size:11.5px;color:var(--muted)">${s.date||''}</span>
+              <span style="display:flex;align-items:center;gap:8px"><span style="font-size:11.5px;color:var(--muted)">${(i===0)?'تاريخ التسليم المتوقع: ':''}${s.date||'—'}</span>
               ${canEditIdea?`<button type="button" class="act act-del" data-rmopn="${i}" title="حذف">${I.trash}</button>`:''}</span>
             </div>
             ${s.notes?`<div style="font-size:13px;color:var(--ink);margin-top:6px;line-height:1.7">${s.notes}</div>`:''}
@@ -1439,6 +1452,10 @@ function openProjectModal(project){
           <div style="border-top:1px dashed var(--line);padding-top:12px;margin-top:6px">
             <label class="lbl-sm">إضافة المرحلة ${nextNum}</label>
             <textarea class="inp" id="newOpnNotes" rows="3" placeholder="ملاحظات المرحلة ${nextNum} (تفاصيل الرأي الفني في هذه المرحلة)…" style="resize:vertical"></textarea>
+            ${isFirst
+              ? `<div style="font-size:11.5px;color:var(--muted);margin-top:6px">تاريخ المرحلة الأولى = تاريخ التسليم المتوقع: <b>${expectedDeliveryO||'غير محدّد'}</b></div>`
+              : `<label class="lbl-sm" style="margin-top:6px">تاريخ تقديم هذه المرحلة</label>
+                 <input class="inp" type="date" id="newOpnDate" value="${todayStr}">`}
             <button type="button" class="btn btn-ghost" id="addOpnBtn" style="margin-top:8px">${I.plus} إضافة المرحلة ${nextNum}</button>
           </div>`:''}
       </div>`;
@@ -1446,8 +1463,11 @@ function openProjectModal(project){
     if(addBtn) addBtn.onclick=()=>{
       const notes=(opnBox.querySelector('#newOpnNotes').value||'').trim();
       if(!notes){ alert('اكتب ملاحظات المرحلة.'); return; }
-      const today=new Date().toISOString().slice(0,10);
-      opinionStages.push({stage:opinionStages.length+1, notes, date:today, by:state.appUser?.name||'—'});
+      const first = opinionStages.length===0;
+      const dateInp=opnBox.querySelector('#newOpnDate');
+      const date = first ? (expectedDeliveryO || new Date().toISOString().slice(0,10))
+                         : (dateInp && dateInp.value ? dateInp.value : new Date().toISOString().slice(0,10));
+      opinionStages.push({stage:opinionStages.length+1, notes, date, by:state.appUser?.name||'—'});
       renderOpinionStages();
     };
     opnBox.querySelectorAll('[data-rmopn]').forEach(b=>{
@@ -2610,6 +2630,81 @@ function announcedEmployee(){
   const yearOfPrev = (m-1<0)? y-1 : y;
   return { winner:employeeOfMonthFor(from,to), label:`${monthName} ${yearOfPrev}` };
 }
+/* شهادة شكر وتقدير لموظف الشهر — A4، بثيم البرنامج، تصدير PDF/طباعة (المشرف فقط) */
+function openCertificate(){
+  if(state.appUser?.role!=='admin'){ alert('إصدار الشهادة من صلاحية المشرف فقط.'); return; }
+  const a=announcedEmployee();
+  const eom=employeeOfMonth();
+  const winner = (a&&a.winner) ? a.winner : (eom?eom.winner:null);
+  const label = (a&&a.winner) ? a.label : (kpiRange(kpiPeriod).label);
+  if(!winner){ alert('لا يوجد موظف شهر لإصدار شهادته بعد — لا توجد أعمال منجزة مؤهّلة في الفترة.'); return; }
+  const today=new Date();
+  const dStr=`${String(today.getDate()).padStart(2,'0')}/${String(today.getMonth()+1).padStart(2,'0')}/${today.getFullYear()}`;
+  const win=window.open('','_blank');
+  if(!win){ alert('فضلاً اسمح بالنوافذ المنبثقة لإصدار الشهادة.'); return; }
+  win.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>شهادة شكر وتقدير — ${winner.name}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+      @page{size:A4;margin:0}
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:'Tajawal',Arial,sans-serif;background:#e9ecef;display:flex;flex-direction:column;align-items:center}
+      .toolbar{position:fixed;top:0;left:0;right:0;background:#16443a;display:flex;gap:10px;justify-content:center;padding:11px;z-index:99;box-shadow:0 3px 12px rgba(0,0,0,.25)}
+      .toolbar button{font-family:'Tajawal';font-size:14px;font-weight:700;border:none;border-radius:9px;padding:9px 20px;cursor:pointer}
+      .b-print{background:#c9a24b;color:#16201e}.b-back{background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.6)}
+      .spacer{height:62px}
+      .page{width:210mm;height:297mm;background:#fff;position:relative;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.2)}
+      .topband{background:linear-gradient(135deg,#1f5d4c,#16443a);height:120px;display:flex;align-items:center;justify-content:center;color:#fff;position:relative}
+      .topband .pat{position:absolute;inset:0;opacity:.10;background-image:radial-gradient(circle at 15% 40%,#fff 0 2px,transparent 2px),radial-gradient(circle at 60% 70%,#fff 0 2px,transparent 2px);background-size:44px 44px}
+      .topband h1{font-family:'Cairo';font-size:22px;font-weight:800;position:relative;text-align:center;line-height:1.6}
+      .topband h1 span{display:block;font-size:14px;font-weight:600;color:#bfe9de}
+      .frame{position:absolute;top:150px;bottom:40px;left:40px;right:40px;border:2px solid #c9a24b;border-radius:8px;padding:30px 40px;display:flex;flex-direction:column;align-items:center;text-align:center}
+      .frame::before{content:'';position:absolute;top:8px;bottom:8px;left:8px;right:8px;border:1px solid #e0cfa0;border-radius:5px;pointer-events:none}
+      .seal{font-size:64px;margin:6px 0 2px}
+      .cert-title{font-family:'Cairo';font-size:40px;font-weight:800;color:#16443a;margin:6px 0}
+      .cert-sub{font-size:16px;color:#8a6d2f;letter-spacing:.15em;font-weight:700;margin-bottom:30px}
+      .intro{font-size:16px;color:#3a463f;line-height:2;max-width:80%}
+      .name{font-family:'Cairo';font-size:38px;font-weight:800;color:#1f5d4c;margin:22px 0;padding:10px 40px;border-bottom:3px solid #c9a24b}
+      .reason{font-size:15.5px;color:#3a463f;line-height:2.1;max-width:82%;margin-bottom:10px}
+      .month-badge{display:inline-block;background:#1f5d4c;color:#fff;font-weight:700;border-radius:24px;padding:8px 26px;font-size:16px;margin:8px 0 26px}
+      .stats{display:flex;gap:34px;justify-content:center;margin:6px 0 22px;flex-wrap:wrap}
+      .stat{text-align:center}.stat b{display:block;font-size:24px;color:#16443a;font-family:'Cairo'}.stat span{font-size:12px;color:#8a6d2f}
+      .signs{display:flex;justify-content:space-around;width:100%;margin-top:auto;padding-top:20px}
+      .sign{text-align:center;font-size:13px;color:#3a463f}.sign .line{width:150px;border-top:1.5px solid #16443a;margin:34px auto 6px}
+      .foot{position:absolute;bottom:14px;left:0;right:0;text-align:center;font-size:11px;color:#98a29c}
+      @media print{ body{background:#fff} .toolbar,.spacer{display:none!important} .page{box-shadow:none;margin:0} }
+    </style></head><body>
+    <div class="toolbar">
+      <button class="b-print" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+      <button class="b-back" onclick="window.close()">رجوع ✕</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="page">
+      <div class="topband"><div class="pat"></div>
+        <h1>سلطنة عُمان — بلدية مسقط<span>المديرية العامة للشؤون الفنية · دائرة التصميم المركزي</span></h1>
+      </div>
+      <div class="frame">
+        <div class="seal">🏆</div>
+        <div class="cert-title">شهادة شكر وتقدير</div>
+        <div class="cert-sub">EMPLOYEE OF THE MONTH</div>
+        <div class="intro">تتقدّم المديرية العامة للشؤون الفنية بدائرة التصميم المركزي بخالص الشكر والتقدير إلى</div>
+        <div class="name">${winner.name}</div>
+        <div class="reason">تقديراً لتميّزه واجتهاده في إنجاز مشاريع وأعمال الدائرة، والتزامه بالجودة والمواعيد،<br>مما جعله الأجدر بلقب <b>موظف الشهر</b> عن شهر</div>
+        <div class="month-badge">${label}</div>
+        <div class="stats">
+          <div class="stat"><b>${winner.doneCount}</b><span>عمل منجز</span></div>
+          <div class="stat"><b>${winner.punctuality==null?'—':winner.punctuality+'%'}</b><span>الالتزام بالوقت</span></div>
+          <div class="stat"><b>${winner.avgRating?winner.avgRating:'—'}</b><span>متوسط التقييم</span></div>
+        </div>
+        <div class="signs">
+          <div class="sign"><div class="line"></div>رئيس الدائرة</div>
+          <div class="sign"><div class="line"></div>مدير عام الشؤون الفنية</div>
+        </div>
+        <div class="foot">صدرت هذه الشهادة بتاريخ ${dStr} · نظام مشاريع التصميم المركزي</div>
+      </div>
+    </div>
+    </body></html>`);
+  win.document.close(); win.focus();
+}
 function employeeOfMonth(){
   const list=engineerKpiList().filter(e=>e.doneCount>0);   // من أنجز عملاً فعلياً
   if(!list.length) return null;
@@ -2656,6 +2751,7 @@ function openKpiModal(){
   const overlay=$(`<div class="overlay" id="kpiOverlay"></div>`);
   const modal=$(`<div class="modal" style="max-width:760px"><div class="modal-head"><h2>لوحة مؤشرات الأداء</h2>
     <div style="display:flex;gap:8px;align-items:center">
+      ${state.appUser?.role==='admin'?`<button class="btn btn-add" id="kpiCert" style="padding:7px 12px;font-size:13px">🏆 شهادة موظف الشهر</button>`:''}
       <button class="btn btn-ghost" id="kpiPdf" style="padding:7px 12px;font-size:13px">${I.report} PDF</button>
       <button class="btn btn-ghost" id="kpiXls" style="padding:7px 12px;font-size:13px">${I.upload} Excel</button>
       <button class="icon-btn" id="x">${I.close}</button>
@@ -2767,6 +2863,7 @@ function openKpiModal(){
   fill(); overlay._refresh=fill;
   // تصدير PDF عبر الطباعة (المستخدم يحفظ كـ PDF من حوار الطباعة)
   modal.querySelector('#kpiPdf').onclick=()=>exportKpiPdf();
+  { const cb=modal.querySelector('#kpiCert'); if(cb) cb.onclick=()=>openCertificate(); }
   modal.querySelector('#kpiXls').onclick=()=>exportKpiExcel();
   modal.querySelector('#x').onclick=()=>{kpiModalOpen=false;overlay.remove();};
   overlay.onclick=(e)=>{if(e.target===overlay){kpiModalOpen=false;overlay.remove();}};

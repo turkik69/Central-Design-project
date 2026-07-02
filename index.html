@@ -3433,30 +3433,6 @@ function dmy(iso){
   if(!m) return '';
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
-/* أسماء الأشهر لعرض ودّي بجانب الحقول */
-const _MONTHS_AR=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-function dmyLong(iso){
-  if(!iso) return '';
-  const m=String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if(!m) return '';
-  return `${Number(m[3])} ${_MONTHS_AR[Number(m[2])-1]} ${m[1]}`;
-}
-/* يربط تلميحاً واضحاً (يوم/شهر/سنة) أسفل كل حقل تاريخ لمنع الالتباس مع صيغة mm/dd/yyyy */
-function attachDateHints(root){
-  const scope = root || document;
-  scope.querySelectorAll('input[type="date"]').forEach(inp=>{
-    if(inp.dataset.hinted) return;      // لا تُكرر
-    inp.dataset.hinted='1';
-    const hint=document.createElement('div');
-    hint.className='date-hint';
-    hint.style.cssText='font-size:11px;color:var(--oasis-700);font-weight:600;margin-top:3px;direction:ltr;text-align:right';
-    const upd=()=>{ hint.innerHTML = inp.value ? `📅 ${dmy(inp.value)} <span style="color:var(--muted);font-weight:500">(${dmyLong(inp.value)})</span>` : '<span style="color:var(--muted);font-weight:500">اليوم/الشهر/السنة</span>'; };
-    upd();
-    inp.insertAdjacentElement('afterend', hint);
-    inp.addEventListener('input', upd);
-    inp.addEventListener('change', upd);
-  });
-}
 function daysSince(iso){
   if(!iso) return null;
   return Math.floor((Date.now()-new Date(iso).getTime())/86400000);
@@ -3761,13 +3737,6 @@ const savedUser=loadSession();      // استعادة جلسة هذا الجها
 if(savedUser){state.appUser=savedUser;}
 render();          // ارسمي الواجهة فوراً
 initFirebase();    // ثم حمّلي قاعدة البيانات في الخلفية
-
-/* مراقب يضيف تلميح (يوم/شهر/سنة) أسفل أي حقل تاريخ يظهر في الصفحة — لمنع الالتباس مع صيغة mm/dd/yyyy */
-try{
-  attachDateHints(document);
-  const _dObs=new MutationObserver(()=>{ attachDateHints(document); });
-  _dObs.observe(document.body,{childList:true,subtree:true});
-}catch(e){ console.error('date-hints:',e); }
 </script>
 </body>
 </html>

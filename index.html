@@ -1392,7 +1392,7 @@ function openProjectModal(project){
           <div style="background:#fff;border:1px solid var(--line);border-radius:11px;padding:12px;margin-bottom:8px">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
               <span style="font-weight:700;color:var(--oasis-700)">المرحلة ${s.stage||(i+1)}</span>
-              <span style="display:flex;align-items:center;gap:8px"><span style="font-size:11.5px;color:var(--muted)">${(i===0)?'تاريخ التسليم المتوقع: ':''}${s.date||'—'}</span>
+              <span style="display:flex;align-items:center;gap:8px"><span style="font-size:11.5px;color:var(--muted)">${(i===0)?'تاريخ التسليم المتوقع: ':''}${s.date?dmy(s.date):'—'}</span>
               ${canEditIdea?`<button type="button" class="act act-del" data-rmstage="${i}" title="حذف">${I.trash}</button>`:''}</span>
             </div>
             ${s.notes?`<div style="font-size:13px;color:var(--ink);margin-top:6px;line-height:1.7">${s.notes}</div>`:''}
@@ -1403,7 +1403,7 @@ function openProjectModal(project){
             <label class="lbl-sm">إضافة المرحلة ${nextNum}</label>
             <textarea class="inp" id="newStageNotes" rows="3" placeholder="ملاحظات المرحلة ${nextNum} (ما الذي عُدّل أو أُضيف في هذه المرحلة)…" style="resize:vertical"></textarea>
             ${isFirst
-              ? `<div style="font-size:11.5px;color:var(--muted);margin-top:6px">تاريخ المرحلة الأولى = تاريخ التسليم المتوقع: <b>${expectedDelivery||'غير محدّد'}</b></div>`
+              ? `<div style="font-size:11.5px;color:var(--muted);margin-top:6px">تاريخ المرحلة الأولى = تاريخ التسليم المتوقع: <b>${(expectedDelivery?dmy(expectedDelivery):null)||'غير محدّد'}</b></div>`
               : `<label class="lbl-sm" style="margin-top:6px">تاريخ تقديم هذه المرحلة</label>
                  <input class="inp" type="date" id="newStageDate" value="${todayStr}">`}
             <button type="button" class="btn btn-ghost" id="addStageBtn" style="margin-top:8px">${I.plus} إضافة المرحلة ${nextNum}</button>
@@ -1443,7 +1443,7 @@ function openProjectModal(project){
           <div style="background:#fff;border:1px solid var(--line);border-radius:11px;padding:12px;margin-bottom:8px">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
               <span style="font-weight:700;color:var(--oasis-700)">المرحلة ${s.stage||(i+1)}</span>
-              <span style="display:flex;align-items:center;gap:8px"><span style="font-size:11.5px;color:var(--muted)">${(i===0)?'تاريخ التسليم المتوقع: ':''}${s.date||'—'}</span>
+              <span style="display:flex;align-items:center;gap:8px"><span style="font-size:11.5px;color:var(--muted)">${(i===0)?'تاريخ التسليم المتوقع: ':''}${s.date?dmy(s.date):'—'}</span>
               ${canEditIdea?`<button type="button" class="act act-del" data-rmopn="${i}" title="حذف">${I.trash}</button>`:''}</span>
             </div>
             ${s.notes?`<div style="font-size:13px;color:var(--ink);margin-top:6px;line-height:1.7">${s.notes}</div>`:''}
@@ -1454,7 +1454,7 @@ function openProjectModal(project){
             <label class="lbl-sm">إضافة المرحلة ${nextNum}</label>
             <textarea class="inp" id="newOpnNotes" rows="3" placeholder="ملاحظات المرحلة ${nextNum} (تفاصيل الرأي الفني في هذه المرحلة)…" style="resize:vertical"></textarea>
             ${isFirst
-              ? `<div style="font-size:11.5px;color:var(--muted);margin-top:6px">تاريخ المرحلة الأولى = تاريخ التسليم المتوقع: <b>${expectedDeliveryO||'غير محدّد'}</b></div>`
+              ? `<div style="font-size:11.5px;color:var(--muted);margin-top:6px">تاريخ المرحلة الأولى = تاريخ التسليم المتوقع: <b>${(expectedDeliveryO?dmy(expectedDeliveryO):null)||'غير محدّد'}</b></div>`
               : `<label class="lbl-sm" style="margin-top:6px">تاريخ تقديم هذه المرحلة</label>
                  <input class="inp" type="date" id="newOpnDate" value="${todayStr}">`}
             <button type="button" class="btn btn-ghost" id="addOpnBtn" style="margin-top:8px">${I.plus} إضافة المرحلة ${nextNum}</button>
@@ -1742,7 +1742,7 @@ function deptCard(title,prefixKey,d){
     :`
       <label class="lbl-sm" style="margin-top:4px">تاريخ التسليم الفعلي (تلقائي)</label>
       <div class="inp" style="background:var(--sand-100);display:flex;justify-content:space-between;align-items:center">
-        <span>${d.actualDate}</span>${deliveryBadge(d.endDate,d.actualDate)}</div>`):''}
+        <span>${dmy(d.actualDate)}</span>${deliveryBadge(d.endDate,d.actualDate)}</div>`):''}
     <textarea class="inp" name="${pf}_notes" rows="2" placeholder="ملاحظات…" style="resize:none;margin-top:4px" ${DIS}>${d.notes||''}</textarea>
     <label class="lbl-sm" style="margin-top:4px">رابط مسار العمل (مجلّد القسم على الشبكة)</label>
     <input class="inp" name="${pf}_workLink" value="${(d.workLink||'').replace(/"/g,'&quot;')}" placeholder="مثال: \\\\server\\projects\\... أو https://" style="direction:ltr;text-align:left;font-size:12px" ${DIS}>
@@ -3426,6 +3426,37 @@ function fmtDate(iso){
   try{ return new Date(iso).toLocaleString('ar-OM',{dateStyle:'medium',timeStyle:'short'}); }
   catch(e){ return '—'; }
 }
+/* تنسيق تاريخ YYYY-MM-DD إلى dd/mm/yyyy بلا لبس */
+function dmy(iso){
+  if(!iso) return '';
+  const m=String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(!m) return '';
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+/* أسماء الأشهر لعرض ودّي بجانب الحقول */
+const _MONTHS_AR=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+function dmyLong(iso){
+  if(!iso) return '';
+  const m=String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(!m) return '';
+  return `${Number(m[3])} ${_MONTHS_AR[Number(m[2])-1]} ${m[1]}`;
+}
+/* يربط تلميحاً واضحاً (يوم/شهر/سنة) أسفل كل حقل تاريخ لمنع الالتباس مع صيغة mm/dd/yyyy */
+function attachDateHints(root){
+  const scope = root || document;
+  scope.querySelectorAll('input[type="date"]').forEach(inp=>{
+    if(inp.dataset.hinted) return;      // لا تُكرر
+    inp.dataset.hinted='1';
+    const hint=document.createElement('div');
+    hint.className='date-hint';
+    hint.style.cssText='font-size:11px;color:var(--oasis-700);font-weight:600;margin-top:3px;direction:ltr;text-align:right';
+    const upd=()=>{ hint.innerHTML = inp.value ? `📅 ${dmy(inp.value)} <span style="color:var(--muted);font-weight:500">(${dmyLong(inp.value)})</span>` : '<span style="color:var(--muted);font-weight:500">اليوم/الشهر/السنة</span>'; };
+    upd();
+    inp.insertAdjacentElement('afterend', hint);
+    inp.addEventListener('input', upd);
+    inp.addEventListener('change', upd);
+  });
+}
 function daysSince(iso){
   if(!iso) return null;
   return Math.floor((Date.now()-new Date(iso).getTime())/86400000);
@@ -3730,6 +3761,13 @@ const savedUser=loadSession();      // استعادة جلسة هذا الجها
 if(savedUser){state.appUser=savedUser;}
 render();          // ارسمي الواجهة فوراً
 initFirebase();    // ثم حمّلي قاعدة البيانات في الخلفية
+
+/* مراقب يضيف تلميح (يوم/شهر/سنة) أسفل أي حقل تاريخ يظهر في الصفحة — لمنع الالتباس مع صيغة mm/dd/yyyy */
+try{
+  attachDateHints(document);
+  const _dObs=new MutationObserver(()=>{ attachDateHints(document); });
+  _dObs.observe(document.body,{childList:true,subtree:true});
+}catch(e){ console.error('date-hints:',e); }
 </script>
 </body>
 </html>

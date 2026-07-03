@@ -1057,7 +1057,7 @@ function renderApp(){
     </div>`));
   }
 
-  const activeCount=state.filtered.filter(p=>p.overallStatus!=='مكتمل').length;
+  const activeCount=state.filtered.filter(p=>p.overallStatus!=='مكتمل' && p.overallStatus!=='رأي فني').length;
   const toolbar=$(`<div class="toolbar">
     <h2>المشاريع النشطة <span>(${activeCount})</span></h2>
     <div class="tb-actions">
@@ -1075,6 +1075,7 @@ function renderApp(){
       ${canViewReports()?`<button class="btn btn-ghost" id="btnEngSearch">${I.person}<span class="lbl">بحث باسم المهندس</span></button>`:''}
       ${isEngineer()?`<button class="btn btn-ghost" id="btnMine">${I.build}<span class="lbl">مشاريعي</span></button>`:''}
       ${isEngineer()?`<button class="btn btn-ghost" id="btnMyActs">${I.pin}<span class="lbl">اجتماعاتي وزياراتي</span></button>`:''}
+      <button class="btn btn-ghost" id="btnOpinions" style="border-color:#c9a24b;color:#8a6d2f">${I.report}<span class="lbl">الآراء الفنية</span></button>
       ${isObserver()?'':`<button class="btn btn-add" id="btnAdd">${I.plus}<span class="lbl">إضافة مشروع</span></button>`}
       ${isObserver()?'':`<button class="btn btn-add" id="btnVisit" style="background:var(--clay,#8a6d2f)">${I.pin}<span class="lbl">زيارة موقع</span></button>`}
       ${isObserver()?'':`<button class="btn btn-add" id="btnMeeting" style="background:#3b6ea5">${I.users}<span class="lbl">اجتماع</span></button>`}
@@ -1106,6 +1107,7 @@ function renderApp(){
   { const ma=toolbar.querySelector('#btnMyActs'); if(ma) ma.onclick=()=>openMyActivitiesModal(); }
   { const vb=toolbar.querySelector('#btnVisit'); if(vb) vb.onclick=()=>openVisitModal(); }
   { const mb=toolbar.querySelector('#btnMeeting'); if(mb) mb.onclick=()=>openMeetingModal(); }
+  { const ob=toolbar.querySelector('#btnOpinions'); if(ob) ob.onclick=()=>{ opinionView=true; doneView=false; myProjectsView=false; updateGrid(); }; }
   main.appendChild(toolbar);
 
   const gridHost=document.createElement('div');
@@ -1157,14 +1159,16 @@ function maybeShowDeadlineBanner(){
 let completedOpen=false;   // (محتفظ به للتوافق) غير مستخدم بعد الفصل
 let doneView=false;        // true = عرض شاشة المشاريع المنتهية المنفصلة
 let myProjectsView=false;  // true = عرض مشاريع المهندس الحالي فقط
+let opinionView=false;     // true = عرض شاشة الآراء الفنية فقط (مشاريع حالتها «رأي فني»)
 function updateGrid(){
   const host=document.getElementById('gridHost');
   if(!host) return;
   host.innerHTML='';
   if(state.loading){host.appendChild($(`<div class="loading"><div class="spinner"></div></div>`));return;}
 
-  // فصل المشاريع المنتهية (مكتمل) عن النشطة
-  const active=state.filtered.filter(p=>p.overallStatus!=='مكتمل');
+  // فصل المشاريع المنتهية (مكتمل) والآراء الفنية عن المشاريع النشطة
+  const active=state.filtered.filter(p=>p.overallStatus!=='مكتمل' && p.overallStatus!=='رأي فني');
+  const opinionsAll=state.filtered.filter(p=>p.overallStatus==='رأي فني');
   const done=state.filtered.filter(p=>p.overallStatus==='مكتمل');
 
   /* ── شاشة «مشاريعي» للمهندس ── */
@@ -1187,6 +1191,29 @@ function updateGrid(){
     }
     const back=host.querySelector('#backAll');
     if(back) back.onclick=()=>{ myProjectsView=false; updateGrid(); };
+    return;
+  }
+
+  /* ── شاشة «الآراء الفنية» — مشاريع حالتها «رأي فني» فقط ── */
+  if(opinionView){
+    const opinions=state.filtered.filter(p=>p.overallStatus==='رأي فني');
+    const header=document.createElement('div');
+    header.className='done-screen-head';
+    header.innerHTML=`
+      <button class="btn btn-ghost" id="backAllOpn">${I.chevronR||I.chevron} رجوع لكل المشاريع</button>
+      <h2 style="display:flex;align-items:center;gap:9px;margin:0;font-size:19px;color:#8a6d2f">
+        ${I.report} الآراء الفنية <span class="done-count" style="background:#f3e9d7;color:#8a6d2f">${opinions.length}</span></h2>`;
+    host.appendChild(header);
+    if(opinions.length){
+      const grid=document.createElement('div');grid.className='grid';
+      opinions.forEach(p=>grid.appendChild(renderCard(p)));
+      host.appendChild(grid);
+    }else{
+      host.appendChild($(`<div class="empty" style="padding:40px 20px">${I.report}
+        <p style="margin-top:10px;color:var(--muted)">لا توجد مشاريع بحالة «رأي فني» حالياً.</p></div>`));
+    }
+    const back=host.querySelector('#backAllOpn');
+    if(back) back.onclick=()=>{ opinionView=false; updateGrid(); };
     return;
   }
 
@@ -1231,6 +1258,21 @@ function updateGrid(){
       <span style="display:flex;align-items:center;gap:6px;color:var(--oasis-600);font-size:13px">عرضها ${I.chevronL||I.chevron}</span>`;
     entry.onclick=()=>{ doneView=true; updateGrid(); };
     host.appendChild(entry);
+  }
+
+  /* ── زر دخول لشاشة الآراء الفنية (على الشاشة الرئيسية) ── */
+  if(opinionsAll.length){
+    const oEntry=document.createElement('button');
+    oEntry.className='done-toggle done-entry';
+    oEntry.style.borderColor='#e0cfa0';
+    oEntry.innerHTML=`
+      <span style="display:flex;align-items:center;gap:9px;color:#8a6d2f">
+        ${I.report} الآراء الفنية
+        <span class="done-count" style="background:#f3e9d7;color:#8a6d2f">${opinionsAll.length}</span>
+      </span>
+      <span style="display:flex;align-items:center;gap:6px;color:#8a6d2f;font-size:13px">عرضها ${I.chevronL||I.chevron}</span>`;
+    oEntry.onclick=()=>{ opinionView=true; updateGrid(); };
+    host.appendChild(oEntry);
   }
 
   // المشاريع النشطة

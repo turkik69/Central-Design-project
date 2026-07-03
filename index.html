@@ -139,6 +139,7 @@
   .tb-actions{display:flex;gap:9px;flex-wrap:wrap}
   .btn{padding:9px 15px;border-radius:10px;font-weight:700;font-size:13px;display:flex;align-items:center;gap:7px;transition:.15s;color:#fff}
   .btn-add{background:var(--oasis)}.btn-add:hover{background:var(--oasis-700)}
+  form[data-opinion="1"] .rate-quality{display:none!important}
   .btn-xl{background:var(--clay)}.btn-xl:hover{background:var(--clay-dark)}
   .btn-del{background:var(--danger)}.btn-del:hover{filter:brightness(.92)}
   .btn-ghost{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
@@ -1168,7 +1169,6 @@ function updateGrid(){
 
   // فصل المشاريع المنتهية (مكتمل) والآراء الفنية عن المشاريع النشطة
   const active=state.filtered.filter(p=>p.overallStatus!=='مكتمل' && p.overallStatus!=='رأي فني');
-  const opinionsAll=state.filtered.filter(p=>p.overallStatus==='رأي فني');
   const done=state.filtered.filter(p=>p.overallStatus==='مكتمل');
 
   /* ── شاشة «مشاريعي» للمهندس ── */
@@ -1258,21 +1258,6 @@ function updateGrid(){
       <span style="display:flex;align-items:center;gap:6px;color:var(--oasis-600);font-size:13px">عرضها ${I.chevronL||I.chevron}</span>`;
     entry.onclick=()=>{ doneView=true; updateGrid(); };
     host.appendChild(entry);
-  }
-
-  /* ── زر دخول لشاشة الآراء الفنية (على الشاشة الرئيسية) ── */
-  if(opinionsAll.length){
-    const oEntry=document.createElement('button');
-    oEntry.className='done-toggle done-entry';
-    oEntry.style.borderColor='#e0cfa0';
-    oEntry.innerHTML=`
-      <span style="display:flex;align-items:center;gap:9px;color:#8a6d2f">
-        ${I.report} الآراء الفنية
-        <span class="done-count" style="background:#f3e9d7;color:#8a6d2f">${opinionsAll.length}</span>
-      </span>
-      <span style="display:flex;align-items:center;gap:6px;color:#8a6d2f;font-size:13px">عرضها ${I.chevronL||I.chevron}</span>`;
-    oEntry.onclick=()=>{ opinionView=true; updateGrid(); };
-    host.appendChild(oEntry);
   }
 
   // المشاريع النشطة
@@ -1525,6 +1510,7 @@ function openProjectModal(project){
     if(otherDepts) otherDepts.style.display = (overallSel.value==='فكرة مبدئية') ? 'none' : 'contents';
     // في حالة «رأي فني»: يُخفى معيار «جودة التصميم» من تقييم رئيس القسم (الرأي ليس تصميماً كاملاً)
     const isOpinion = (overallSel.value==='رأي فني');
+    form.setAttribute('data-opinion', isOpinion ? '1' : '0');
     form.querySelectorAll('.rate-quality').forEach(el=>{ el.style.display = isOpinion ? 'none' : ''; });
     renderStages();
     renderOpinionStages();

@@ -1523,6 +1523,9 @@ function openProjectModal(project){
   const otherDepts=form.querySelector('#otherDepts');
   const applyIdeaMode=()=>{
     if(otherDepts) otherDepts.style.display = (overallSel.value==='فكرة مبدئية') ? 'none' : 'contents';
+    // في حالة «رأي فني»: يُخفى معيار «جودة التصميم» من تقييم رئيس القسم (الرأي ليس تصميماً كاملاً)
+    const isOpinion = (overallSel.value==='رأي فني');
+    form.querySelectorAll('.rate-quality').forEach(el=>{ el.style.display = isOpinion ? 'none' : ''; });
     renderStages();
     renderOpinionStages();
   };
@@ -1534,8 +1537,10 @@ function openProjectModal(project){
     // يبني تقييم القسم: من النموذج إن كان المستخدم مخوّلاً، وإلا يبقي القديم
     const buildEval=(pf,key)=>{
       if(canEvaluate(key)){
+        // في «رأي فني» لا يُحتسب معيار جودة التصميم (يُترك فارغاً)
+        const isOpinion = (get('overallStatus')==='رأي فني');
         return {
-          quality:get(pf+'_ev_quality'), requirements:get(pf+'_ev_requirements'),
+          quality: isOpinion ? '' : get(pf+'_ev_quality'), requirements:get(pf+'_ev_requirements'),
           communication:get(pf+'_ev_communication'), challenges:get(pf+'_ev_challenges'),
           delay:get(pf+'_ev_delay'),
           notes:get(pf+'_ev_notes'),
@@ -1737,7 +1742,7 @@ function deptCard(title,prefixKey,d){
   if(mayRate){
     rateBlock=`<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)">
       <div style="font-size:12px;font-weight:700;color:var(--clay-dark);margin-bottom:7px">تقييم رئيس القسم (١–٥)</div>
-      ${RATE_FIELDS.map(([k,lbl])=>`<label class="lbl-sm" style="margin-bottom:3px">${lbl}</label>${starSelect(pf+'_ev_'+k,ev[k])}`).join('')}
+      ${RATE_FIELDS.map(([k,lbl])=>`<div class="rate-field rate-${k}"><label class="lbl-sm" style="margin-bottom:3px">${lbl}</label>${starSelect(pf+'_ev_'+k,ev[k])}</div>`).join('')}
       <textarea class="inp" name="${pf}_ev_notes" rows="2" placeholder="ملاحظات رئيس القسم…" style="resize:none;margin-top:6px">${ev.notes||''}</textarea>
     </div>`;
   }else if(canViewEval() && d.eval && (d.eval.work||d.eval.engineer||d.eval.done||d.eval.delay||d.eval.notes)){

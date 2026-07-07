@@ -848,6 +848,26 @@ async function saveProject(data,editingId,prev){
       data[key].actualDate = '';   // غير مكتمل ⇒ لا تاريخ فعلي
     }
   }
+  // ── نقل تلقائي إلى «المشاريع المنتهية» ──
+  // أي مشروع تكتمل كل أقسامه المُسنَدة (التي لها مهندس) يُعتبر منتهياً تلقائياً،
+  // بغضّ النظر عن الحالة العامة (فكرة مبدئية/خرائط تفصيلية...). شرط: وجود قسم مُسنَد واحد على الأقل.
+  // «فكرة مبدئية» = المعماري وحده هو المعتبر. المشروع الذي لم تُسنَد بعض أقسامه لا يُنقل.
+  try{
+    const isAssigned=(sec)=> !!sec && Array.isArray(sec.engineers) && sec.engineers.length>0;
+    const isDone=(sec)=> !!sec && sec.status==='مكتمل';
+    const manualHold = (data.overallStatus==='متوقف الى اشعار اخر' || data.overallStatus==='الغي المشروع' || data.overallStatus==='رأي فني');
+    let consider;
+    if(data.overallStatus==='فكرة مبدئية'){
+      consider=['architectural'];   // الفكرة المبدئية من اختصاص المعماري وحده
+    }else{
+      consider=['architectural','structural','services'];
+    }
+    const assigned = consider.filter(k=>isAssigned(data[k]));
+    const allAssignedDone = assigned.length>0 && assigned.every(k=>isDone(data[k]));
+    if(allAssignedDone && !manualHold){
+      data.overallStatus='مكتمل';
+    }
+  }catch(e){ console.error('نقل تلقائي للمنتهية:',e); }
   const payload={...data,lastUpdatedBy:state.appUser.name,lastUpdatedAt:new Date().toLocaleString('ar-OM'),updatedAtTS:nowISO};
   if(editingId){await FB.updateDoc(FB.doc(db,'artifacts',APP_ID,'public','data','projects',editingId),payload);logActivity('update');}
   else{await FB.addDoc(colRef(),{...payload,createdAt:nowISO});logActivity('create');}
@@ -1102,7 +1122,7 @@ function renderApp(){
     </div>`));
   }
 
-  const activeCount=state.filtered.filter(p=>p.overallStatus!=='مكتمل' && p.overallStatus!=='رأي فني').length;
+  const activeCount=state.filtered.filter(p=>p.overallStatus!=='رأي فني' && !isEffectivelyDone(p)).length;
   const toolbar=$(`<div class="toolbar">
     <h2>المشاريع النشطة <span>(${activeCount})</span></h2>
     <div class="tb-actions">
@@ -1213,9 +1233,10 @@ function updateGrid(){
   host.innerHTML='';
   if(state.loading){host.appendChild($(`<div class="loading"><div class="spinner"></div></div>`));return;}
 
-  // فصل المشاريع المنتهية (مكتمل) والآراء الفنية عن المشاريع النشطة
-  const active=state.filtered.filter(p=>p.overallStatus!=='مكتمل' && p.overallStatus!=='رأي فني');
-  const done=state.filtered.filter(p=>p.overallStatus==='مكتمل');
+  // فصل المشاريع المنتهية والآراء الفنية عن المشاريع النشطة
+  // منتهٍ = «مكتمل» أو اكتملت كل أقسامه المُسنَدة تلقائياً
+  const done=state.filtered.filter(p=>p.overallStatus!=='رأي فني' && isEffectivelyDone(p));
+  const active=state.filtered.filter(p=>p.overallStatus!=='رأي فني' && !isEffectivelyDone(p));
 
   /* ── شاشة «مشاريعي» للمهندس ── */
   if(myProjectsView){
@@ -1711,6 +1732,18 @@ function projectHasMe(p){
     if(sec.engineerUsername) return sec.engineerUsername===u.username;
     return sec.engineer===u.name;
   });
+}
+/* هل المشروع منتهٍ فعلياً؟ = حالته «مكتمل»، أو اكتملت كل أقسامه المُسنَدة (بغضّ النظر عن الحالة العامة).
+   القاعدة: فكرة مبدئية = المعماري وحده. مشروع فيه قسم غير مُسنَد لا يُعدّ منتهياً. لا يشمل «رأي فني» أو المتوقف/الملغى. */
+function isEffectivelyDone(p){
+  if(!p) return false;
+  if(p.overallStatus==='مكتمل') return true;
+  if(p.overallStatus==='متوقف الى اشعار اخر' || p.overallStatus==='الغي المشروع' || p.overallStatus==='رأي فني') return false;
+  const isAssigned=(sec)=> !!sec && Array.isArray(sec.engineers) && sec.engineers.length>0;
+  const isDone=(sec)=> !!sec && sec.status==='مكتمل';
+  const consider = (p.overallStatus==='فكرة مبدئية') ? ['architectural'] : ['architectural','structural','services'];
+  const assigned = consider.filter(k=>isAssigned(p[k]));
+  return assigned.length>0 && assigned.every(k=>isDone(p[k]));
 }
 /* من يحقّ له حذف المشروع: المشرف، مدير الدائرة، أو مهندس مسنَد إليه */
 function canDeleteProject(p){

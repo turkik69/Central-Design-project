@@ -140,6 +140,42 @@
   .btn{padding:9px 15px;border-radius:10px;font-weight:700;font-size:13px;display:flex;align-items:center;gap:7px;transition:.15s;color:#fff}
   .btn-add{background:var(--oasis)}.btn-add:hover{background:var(--oasis-700)}
   form[data-opinion="1"] .rate-quality{display:none!important}
+  /* أعمالي — التنسيق والمتابعة */
+  .mw-tabs{display:flex;gap:6px;margin-bottom:16px;border-bottom:2px solid var(--line);flex-wrap:wrap}
+  .mw-tab{background:none;border:none;padding:9px 16px;font-family:inherit;font-size:14px;font-weight:700;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px}
+  .mw-tab.active{color:var(--oasis-700);border-bottom-color:var(--oasis)}
+  .mw-daybar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .mw-daybar label{font-size:13px;font-weight:700;color:var(--ink)}
+  .mw-daybar input{padding:7px 10px;border:1px solid var(--line);border-radius:9px;font-family:inherit}
+  .mw-daycount{margin-inline-start:auto;background:var(--oasis-50);color:var(--oasis-700);font-weight:700;font-size:12.5px;padding:5px 12px;border-radius:20px}
+  .mw-tasklist{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+  .mw-taskrow{display:flex;align-items:center;gap:11px;background:var(--sand-50);border:1px solid var(--line);border-radius:11px;padding:11px 13px}
+  .mw-taskrow.done{background:var(--oasis-50);border-color:#bfe0d5}
+  .mw-check{width:26px;height:26px;min-width:26px;border-radius:7px;border:2px solid var(--oasis);background:#fff;color:#fff;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px}
+  .mw-check.on{background:var(--oasis);border-color:var(--oasis)}
+  .mw-taskname{flex:1;font-weight:600;color:var(--ink)}
+  .mw-taskrow.done .mw-taskname{text-decoration:line-through;color:var(--muted)}
+  .mw-del{background:none;border:none;color:#c0392b;cursor:pointer;padding:4px;opacity:.7}.mw-del:hover{opacity:1}
+  .mw-addbox{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap}
+  .mw-addbox input{flex:1;min-width:200px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-family:inherit}
+  .mw-form{display:flex;flex-direction:column;gap:4px}
+  .mw-form input,.mw-form select,.mw-form textarea{padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-family:inherit;font-size:14px;margin-bottom:8px}
+  .mw-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .mw-filters select,.mw-filters input{padding:8px 10px;border:1px solid var(--line);border-radius:9px;font-family:inherit;font-size:13px}
+  .mw-filters label{font-size:12.5px;font-weight:700;color:var(--muted)}
+  .mw-archsum{font-size:12.5px;color:var(--muted);margin-bottom:10px}
+  .mw-loglist{display:flex;flex-direction:column;gap:10px}
+  .mw-logcard{background:var(--sand-50);border:1px solid var(--line);border-radius:12px;padding:13px;position:relative}
+  .mw-logtop{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
+  .mw-cat{font-size:12px;font-weight:700;color:var(--oasis-700);background:var(--oasis-50);padding:3px 10px;border-radius:14px}
+  .mw-date{font-size:12px;color:var(--muted);font-weight:600;direction:ltr}
+  .mw-logtitle{font-weight:700;color:var(--ink);margin-bottom:4px}
+  .mw-badge{font-size:11px;font-weight:700;padding:2px 9px;border-radius:12px;margin-inline-start:6px}
+  .mw-badge.done{background:#e3f3ec;color:#1f7a54}.mw-badge.wip{background:#fdf1dc;color:#a9761b}
+  .mw-logdesc{font-size:13px;color:var(--ink);line-height:1.7}
+  .mw-lognotes{font-size:12px;color:var(--muted);margin-top:4px}
+  .mw-logacts{position:absolute;top:10px;inset-inline-start:10px}
+  .mw-empty{text-align:center;color:var(--muted);font-size:13px;padding:26px 10px}
   .btn-xl{background:var(--clay)}.btn-xl:hover{background:var(--clay-dark)}
   .btn-del{background:var(--danger)}.btn-del:hover{filter:brightness(.92)}
   .btn-ghost{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
@@ -289,7 +325,8 @@ const state = {
   notifs:[],   // إشعارات الإنجاز
   trash:[],    // سلة المحذوفات
   visits:[],   // سجل زيارات المواقع
-  meetings:[]  // سجل الاجتماعات
+  meetings:[], // سجل الاجتماعات
+  myworks:[]   // سجل أعمال موظفة التنسيق والمتابعة (توثيق يومي)
 };
 const ADMIN = { user:'turki69', pass:'abuyassmin69' };
 const colRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','projects');
@@ -365,7 +402,7 @@ async function initFirebase(){
   try{
     await loadFirebase();
     FB.signInAnonymously(auth).catch(e=>console.error("مصادقة:",e));
-    FB.onAuthStateChanged(auth,(u)=>{ if(u){state.fbReady=true; subscribeProjects(); subscribeOptions(); subscribeStats(); subscribeUsers(); subscribeNotifs(); subscribeTrash(); subscribeVisits(); subscribeMeetings();} });
+    FB.onAuthStateChanged(auth,(u)=>{ if(u){state.fbReady=true; subscribeProjects(); subscribeOptions(); subscribeStats(); subscribeUsers(); subscribeNotifs(); subscribeTrash(); subscribeVisits(); subscribeMeetings(); subscribeMyWorks();} });
   }catch(e){
     console.error("تحميل Firebase:",e);
     state.authError='تعذّر الاتصال بقاعدة البيانات. تحقّق من الإنترنت ومن صحة مفاتيح Firebase.';
@@ -430,6 +467,12 @@ function subscribeMeetings(){
     if(meetingModalOpen) refreshMeetingModal();
     if(myActsModalOpen) refreshMyActsModal();
   },(e)=>{console.error("جلب الاجتماعات:",e);});
+}
+function subscribeMyWorks(){
+  FB.onSnapshot(myworksRef(),(snap)=>{
+    state.myworks=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(myWorksModalOpen) refreshMyWorksModal();
+  },(e)=>{console.error("جلب أعمالي:",e);});
 }
 /* الإشعارات الموجَّهة للمستخدم الحالي وغير المقروءة */
 function myNotifs(){
@@ -902,6 +945,7 @@ function offerCompletionEmail(deptKey, payload, head){
 const trashRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','trash');
 const visitsRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','visits');
 const meetingsRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','meetings');
+const myworksRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','myworks');
 const KIND_COLL={project:'projects', visit:'visits', meeting:'meetings'};
 const KIND_AR={project:'مشروع', visit:'زيارة', meeting:'اجتماع'};
 /* حذف عام: ينقل أي عنصر (مشروع/زيارة/اجتماع) إلى السلة مع نوعه ومن حذفه */
@@ -1077,6 +1121,7 @@ function renderApp(){
       ${isEngineer()?`<button class="btn btn-ghost" id="btnMine">${I.build}<span class="lbl">مشاريعي</span></button>`:''}
       ${isEngineer()?`<button class="btn btn-ghost" id="btnMyActs">${I.pin}<span class="lbl">اجتماعاتي وزياراتي</span></button>`:''}
       <button class="btn btn-ghost" id="btnOpinions" style="border-color:#c9a24b;color:#8a6d2f">${I.report}<span class="lbl">الآراء الفنية</span></button>
+      ${canSeeMyWorks()?`<button class="btn btn-ghost" id="btnMyWorks" style="border-color:#256a55;color:#1f5d4c">${I.pin}<span class="lbl">أعمالي</span></button>`:''}
       ${isObserver()?'':`<button class="btn btn-add" id="btnAdd">${I.plus}<span class="lbl">إضافة مشروع</span></button>`}
       ${isObserver()?'':`<button class="btn btn-add" id="btnVisit" style="background:var(--clay,#8a6d2f)">${I.pin}<span class="lbl">زيارة موقع</span></button>`}
       ${isObserver()?'':`<button class="btn btn-add" id="btnMeeting" style="background:#3b6ea5">${I.users}<span class="lbl">اجتماع</span></button>`}
@@ -1109,6 +1154,7 @@ function renderApp(){
   { const vb=toolbar.querySelector('#btnVisit'); if(vb) vb.onclick=()=>openVisitModal(); }
   { const mb=toolbar.querySelector('#btnMeeting'); if(mb) mb.onclick=()=>openMeetingModal(); }
   { const ob=toolbar.querySelector('#btnOpinions'); if(ob) ob.onclick=()=>{ opinionView=true; doneView=false; myProjectsView=false; updateGrid(); }; }
+  { const mw=toolbar.querySelector('#btnMyWorks'); if(mw) mw.onclick=()=>openMyWorksModal(); }
   main.appendChild(toolbar);
 
   const gridHost=document.createElement('div');
@@ -2125,6 +2171,19 @@ function canManageActivities(){
   const u=state.appUser; if(!u) return false;
   return u.role==='admin' || (u.jobTitle||'')==='تنسيق ومتابعة';
 }
+/* «أعمالي» — توثيق أعمال موظفة التنسيق والمتابعة.
+   تُنشئ وتوثّق: موظفة التنسيق فقط. يطّلع: التنسيق + الإدارة (مدير الدائرة/المدير العام) + المشرف. */
+function isCoordinatorUser(){
+  const u=state.appUser; return !!u && (u.jobTitle||'')==='تنسيق ومتابعة';
+}
+function canSeeMyWorks(){
+  const u=state.appUser; if(!u) return false;
+  const jt=u.jobTitle||'';
+  return u.role==='admin' || jt==='تنسيق ومتابعة' || jt==='مدير الدائرة' || jt==='المدير العام';
+}
+function canEditMyWorks(){   // الإنشاء/التعديل/الحذف لموظفة التنسيق فقط
+  return isCoordinatorUser();
+}
 function activityCard(a, kind){
   const delAttr = kind==='meeting' ? `data-del-meeting="${a.id}"` : `data-del-activity="${a.id}"`;
   const titleLine = kind==='meeting' ? `<div style="font-weight:700;color:var(--ink)">${a.title||'اجتماع'}</div>` : '';
@@ -2204,6 +2263,182 @@ function myActCard(a,kind){
     </div>
   </div>`;
 }
+/* ═══════════ «أعمالي» — توثيق أعمال موظفة التنسيق والمتابعة ═══════════ */
+const MYWORK_CATS=[
+  ['followup','متابعة موظفين'],
+  ['engineers','متابعة تسليمات/مهام المهندسين'],
+  ['letter','إعداد رسالة/مخاطبة'],
+  ['report','إعداد تقرير'],
+  ['other','مهمة أخرى'],
+];
+const MYWORK_CAT_AR=Object.fromEntries(MYWORK_CATS);
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+let myWorksModalOpen=false;
+function openMyWorksModal(){
+  if(document.getElementById('myWorksOverlay')) return;
+  if(!canSeeMyWorks()){ alert('هذه الخانة مخصّصة لموظفة التنسيق والمتابعة والإدارة.'); return; }
+  myWorksModalOpen=true;
+  const canEdit=canEditMyWorks();
+  const overlay=$(`<div class="overlay" id="myWorksOverlay"></div>`);
+  const modal=$(`<div class="modal modal-lg"><div class="modal-head"><h2>أعمالي — التنسيق والمتابعة</h2>
+    <button class="icon-btn" id="x">${I.close}</button></div></div>`);
+  const body=document.createElement('div');body.className='modal-body';
+  modal.appendChild(body);overlay.appendChild(modal);
+  let tab='today';           // today | log | archive
+  let selDate=todayISO();     // لليوم المختار في تبويب المهام اليومية
+  let fCat='';                // فلتر التصنيف في الأرشيف
+  let fFrom='', fTo='';       // فلتر التاريخ في الأرشيف
+
+  function tasks(){ return state.myworks.filter(w=>w.type==='task'); }
+  function logs(){ return state.myworks.filter(w=>w.type==='log'); }
+
+  function tabsBar(){
+    const t=(id,lbl)=>`<button class="mw-tab ${tab===id?'active':''}" data-tab="${id}">${lbl}</button>`;
+    return `<div class="mw-tabs">${t('today','مهامي اليومية')}${t('log','توثيق عمل')}${t('archive','سجلّي')}</div>`;
+  }
+
+  /* ── تبويب المهام اليومية ── */
+  function renderToday(){
+    const ts=tasks();
+    const rows=ts.map(t=>{
+      const done=(t.doneDates&&t.doneDates[selDate])?true:false;
+      return `<div class="mw-taskrow ${done?'done':''}">
+        ${canEdit?`<button class="mw-check ${done?'on':''}" data-toggle="${t.id}">${done?'✓':''}</button>`:`<span class="mw-check ${done?'on':''}">${done?'✓':''}</span>`}
+        <span class="mw-taskname">${t.title}</span>
+        ${canEdit?`<button class="mw-del" data-deltask="${t.id}" title="حذف المهمة">${I.trash}</button>`:''}
+      </div>`;
+    }).join('');
+    const doneCount=ts.filter(t=>t.doneDates&&t.doneDates[selDate]).length;
+    return `
+      <div class="mw-daybar">
+        <label>اليوم:</label>
+        <input type="date" id="mwDate" value="${selDate}" max="${todayISO()}">
+        <span class="mw-daycount">${doneCount}/${ts.length} منجزة</span>
+      </div>
+      ${ts.length? `<div class="mw-tasklist">${rows}</div>` : '<div class="mw-empty">لا توجد مهام يومية بعد. أضيفي مهامك المتكررة أدناه لتظهر كل يوم.</div>'}
+      ${canEdit?`
+      <div class="mw-addbox">
+        <input type="text" id="mwNewTask" placeholder="مهمة يومية متكررة (مثال: مراجعة تسليمات المهندسين)">
+        <button class="btn btn-add" id="mwAddTask">إضافة مهمة</button>
+      </div>`:''}`;
+  }
+
+  /* ── تبويب توثيق عمل (نموذج إضافة سجلّ) ── */
+  function renderLogForm(){
+    if(!canEdit) return '<div class="mw-empty">التوثيق من صلاحية موظفة التنسيق فقط. يمكنك الاطلاع على السجلّ من تبويب «سجلّي».</div>';
+    return `
+      <div class="mw-form">
+        <label class="lbl-sm">عنوان العمل</label>
+        <input type="text" id="lgTitle" placeholder="مثال: إعداد مخاطبة إلى دائرة المشاريع">
+        <label class="lbl-sm">التصنيف</label>
+        <select id="lgCat">${MYWORK_CATS.map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>
+        <label class="lbl-sm">التاريخ</label>
+        <input type="date" id="lgDate" value="${todayISO()}">
+        <label class="lbl-sm">الحالة</label>
+        <select id="lgStatus"><option value="done">منجَز</option><option value="wip">قيد التنفيذ</option></select>
+        <label class="lbl-sm">الوصف</label>
+        <textarea id="lgDesc" rows="3" placeholder="تفاصيل العمل..."></textarea>
+        <label class="lbl-sm">ملاحظات (اختياري)</label>
+        <textarea id="lgNotes" rows="2" placeholder="ملاحظات إضافية..."></textarea>
+        <button class="btn btn-add" id="lgSave" style="margin-top:10px">حفظ العمل</button>
+      </div>`;
+  }
+
+  /* ── تبويب السجلّ/الأرشيف ── */
+  function renderArchive(){
+    let arr=logs().slice();
+    if(fCat) arr=arr.filter(w=>w.category===fCat);
+    if(fFrom) arr=arr.filter(w=>(w.date||'')>=fFrom);
+    if(fTo) arr=arr.filter(w=>(w.date||'')<=fTo);
+    arr.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
+    const cards=arr.map(w=>{
+      const st = w.status==='done' ? '<span class="mw-badge done">منجَز</span>' : '<span class="mw-badge wip">قيد التنفيذ</span>';
+      return `<div class="mw-logcard">
+        <div class="mw-logtop">
+          <span class="mw-cat">${MYWORK_CAT_AR[w.category]||'—'}</span>
+          <span class="mw-date">${dmy(w.date)||'—'}</span>
+        </div>
+        <div class="mw-logtitle">${w.title||'—'} ${st}</div>
+        ${w.desc?`<div class="mw-logdesc">${w.desc}</div>`:''}
+        ${w.notes?`<div class="mw-lognotes">ملاحظات: ${w.notes}</div>`:''}
+        ${canEdit?`<div class="mw-logacts"><button class="mw-del" data-dellog="${w.id}" title="حذف">${I.trash}</button></div>`:''}
+      </div>`;
+    }).join('');
+    return `
+      <div class="mw-filters">
+        <select id="afCat"><option value="">كل التصنيفات</option>${MYWORK_CATS.map(([k,v])=>`<option value="${k}" ${fCat===k?'selected':''}>${v}</option>`).join('')}</select>
+        <label>من</label><input type="date" id="afFrom" value="${fFrom}">
+        <label>إلى</label><input type="date" id="afTo" value="${fTo}">
+        <button class="btn btn-ghost" id="afExport">⬇ تصدير Excel</button>
+      </div>
+      <div class="mw-archsum">${arr.length} عمل موثّق</div>
+      ${arr.length? `<div class="mw-loglist">${cards}</div>` : '<div class="mw-empty">لا توجد أعمال موثّقة ضمن التصفية.</div>'}`;
+  }
+
+  function fill(){
+    body.innerHTML = tabsBar() + `<div class="mw-pane">${
+      tab==='today'?renderToday() : tab==='log'?renderLogForm() : renderArchive()
+    }</div>`;
+    // تبويبات
+    body.querySelectorAll('.mw-tab').forEach(b=>b.onclick=()=>{ tab=b.getAttribute('data-tab'); fill(); });
+    // مهام يومية
+    const dInp=body.querySelector('#mwDate'); if(dInp) dInp.onchange=()=>{ selDate=dInp.value||todayISO(); fill(); };
+    body.querySelectorAll('[data-toggle]').forEach(b=>b.onclick=async()=>{ await toggleTask(b.getAttribute('data-toggle'), selDate); });
+    body.querySelectorAll('[data-deltask]').forEach(b=>b.onclick=async()=>{ if(confirm('حذف هذه المهمة اليومية نهائياً؟')){ await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','myworks',b.getAttribute('data-deltask'))); } });
+    const addT=body.querySelector('#mwAddTask'); if(addT) addT.onclick=async()=>{
+      const inp=body.querySelector('#mwNewTask'); const v=(inp.value||'').trim();
+      if(!v){ inp.focus(); return; }
+      await FB.addDoc(myworksRef(),{type:'task',title:v,doneDates:{},createdAt:new Date().toISOString(),by:state.appUser?.name||'',byUsername:state.appUser?.username||''});
+      inp.value='';
+    };
+    // حفظ عمل موثّق
+    const save=body.querySelector('#lgSave'); if(save) save.onclick=async()=>{
+      const g=id=>body.querySelector(id);
+      const title=(g('#lgTitle').value||'').trim();
+      if(!title){ g('#lgTitle').focus(); return; }
+      await FB.addDoc(myworksRef(),{type:'log',title,
+        category:g('#lgCat').value, date:g('#lgDate').value||todayISO(),
+        status:g('#lgStatus').value, desc:(g('#lgDesc').value||'').trim(),
+        notes:(g('#lgNotes').value||'').trim(),
+        createdAt:new Date().toISOString(), by:state.appUser?.name||'', byUsername:state.appUser?.username||''});
+      tab='archive'; fill();
+    };
+    // أرشيف: فلاتر + تصدير + حذف
+    const afc=body.querySelector('#afCat'); if(afc) afc.onchange=()=>{ fCat=afc.value; fill(); };
+    const aff=body.querySelector('#afFrom'); if(aff) aff.onchange=()=>{ fFrom=aff.value; fill(); };
+    const aft=body.querySelector('#afTo'); if(aft) aft.onchange=()=>{ fTo=aft.value; fill(); };
+    const afx=body.querySelector('#afExport'); if(afx) afx.onclick=()=>exportMyWorks(fCat,fFrom,fTo);
+    body.querySelectorAll('[data-dellog]').forEach(b=>b.onclick=async()=>{ if(confirm('حذف هذا العمل الموثّق؟')){ await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','myworks',b.getAttribute('data-dellog'))); } });
+  }
+  fill(); overlay._refresh=fill;
+  modal.querySelector('#x').onclick=()=>{myWorksModalOpen=false;overlay.remove();};
+  overlay.onclick=(e)=>{if(e.target===overlay){myWorksModalOpen=false;overlay.remove();}};
+  root.appendChild(overlay);
+}
+function refreshMyWorksModal(){ const ov=document.getElementById('myWorksOverlay'); if(ov&&ov._refresh) ov._refresh(); }
+async function toggleTask(id, date){
+  const t=state.myworks.find(w=>w.id===id); if(!t) return;
+  const dd=Object.assign({}, t.doneDates||{});
+  if(dd[date]) delete dd[date]; else dd[date]=true;
+  try{ await FB.updateDoc(FB.doc(db,'artifacts',APP_ID,'public','data','myworks',id),{doneDates:dd}); }
+  catch(e){ console.error('تحديث المهمة:',e); }
+}
+function exportMyWorks(fCat,fFrom,fTo){
+  try{
+    let arr=state.myworks.filter(w=>w.type==='log');
+    if(fCat) arr=arr.filter(w=>w.category===fCat);
+    if(fFrom) arr=arr.filter(w=>(w.date||'')>=fFrom);
+    if(fTo) arr=arr.filter(w=>(w.date||'')<=fTo);
+    arr.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
+    const rows=[['التاريخ','التصنيف','العنوان','الحالة','الوصف','ملاحظات'],
+      ...arr.map(w=>[dmy(w.date), MYWORK_CAT_AR[w.category]||'', w.title||'', (w.status==='done'?'منجَز':'قيد التنفيذ'), w.desc||'', w.notes||''])];
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols']=[{wch:12},{wch:22},{wch:34},{wch:12},{wch:40},{wch:28}];
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'أعمالي');
+    XLSX.writeFile(wb,`أعمالي_${todayISO()}.xlsx`);
+  }catch(e){ console.error('تصدير أعمالي:',e); alert('تعذّر التصدير.'); }
+}
+
 /* نموذج تعديل زيارة/اجتماع (للمشارك فيه) */
 function openEditActivity(kind, id, onDone){
   const coll = kind==='meeting' ? state.meetings : state.visits;

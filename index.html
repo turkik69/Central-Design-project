@@ -413,9 +413,26 @@ function subscribeProjects(){
   FB.onSnapshot(colRef(),(snap)=>{
     const data = snap.docs.map(d=>({id:d.id,...d.data()}));
     data.sort((a,b)=> new Date(b.updatedAtTS||b.createdAt||0) - new Date(a.updatedAtTS||a.createdAt||0));
-    state.projects=data; applyFilter(); state.loading=false; render();
-  },(e)=>{console.error("جلب المشاريع:",e);state.loading=false;render();});
+    state.projects=data; applyFilter(); state.loading=false;
+    // لا تُعِد رسم الصفحة إذا كان المستخدم يعبّئ نموذجاً مفتوحاً (نموذج مشروع/زيارة/اجتماع/أعمالي)
+    // حتى لا تُمحى الحقول التي يكتبها. سيُحدَّث العرض تلقائياً عند إغلاق النموذج.
+    if(isEditingModalOpen()){ pendingRender=true; return; }
+    render();
+  },(e)=>{console.error("جلب المشاريع:",e);state.loading=false; if(!isEditingModalOpen()) render();});
 }
+/* هل هناك نموذج إدخال مفتوح يجب ألا نمسح محتواه بإعادة الرسم؟ */
+function isEditingModalOpen(){
+  return !!document.getElementById('projectFormOverlay')
+      || !!document.getElementById('visitOverlay')
+      || !!document.getElementById('meetingOverlay')
+      || !!document.getElementById('myWorksOverlay')
+      || !!document.getElementById('editActOverlay')
+      || !!document.getElementById('importOverlay')
+      || !!document.getElementById('usersOverlay');
+}
+let pendingRender=false;
+/* يُستدعى عند إغلاق أي نموذج: إن وصلت تحديثات أثناء فتحه، أعِد الرسم الآن */
+function flushPendingRender(){ if(pendingRender){ pendingRender=false; render(); } }
 function subscribeOptions(){
   FB.onSnapshot(optsRef(),(snap)=>{
     const grouped={type:[],entity:[],jobTitle:[],dept:[]};
@@ -425,6 +442,7 @@ function subscribeOptions(){
     });
     state.customOpts=grouped;
     if(listsModalOpen){ refreshListsModal(); }   // حدّث النافذة المفتوحة بدل هدمها
+    else if(isEditingModalOpen()){ pendingRender=true; }
     else { render(); }
   },(e)=>{console.error("جلب القوائم:",e);});
 }
@@ -1431,7 +1449,7 @@ function openProjectModal(project){
   };
   const opt=(arr,sel)=>arr.map(o=>`<option ${o===sel?'selected':''}>${o}</option>`).join('');
 
-  const overlay=$(`<div class="overlay"></div>`);
+  const overlay=$(`<div class="overlay" id="projectFormOverlay"></div>`);
   const modal=$(`<div class="modal"><div class="modal-head"><h2>${project?'تحديث المشروع':'إضافة مشروع جديد'}</h2>
     <button class="icon-btn" id="x">${I.close}</button></div></div>`);
   const form=document.createElement('form');form.className='modal-body';
@@ -1583,6 +1601,48 @@ function openProjectModal(project){
     renderOpinionStages();
   };
   if(overallSel){ overallSel.onchange=applyIdeaMode; applyIdeaMode(); }
+
+  // ── حفظ مسودّة تلقائياً (تنجو من تحديث/إغلاق الصفحة بالخطأ) ──
+  const DRAFT_KEY = 'cd_draft_'+(project?.id || 'new');
+  const saveDraft=()=>{
+    try{
+      const fd=new FormData(form); const obj={};
+      for(const [k,v] of fd.entries()) obj[k]=v;
+      obj.__at = Date.now();
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(obj));
+    }catch(e){}
+  };
+  const clearDraft=()=>{ try{ localStorage.removeItem(DRAFT_KEY); }catch(e){} };
+  // استعادة مسودّة سابقة إن وُجدت (للنماذج الجديدة أساساً)
+  try{
+    const raw=localStorage.getItem(DRAFT_KEY);
+    if(raw){
+      const d=JSON.parse(raw);
+      const ageMin=(Date.now()-(d.__at||0))/60000;
+      if(ageMin < 720){   // خلال 12 ساعة
+        if(confirm('توجد مسودّة غير محفوظة لهذا النموذج. هل تريد استعادتها؟')){
+          Object.keys(d).forEach(k=>{
+            if(k==='__at') return;
+            const els=form.querySelectorAll(`[name="${k}"]`);
+            els.forEach(el=>{
+              if(el.type==='checkbox'||el.type==='radio'){
+                // FormData يخزّن القيم المحدّدة فقط؛ فعّل ما يطابق
+                if(el.value===d[k]) el.checked=true;
+              }else{
+                el.value=d[k];
+              }
+            });
+          });
+          if(overallSel) applyIdeaMode();
+        }else{ clearDraft(); }
+      }else{ clearDraft(); }
+    }
+  }catch(e){}
+  // احفظ المسودّة عند أي كتابة/تغيير (مع تهدئة بسيطة)
+  let draftTimer=null;
+  form.addEventListener('input', ()=>{ clearTimeout(draftTimer); draftTimer=setTimeout(saveDraft, 400); });
+  form.addEventListener('change', saveDraft);
+
   form.onsubmit=async(e)=>{
     e.preventDefault();
     const fd=new FormData(form);
@@ -1673,14 +1733,15 @@ function openProjectModal(project){
       }
     }
     if(!CONFIGURED){alert('قاعدة البيانات غير مُعدّة بعد — أضِف مفاتيح Firebase أولاً لحفظ المشاريع.');return;}
+    clearDraft();
     overlay.remove();
     await saveProject(payload, project?.id, project);
   };
-  modal.querySelector('#x').onclick=()=>overlay.remove();
-  form.querySelector('#cancel').onclick=()=>overlay.remove();
+  modal.querySelector('#x').onclick=()=>{ if(confirm('إغلاق النموذج؟ سيتم حفظ مسودّة يمكن استعادتها لاحقاً.')){ saveDraft(); overlay.remove(); flushPendingRender(); } };
+  form.querySelector('#cancel').onclick=()=>{ if(confirm('إلغاء وإغلاق النموذج؟ ستُحذف المسودّة.')){ clearDraft(); overlay.remove(); flushPendingRender(); } };
   modal.appendChild(form);
   overlay.appendChild(modal);
-  overlay.onclick=(e)=>{if(e.target===overlay)overlay.remove();};
+  overlay.onclick=(e)=>{if(e.target===overlay){ saveDraft(); overlay.remove(); flushPendingRender(); }};
   root.appendChild(overlay);
 }
 /* هل يحق للمستخدم الحالي تقييم هذا القسم؟ (المشرف أو رئيس القسم نفسه) */

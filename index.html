@@ -2715,7 +2715,13 @@ function openRemoteModal(){
   modal.appendChild(body);overlay.appendChild(modal);
   let editIdx=null;     // فهرس القالب الجاري تعديله (لموظفة التنسيق)
 
-  async function ensure(){ if(!(state.remote&&state.remote.templates&&state.remote.templates.length)){ await rwEnsureConfig(); } }
+  async function ensure(){
+    if(!(state.remote && Array.isArray(state.remote.templates) && state.remote.templates.length)){
+      const seeded={ templates: rwSeedToTemplates(), activeTemplate:0, updatedAt:new Date().toISOString(), updatedBy:state.appUser?.name||'' };
+      state.remote = seeded;                       // اعرض فوراً من الذاكرة حتى لو تعذّرت الكتابة
+      try{ await FB.setDoc(remoteRef(), seeded); }catch(e){ console.error('حفظ إعداد العمل عن بُعد:',e); }
+    }
+  }
 
   function myWeekView(){
     // المدير العام غير مُدرَج في الجدول — لا تظهر له بطاقة «أسبوعي»
@@ -2807,9 +2813,10 @@ function openRemoteModal(){
   }
 
   async function fill(){
+   try{
     await ensure();
     const cfg=state.remote;
-    if(!cfg){ body.innerHTML='<div class="mw-empty">تعذّر تحميل الجدول.</div>'; return; }
+    if(!cfg || !Array.isArray(cfg.templates) || !cfg.templates.length){ body.innerHTML='<div class="mw-empty">لا توجد قوالب بعد. جرّبي إغلاق النافذة وفتحها من جديد.</div>'; return; }
     if(manage && editIdx!==null){
       body.innerHTML = editView(cfg);
       // تحديث لون الخانة عند تغيير الحالة
@@ -2845,6 +2852,7 @@ function openRemoteModal(){
       const pb=body.querySelector('#rwPdf'); if(pb) pb.onclick=()=>exportRemotePDF();
       const rs=body.querySelector('#rwReseed'); if(rs) rs.onclick=async()=>{ if(confirm('استرجاع القوالب الثلاثة من ملف الدائرة؟ سيستبدل القوالب الحالية.')){ try{ await FB.updateDoc(remoteRef(),{templates:rwSeedToTemplates(),updatedAt:new Date().toISOString(),updatedBy:state.appUser?.name||''}); fill(); }catch(e){ console.error(e);} } };
     }
+   }catch(err){ console.error('عرض جدول العمل عن بُعد:',err); body.innerHTML='<div class="mw-empty">تعذّر عرض الجدول: '+(err&&err.message?err.message:'خطأ غير معروف')+'</div>'; }
   }
   fill(); overlay._refresh=fill;
   modal.querySelector('#x').onclick=()=>{remoteModalOpen=false;overlay.remove();};

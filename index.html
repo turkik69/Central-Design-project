@@ -1430,8 +1430,10 @@ function renderCard(p){
       const pop=$(`<div class="confirm-pop"><p>تأكيد الحذف؟</p>
         <div class="cp-btns"><button class="yes" style="background:var(--danger);color:#fff">نعم</button>
         <button class="no" style="background:var(--sand-200);color:#4a443a">لا</button></div></div>`);
-      pop.querySelector('.yes').onclick=()=>deleteProject(p.id);
-      pop.querySelector('.no').onclick=()=>pop.remove();
+      pop.querySelector('.yes').onclick=(ev)=>{ ev.stopPropagation(); deleteProject(p.id); };
+      pop.querySelector('.no').onclick=(ev)=>{ ev.stopPropagation(); pop.remove(); };
+      // امنع أي نقر داخل الفقاعة من الوصول لزر الحذف (كان يمنع استجابة «لا»)
+      pop.onclick=(ev)=>ev.stopPropagation();
       delBtn.appendChild(pop);
     };
   }

@@ -2675,6 +2675,12 @@ function rwUsersByDept(){
     const ia=RW_ADMIN_ORDER.indexOf(a.jobTitle||''); const ib=RW_ADMIN_ORDER.indexOf(b.jobTitle||'');
     return (ia===-1?999:ia)-(ib===-1?999:ib);
   });
+  // ضع «يوسف بن عيسى السيابي» مباشرةً بعد «أسماء» (يعمل سواء كان مسجّلاً كمستخدم أو لا)
+  let yusuf=admins.find(u=>(u.name||'').indexOf('يوسف')!==-1 && (u.name||'').indexOf('السيابي')!==-1);
+  admins=admins.filter(u=>u!==yusuf);
+  if(!yusuf) yusuf={ username:'x_yusuf_alsiyabi', name:'يوسف بن عيسى السيابي', dept:'administration', jobTitle:'' };
+  const asmaIdx=admins.findIndex(u=>(u.name||'').indexOf('أسماء')!==-1);
+  if(asmaIdx!==-1) admins.splice(asmaIdx+1,0,yusuf); else admins.push(yusuf);
   if(admins.length) groups.push({label:'الإداريون', users:admins});
   // ── الأقسام الهندسية: المهندسون فقط (بدون رؤساء الأقسام ولا المدير ولا التنسيق) ──
   [['architectural','المعماري'],['structural','الإنشائي'],['services','الخدمات']].forEach(([key,label])=>{

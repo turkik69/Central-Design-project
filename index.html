@@ -533,9 +533,11 @@ function subscribeMyWorks(){
 }
 function subscribeRemote(){
   FB.onSnapshot(remoteRef(),(snap)=>{
-    state.remote = snap.exists() ? snap.data() : null;
+    // استنساخ عميق حتى تكون البيانات قابلة للتعديل (Firestore قد يُرجعها مجمّدة → خطأ readonly في Safari)
+    let d=null;
+    try{ d = snap.exists() ? JSON.parse(JSON.stringify(snap.data())) : null; }catch(e){ d = snap.exists()?snap.data():null; }
+    state.remote = d;
     if(remoteModalOpen) refreshRemoteModal();
-    if(!isEditingModalOpen() && !remoteModalOpen) { /* لا حاجة لإعادة رسم كاملة */ }
   },(e)=>{console.error("جلب جدول العمل عن بُعد:",e);});
 }
 /* الإشعارات الموجَّهة للمستخدم الحالي وغير المقروءة */
@@ -2718,7 +2720,8 @@ function openRemoteModal(){
   async function ensure(){
     if(!(state.remote && Array.isArray(state.remote.templates) && state.remote.templates.length)){
       const seeded={ templates: rwSeedToTemplates(), activeTemplate:0, updatedAt:new Date().toISOString(), updatedBy:state.appUser?.name||'' };
-      state.remote = seeded;                       // اعرض فوراً من الذاكرة حتى لو تعذّرت الكتابة
+      // احتفظ بنسخة مستقلة قابلة للتعديل في الذاكرة، ومرّر نسخة أخرى للكتابة
+      state.remote = JSON.parse(JSON.stringify(seeded));
       try{ await FB.setDoc(remoteRef(), seeded); }catch(e){ console.error('حفظ إعداد العمل عن بُعد:',e); }
     }
   }

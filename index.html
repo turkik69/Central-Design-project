@@ -640,7 +640,7 @@ const EMAIL_DOMAIN='@mm.gov.om';
 async function generateMissingEmails(){
   const targets=state.users.filter(u=>u.role!=='admin' && u.username && !u.email);
   if(!targets.length){ alert('كل المستخدمين لديهم بريد بالفعل.'); return; }
-  if(!confirm(`سيتم توليد البريد الإلكتروني لـ ${targets.length} مستخدم بالصيغة: الرقم الوظيفي${EMAIL_DOMAIN}\nمتابعة؟`)) return;
+  if(!confirm(`سيتم توليد البريد الإلكتروني لـ ${targets.length} مستخدم بالصيغة: الرقم الوظيفي${EMAIL_DOMAIN}${String.fromCharCode(10)}متابعة؟`)) return;
   let done=0;
   for(const u of targets){
     const email=String(u.username).trim()+EMAIL_DOMAIN;
@@ -1000,11 +1000,12 @@ function offerCompletionEmail(deptKey, payload, head){
   const u=state.appUser||{};
   const isCoordinator = (u.jobTitle||'')==='تنسيق ومتابعة';
   const senderLine = isCoordinator ? `الموظف: ${u.name||''}` : `المهندس: ${u.name||''}`;
-  const engLine = engNames ? `\nالمهندس المسؤول: ${engNames}` : '';
-  const noLine = (payload.projectNo||'').trim() ? `\nرقم المشروع: ${payload.projectNo}` : '';
+  const NL=String.fromCharCode(10);
+  const engLine = engNames ? `${NL}المهندس المسؤول: ${engNames}` : '';
+  const noLine = (payload.projectNo||'').trim() ? `${NL}رقم المشروع: ${payload.projectNo}` : '';
   const link = (payload[deptKey]?.workLink||'').trim();
-  const linkLine = link ? `\n\nرابط مسار العمل (مجلّد القسم على الشبكة):\n${link}` : '';
-  const body=`السلام عليكم ورحمة الله وبركاته،\n\nأفيدكم بأنه تم الانتهاء من العمل في «${DEPT_AR[deptKey]}» الخاص بمشروع «${payload.name}».${noLine}${engLine}\nتاريخ التسليم المتوقع: ${payload[deptKey]?.endDate||'—'}${linkLine}\n\n${senderLine}\nوتفضلوا بقبول فائق الاحترام والتقدير.`;
+  const linkLine = link ? `${NL}${NL}رابط مسار العمل (مجلّد القسم على الشبكة):${NL}${link}` : '';
+  const body=`السلام عليكم ورحمة الله وبركاته،${NL}${NL}أفيدكم بأنه تم الانتهاء من العمل في «${DEPT_AR[deptKey]}» الخاص بمشروع «${payload.name}».${noLine}${engLine}${NL}تاريخ التسليم المتوقع: ${payload[deptKey]?.endDate||'—'}${linkLine}${NL}${NL}${senderLine}${NL}وتفضلوا بقبول فائق الاحترام والتقدير.`;
   const mailto=`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   // نافذة تأكيد صغيرة بدل فتح البريد فجأة
   const overlay=$(`<div class="overlay"></div>`);
@@ -1779,7 +1780,8 @@ function openProjectModal(project){
         if(s.startDate && !s.endDate) missing.push(lbl);
       });
       if(missing.length){
-        alert('يجب تسجيل «تاريخ التسليم المتوقع» عند إدخال «تاريخ الاستلام» في:\n• '+missing.join('\n• ')+'\n\nأكمل التواريخ المتوقعة ثم احفظ.');
+        const NL=String.fromCharCode(10);
+        alert('يجب تسجيل «تاريخ التسليم المتوقع» عند إدخال «تاريخ الاستلام» في:'+NL+'• '+missing.join(NL+'• ')+NL+NL+'أكمل التواريخ المتوقعة ثم احفظ.');
         return;
       }
     }
@@ -2072,9 +2074,9 @@ function openUsersModal(){
     body.querySelectorAll('[data-resetuser]').forEach(btn=>{
       btn.onclick=async()=>{
         const nm=btn.getAttribute('data-resetname');
-        if(confirm(`إعادة الرمز السري للمهندس «${nm}» إلى الرمز الافتراضي (${DEFAULT_PASSWORD})؟\nسيستخدمه للدخول ثم يغيّره من الإعدادات.`)){
+        if(confirm(`إعادة الرمز السري للمهندس «${nm}» إلى الرمز الافتراضي (${DEFAULT_PASSWORD})؟${String.fromCharCode(10)}سيستخدمه للدخول ثم يغيّره من الإعدادات.`)){
           const ok=await resetUserPassword(btn.getAttribute('data-resetuser'));
-          if(ok) alert(`تمت إعادة الرمز إلى: ${DEFAULT_PASSWORD}\nأبلغ المهندس به ليدخل ويغيّره.`);
+          if(ok) alert(`تمت إعادة الرمز إلى: ${DEFAULT_PASSWORD}${String.fromCharCode(10)}أبلغ المهندس به ليدخل ويغيّره.`);
         }
       };
     });
@@ -3038,7 +3040,7 @@ async function exportBackup(){
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
     const counts=Object.entries(backup.data).map(([k,v])=>`${k}: ${v.length}`).join(' · ');
-    alert(`تم تصدير النسخة الاحتياطية بنجاح.\n(${counts})`);
+    alert(`تم تصدير النسخة الاحتياطية بنجاح.${String.fromCharCode(10)}(${counts})`);
   }catch(e){console.error(e);alert('تعذّر التصدير، حاول مرة أخرى.');}
 }
 async function importBackup(file,mode){

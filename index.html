@@ -205,6 +205,7 @@
   .rw-toggle input{width:15px;height:15px;cursor:pointer}
   .rw-edithead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
   .rw-edithead input{padding:9px 12px;border:1px solid var(--line);border-radius:10px;font-family:inherit;font-weight:700;font-size:14px;flex:1;min-width:180px}
+  .rw-deptrow td{background:var(--oasis-50);color:var(--oasis-700);font-weight:800;text-align:right !important;font-size:12.5px;padding:6px 10px !important}
   .btn-xl{background:var(--clay)}.btn-xl:hover{background:var(--clay-dark)}
   .btn-del{background:var(--danger)}.btn-del:hover{filter:brightness(.92)}
   .btn-ghost{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
@@ -2606,7 +2607,7 @@ function rwUserMatchesToken(userName, token){
 }
 /* يحوّل قوالب الملف (ألقاب) إلى قوالب مبنية على usernames لموظفي النظام */
 function rwSeedToTemplates(){
-  const users=state.users||[];
+  const users=rwEligibleUsers();
   return RW_SEED.map(tpl=>{
     const presence={};
     users.forEach(u=>{
@@ -2629,6 +2630,28 @@ async function rwEnsureConfig(){
   return seeded;
 }
 function canManageRemote(){ return isCoordinatorUser() || state.appUser?.role==='admin'; }
+/* موظفو الجدول: الجميع عدا مدير الدائرة والمدير العام */
+function rwEligibleUsers(){
+  return (state.users||[]).filter(u=>{
+    const jt=u.jobTitle||'';
+    return jt!=='مدير الدائرة' && jt!=='المدير العام';
+  });
+}
+/* ترتيب موظفي الجدول حسب الأقسام (كما في ملف الدائرة) */
+const RW_DEPT_ORDER=[['administration','الإداريون'],['architectural','المعماري'],['structural','الإنشائي'],['services','الخدمات']];
+function rwUsersByDept(){
+  const users=rwEligibleUsers();
+  const groups=[];
+  RW_DEPT_ORDER.forEach(([key,label])=>{
+    const arr=users.filter(u=>(u.dept||'')===key);
+    if(arr.length) groups.push({label, users:arr});
+  });
+  // أي قسم غير معروف
+  const known=RW_DEPT_ORDER.map(d=>d[0]);
+  const others=users.filter(u=>!known.includes(u.dept||''));
+  if(others.length) groups.push({label:'أخرى', users:others});
+  return groups;
+}
 /* أيام حضور/عن بُعد للمستخدم الحالي حسب القالب الفعّال */
 function rwMyWeek(){
   const cfg=state.remote; if(!cfg||!Array.isArray(cfg.templates)) return null;
@@ -2653,6 +2676,9 @@ function openRemoteModal(){
   async function ensure(){ if(!(state.remote&&state.remote.templates&&state.remote.templates.length)){ await rwEnsureConfig(); } }
 
   function myWeekView(){
+    // مدير الدائرة/المدير العام غير مُدرَجين في الجدول — لا تظهر لهم بطاقة «أسبوعي»
+    const jt=state.appUser?.jobTitle||'';
+    if(jt==='مدير الدائرة' || jt==='المدير العام') return '';
     const wk=rwMyWeek();
     if(!wk) return '<div class="mw-empty">لم يُفعَّل أي نمط بعد.</div>';
     const cfg=state.remote; const tname=cfg.templates[cfg.activeTemplate||0]?.name||'';
@@ -2671,16 +2697,21 @@ function openRemoteModal(){
 
   function fullGrid(cfg){
     const tpl=cfg.templates[cfg.activeTemplate||0]; if(!tpl) return '';
-    const users=state.users||[];
+    const groups=rwUsersByDept();
     const head=`<tr><th>الموظف</th>${RW_DAYS.map(([k,ar])=>`<th class="${k==='tue'?'rw-tue':''}">${ar}</th>`).join('')}</tr>`;
-    const rows=users.map(u=>{
-      const days=(tpl.presence&&tpl.presence[u.username])||{};
-      return `<tr><td class="rw-uname">${u.name}</td>${RW_DAYS.map(([k])=>{
-        const present = k==='tue' ? true : !!days[k];
-        return `<td class="rw-cell ${present?'in':'out'} ${k==='tue'?'rw-tue':''}">${present?'حضور':'عن بُعد'}</td>`;
-      }).join('')}</tr>`;
+    const body=groups.map(g=>{
+      const secRow=`<tr class="rw-deptrow"><td colspan="6">${g.label}</td></tr>`;
+      const urows=g.users.map(u=>{
+        const days=(tpl.presence&&tpl.presence[u.username])||{};
+        return `<tr><td class="rw-uname">${u.name}</td>${RW_DAYS.map(([k])=>{
+          const present = k==='tue' ? true : !!days[k];
+          return `<td class="rw-cell ${present?'in':'out'} ${k==='tue'?'rw-tue':''}">${present?'حضور':'عن بُعد'}</td>`;
+        }).join('')}</tr>`;
+      }).join('');
+      return secRow+urows;
     }).join('');
-    return `<div class="rw-gridwrap"><table class="rw-grid">${head}${rows}</table></div>`;
+    return `<div class="rw-gridwrap"><table class="rw-grid">${head}${body}</table></div>
+      <p class="rw-note">ملاحظة: الموظف الذي يكون في إجازة اعتيادية لن يُدرَج اسمه في الجدول. وفي حال أي طارئ أو تغيير يجب إشعار الإدارة مسبقاً.</p>`;
   }
 
   function manageBar(cfg){
@@ -2694,15 +2725,20 @@ function openRemoteModal(){
   }
 
   function editView(cfg){
-    const tpl=cfg.templates[editIdx]; const users=state.users||[];
+    const tpl=cfg.templates[editIdx];
+    const groups=rwUsersByDept();
     const head=`<tr><th>الموظف</th>${RW_DAYS.map(([k,ar])=>`<th class="${k==='tue'?'rw-tue':''}">${ar}</th>`).join('')}</tr>`;
-    const rows=users.map(u=>{
-      const days=(tpl.presence&&tpl.presence[u.username])||{};
-      return `<tr><td class="rw-uname">${u.name}</td>${RW_DAYS.map(([k])=>{
-        if(k==='tue') return `<td class="rw-tue rw-cell in">حضور</td>`;
-        const present=!!days[k];
-        return `<td class="rw-cell ${present?'in':'out'}"><label class="rw-toggle"><input type="checkbox" data-u="${u.username}" data-d="${k}" ${present?'checked':''}><span>${present?'حضور':'عن بُعد'}</span></label></td>`;
-      }).join('')}</tr>`;
+    const bodyRows=groups.map(g=>{
+      const secRow=`<tr class="rw-deptrow"><td colspan="6">${g.label}</td></tr>`;
+      const urows=g.users.map(u=>{
+        const days=(tpl.presence&&tpl.presence[u.username])||{};
+        return `<tr><td class="rw-uname">${u.name}</td>${RW_DAYS.map(([k])=>{
+          if(k==='tue') return `<td class="rw-tue rw-cell in">حضور</td>`;
+          const present=!!days[k];
+          return `<td class="rw-cell ${present?'in':'out'}"><label class="rw-toggle"><input type="checkbox" data-u="${u.username}" data-d="${k}" ${present?'checked':''}><span>${present?'حضور':'عن بُعد'}</span></label></td>`;
+        }).join('')}</tr>`;
+      }).join('');
+      return secRow+urows;
     }).join('');
     return `
       <div class="rw-edithead">
@@ -2712,8 +2748,8 @@ function openRemoteModal(){
           <button class="btn btn-ghost" id="rwBack">رجوع</button>
         </div>
       </div>
-      <p class="rw-note">علّم أيام <b>الحضور</b> لكل موظف (المتبقّي يُحتسب عن بُعد). الثلاثاء مثبّت حضوراً للجميع.</p>
-      <div class="rw-gridwrap"><table class="rw-grid">${head}${rows}</table></div>`;
+      <p class="rw-note">علّم أيام <b>الحضور</b> لكل موظف (المتبقّي يُحتسب عن بُعد). الثلاثاء مثبّت حضوراً للجميع. مدير الدائرة والمدير العام غير مُدرَجين.</p>
+      <div class="rw-gridwrap"><table class="rw-grid">${head}${bodyRows}</table></div>`;
   }
 
   async function fill(){
@@ -2731,7 +2767,7 @@ function openRemoteModal(){
       body.querySelector('#rwSaveTpl').onclick=async()=>{
         const tpl=JSON.parse(JSON.stringify(cfg.templates[editIdx]));
         tpl.name=(body.querySelector('#rwTplName').value||tpl.name).trim();
-        (state.users||[]).forEach(u=>{ if(!tpl.presence[u.username]) tpl.presence[u.username]={}; tpl.presence[u.username].tue=true; });
+        (rwEligibleUsers()).forEach(u=>{ if(!tpl.presence[u.username]) tpl.presence[u.username]={}; tpl.presence[u.username].tue=true; });
         body.querySelectorAll('input[type=checkbox][data-u]').forEach(chk=>{
           const un=chk.getAttribute('data-u'), dk=chk.getAttribute('data-d');
           if(!tpl.presence[un]) tpl.presence[un]={};

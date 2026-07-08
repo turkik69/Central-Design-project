@@ -176,6 +176,35 @@
   .mw-lognotes{font-size:12px;color:var(--muted);margin-top:4px}
   .mw-logacts{position:absolute;top:10px;inset-inline-start:10px}
   .mw-empty{text-align:center;color:var(--muted);font-size:13px;padding:26px 10px}
+  /* جدول العمل عن بُعد */
+  .rw-managebar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+  .rw-managebar label{font-size:13px;font-weight:700;color:var(--ink)}
+  .rw-managebar select{padding:8px 12px;border:1px solid var(--line);border-radius:9px;font-family:inherit;font-weight:700;color:var(--oasis-700)}
+  .rw-myweek{background:var(--sand-50);border:1px solid var(--line);border-radius:14px;padding:15px;margin-bottom:18px}
+  .rw-active-label{font-size:14px;color:var(--ink);margin-bottom:12px}
+  .rw-active-label b{color:var(--oasis-700)}
+  .rw-daychips{display:flex;gap:9px;flex-wrap:wrap}
+  .rw-daychip{flex:1;min-width:88px;border-radius:11px;padding:11px 8px;text-align:center;border:1.5px solid transparent}
+  .rw-daychip .rw-dname{display:block;font-weight:700;font-size:13px;margin-bottom:3px;color:var(--ink)}
+  .rw-daychip .rw-dstat{display:block;font-size:12px;font-weight:700}
+  .rw-daychip.in{background:#e3f3ec;border-color:#bfe0d5}.rw-daychip.in .rw-dstat{color:#1f7a54}
+  .rw-daychip.out{background:#eef3f9;border-color:#cfe0f0}.rw-daychip.out .rw-dstat{color:#3b6ea5}
+  .rw-daychip.tue{background:#fdf4e3;border-color:#ead9b5}.rw-daychip.tue .rw-dstat{color:#a9761b}
+  .rw-note{font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.7}
+  .rw-sechead{font-weight:700;color:var(--oasis-700);font-size:14px;margin:6px 0 10px}
+  .rw-gridwrap{overflow-x:auto}
+  .rw-grid{width:100%;border-collapse:collapse;font-size:12.5px;min-width:520px}
+  .rw-grid th,.rw-grid td{border:1px solid var(--line);padding:8px 6px;text-align:center}
+  .rw-grid th{background:var(--oasis);color:#fff;font-weight:700}
+  .rw-grid th.rw-tue{background:#a9761b}
+  .rw-uname{text-align:right !important;font-weight:600;color:var(--ink);white-space:nowrap;background:var(--sand-50)}
+  .rw-cell.in{background:#e8f5ef;color:#1f7a54;font-weight:700}
+  .rw-cell.out{background:#f1f5fa;color:#3b6ea5}
+  .rw-cell.rw-tue{background:#fdf4e3;color:#a9761b;font-weight:700}
+  .rw-toggle{display:flex;align-items:center;gap:5px;justify-content:center;cursor:pointer;font-size:11.5px}
+  .rw-toggle input{width:15px;height:15px;cursor:pointer}
+  .rw-edithead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+  .rw-edithead input{padding:9px 12px;border:1px solid var(--line);border-radius:10px;font-family:inherit;font-weight:700;font-size:14px;flex:1;min-width:180px}
   .btn-xl{background:var(--clay)}.btn-xl:hover{background:var(--clay-dark)}
   .btn-del{background:var(--danger)}.btn-del:hover{filter:brightness(.92)}
   .btn-ghost{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
@@ -326,7 +355,8 @@ const state = {
   trash:[],    // سلة المحذوفات
   visits:[],   // سجل زيارات المواقع
   meetings:[], // سجل الاجتماعات
-  myworks:[]   // سجل أعمال موظفة التنسيق والمتابعة (توثيق يومي)
+  myworks:[],  // سجل أعمال موظفة التنسيق والمتابعة (توثيق يومي)
+  remote:null  // إعداد جدول العمل عن بُعد (القوالب + القالب الفعّال)
 };
 const ADMIN = { user:'turki69', pass:'abuyassmin69' };
 const colRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','projects');
@@ -402,7 +432,7 @@ async function initFirebase(){
   try{
     await loadFirebase();
     FB.signInAnonymously(auth).catch(e=>console.error("مصادقة:",e));
-    FB.onAuthStateChanged(auth,(u)=>{ if(u){state.fbReady=true; subscribeProjects(); subscribeOptions(); subscribeStats(); subscribeUsers(); subscribeNotifs(); subscribeTrash(); subscribeVisits(); subscribeMeetings(); subscribeMyWorks();} });
+    FB.onAuthStateChanged(auth,(u)=>{ if(u){state.fbReady=true; subscribeProjects(); subscribeOptions(); subscribeStats(); subscribeUsers(); subscribeNotifs(); subscribeTrash(); subscribeVisits(); subscribeMeetings(); subscribeMyWorks(); subscribeRemote();} });
   }catch(e){
     console.error("تحميل Firebase:",e);
     state.authError='تعذّر الاتصال بقاعدة البيانات. تحقّق من الإنترنت ومن صحة مفاتيح Firebase.';
@@ -491,6 +521,13 @@ function subscribeMyWorks(){
     state.myworks=snap.docs.map(d=>({id:d.id,...d.data()}));
     if(myWorksModalOpen) refreshMyWorksModal();
   },(e)=>{console.error("جلب أعمالي:",e);});
+}
+function subscribeRemote(){
+  FB.onSnapshot(remoteRef(),(snap)=>{
+    state.remote = snap.exists() ? snap.data() : null;
+    if(remoteModalOpen) refreshRemoteModal();
+    if(!isEditingModalOpen() && !remoteModalOpen) { /* لا حاجة لإعادة رسم كاملة */ }
+  },(e)=>{console.error("جلب جدول العمل عن بُعد:",e);});
 }
 /* الإشعارات الموجَّهة للمستخدم الحالي وغير المقروءة */
 function myNotifs(){
@@ -984,6 +1021,7 @@ const trashRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','trash
 const visitsRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','visits');
 const meetingsRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','meetings');
 const myworksRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','myworks');
+const remoteRef = ()=> FB.doc(db,'artifacts',APP_ID,'public','data','remotework','config');
 const KIND_COLL={project:'projects', visit:'visits', meeting:'meetings'};
 const KIND_AR={project:'مشروع', visit:'زيارة', meeting:'اجتماع'};
 /* حذف عام: ينقل أي عنصر (مشروع/زيارة/اجتماع) إلى السلة مع نوعه ومن حذفه */
@@ -1160,6 +1198,7 @@ function renderApp(){
       ${isEngineer()?`<button class="btn btn-ghost" id="btnMyActs">${I.pin}<span class="lbl">اجتماعاتي وزياراتي</span></button>`:''}
       <button class="btn btn-ghost" id="btnOpinions" style="border-color:#c9a24b;color:#8a6d2f">${I.report}<span class="lbl">الآراء الفنية</span></button>
       ${canSeeMyWorks()?`<button class="btn btn-ghost" id="btnMyWorks" style="border-color:#256a55;color:#1f5d4c">${I.pin}<span class="lbl">أعمالي</span></button>`:''}
+      <button class="btn btn-ghost" id="btnRemote" style="border-color:#3b6ea5;color:#2c5580">${I.calendar||I.report}<span class="lbl">العمل عن بُعد</span></button>
       ${isObserver()?'':`<button class="btn btn-add" id="btnAdd">${I.plus}<span class="lbl">إضافة مشروع</span></button>`}
       ${isObserver()?'':`<button class="btn btn-add" id="btnVisit" style="background:var(--clay,#8a6d2f)">${I.pin}<span class="lbl">زيارة موقع</span></button>`}
       ${isObserver()?'':`<button class="btn btn-add" id="btnMeeting" style="background:#3b6ea5">${I.users}<span class="lbl">اجتماع</span></button>`}
@@ -1193,6 +1232,7 @@ function renderApp(){
   { const mb=toolbar.querySelector('#btnMeeting'); if(mb) mb.onclick=()=>openMeetingModal(); }
   { const ob=toolbar.querySelector('#btnOpinions'); if(ob) ob.onclick=()=>{ opinionView=true; doneView=false; myProjectsView=false; updateGrid(); }; }
   { const mw=toolbar.querySelector('#btnMyWorks'); if(mw) mw.onclick=()=>openMyWorksModal(); }
+  { const rw=toolbar.querySelector('#btnRemote'); if(rw) rw.onclick=()=>openRemoteModal(); }
   main.appendChild(toolbar);
 
   const gridHost=document.createElement('div');
@@ -2534,6 +2574,193 @@ function exportMyWorks(fCat,fFrom,fTo){
     XLSX.writeFile(wb,`أعمالي_${todayISO()}.xlsx`);
   }catch(e){ console.error('تصدير أعمالي:',e); alert('تعذّر التصدير.'); }
 }
+
+/* ═══════════ جدول العمل عن بُعد — قوالب أسبوعية ═══════════ */
+const RW_DAYS=[['sun','الأحد'],['mon','الاثنين'],['tue','الثلاثاء'],['wed','الأربعاء'],['thu','الخميس']];
+const RW_DAY_AR=Object.fromEntries(RW_DAYS);
+/* القوالب الثلاثة من ملف الدائرة (الحاضرون في المكتب لكل يوم) — بألقاب العائلة للمطابقة.
+   الثلاثاء الجميع حاضر دائماً (مثبّت). */
+const RW_SEED=[
+  { name:'النمط الأول', present:{
+    sun:['الكلباني','النبهانية','العامرية','المحروقية','الحاتمية','البداعية','العامري','محمد صالح'],
+    mon:['الكلباني','السناني','الرواحية','البراشدي','الراسبية','الحضرمية','الشعيلية','العريمية','السيابي'],
+    wed:['الراسبية','العامرية','السناني','الحضرمية','الشعيلية','الحاتمية','السيابي'],
+    thu:['النبهانية','الرواحية','البراشدي','المحروقية','البداعية','العريمية','العامري','محمد صالح'] } },
+  { name:'النمط الثاني', present:{
+    sun:['النبهانية','السناني','الراسبية','العامرية','الحضرمية','الشعيلية','محمد صالح','العريمية'],
+    mon:['البراشدي','الرواحية','المحروقية','الحاتمية','البداعية','العامري','الشعيلية','السيابي'],
+    wed:['النبهانية','الكلباني','العامرية','المحروقية','البداعية','العريمية','العامري','محمد صالح','الشعيلية','السيابي'],
+    thu:['الرواحية','الكلباني','السناني','الراسبية','البراشدي','الحضرمية','الحاتمية'] } },
+  { name:'النمط الثالث', present:{
+    sun:['السناني','الكلباني','العامرية','المحروقية','الحضرمية','محمد صالح','العامري','البداعية','النوفلية'],
+    mon:['الرواحية','الكلباني','النبهانية','البراشدي','الحاتمية','الراسبية','الشعيلية','السيابي'],
+    wed:['النبهانية','السناني','البراشدي','العامرية','البداعية','الحاتمية','الحضرمية','الشعيلية','السيابي'],
+    thu:['الرواحية','محمد صالح','المحروقية','العامري','الراسبية','النوفلية'] } },
+  { name:'النمط الرابع (فارغ)', present:{ sun:[],mon:[],wed:[],thu:[] } },
+];
+/* يطابق اسم موظف النظام مع لقب من الملف (تطابق احتواء على اللقب) */
+function rwUserMatchesToken(userName, token){
+  if(!userName||!token) return false;
+  const n=userName.replace(/^م\.?\s*/,'').trim();
+  return n.indexOf(token)!==-1;
+}
+/* يحوّل قوالب الملف (ألقاب) إلى قوالب مبنية على usernames لموظفي النظام */
+function rwSeedToTemplates(){
+  const users=state.users||[];
+  return RW_SEED.map(tpl=>{
+    const presence={};
+    users.forEach(u=>{
+      const days={};
+      RW_DAYS.forEach(([k])=>{
+        if(k==='tue'){ days[k]=true; return; }            // الثلاثاء حضور للجميع
+        const list=tpl.present[k]||[];
+        days[k]= list.some(tok=>rwUserMatchesToken(u.name, tok));
+      });
+      presence[u.username]=days;
+    });
+    return { name:tpl.name, presence };
+  });
+}
+/* يضمن وجود إعداد جدول العمل عن بُعد (يُنشئه من القوالب البذرة عند أول استخدام) */
+async function rwEnsureConfig(){
+  if(state.remote && Array.isArray(state.remote.templates) && state.remote.templates.length){ return state.remote; }
+  const seeded={ templates: rwSeedToTemplates(), activeTemplate:0, updatedAt:new Date().toISOString(), updatedBy:state.appUser?.name||'' };
+  try{ await FB.setDoc(remoteRef(), seeded); }catch(e){ console.error('تهيئة جدول العمل عن بُعد:',e); }
+  return seeded;
+}
+function canManageRemote(){ return isCoordinatorUser() || state.appUser?.role==='admin'; }
+/* أيام حضور/عن بُعد للمستخدم الحالي حسب القالب الفعّال */
+function rwMyWeek(){
+  const cfg=state.remote; if(!cfg||!Array.isArray(cfg.templates)) return null;
+  const tpl=cfg.templates[cfg.activeTemplate||0]; if(!tpl) return null;
+  const u=state.appUser; if(!u) return null;
+  const days=(tpl.presence&&tpl.presence[u.username])||{};
+  return RW_DAYS.map(([k,ar])=>({key:k,label:ar, present: k==='tue'?true:!!days[k]}));
+}
+
+let remoteModalOpen=false;
+function openRemoteModal(){
+  if(document.getElementById('remoteOverlay')) return;
+  remoteModalOpen=true;
+  const manage=canManageRemote();
+  const overlay=$(`<div class="overlay" id="remoteOverlay"></div>`);
+  const modal=$(`<div class="modal modal-lg"><div class="modal-head"><h2>جدول العمل عن بُعد</h2>
+    <button class="icon-btn" id="x">${I.close}</button></div></div>`);
+  const body=document.createElement('div');body.className='modal-body';
+  modal.appendChild(body);overlay.appendChild(modal);
+  let editIdx=null;     // فهرس القالب الجاري تعديله (لموظفة التنسيق)
+
+  async function ensure(){ if(!(state.remote&&state.remote.templates&&state.remote.templates.length)){ await rwEnsureConfig(); } }
+
+  function myWeekView(){
+    const wk=rwMyWeek();
+    if(!wk) return '<div class="mw-empty">لم يُفعَّل أي نمط بعد.</div>';
+    const cfg=state.remote; const tname=cfg.templates[cfg.activeTemplate||0]?.name||'';
+    return `
+      <div class="rw-myweek">
+        <div class="rw-active-label">النمط الفعّال هذا الأسبوع: <b>${tname}</b></div>
+        <div class="rw-daychips">
+          ${wk.map(d=>`<div class="rw-daychip ${d.present?'in':'out'} ${d.key==='tue'?'tue':''}">
+            <span class="rw-dname">${d.label}</span>
+            <span class="rw-dstat">${d.present?'حضور':'عن بُعد'}</span>
+          </div>`).join('')}
+        </div>
+        <p class="rw-note">الثلاثاء حضور إلزامي للجميع. في حال أي طارئ أو تغيير يجب إشعار الإدارة مسبقاً.</p>
+      </div>`;
+  }
+
+  function fullGrid(cfg){
+    const tpl=cfg.templates[cfg.activeTemplate||0]; if(!tpl) return '';
+    const users=state.users||[];
+    const head=`<tr><th>الموظف</th>${RW_DAYS.map(([k,ar])=>`<th class="${k==='tue'?'rw-tue':''}">${ar}</th>`).join('')}</tr>`;
+    const rows=users.map(u=>{
+      const days=(tpl.presence&&tpl.presence[u.username])||{};
+      return `<tr><td class="rw-uname">${u.name}</td>${RW_DAYS.map(([k])=>{
+        const present = k==='tue' ? true : !!days[k];
+        return `<td class="rw-cell ${present?'in':'out'} ${k==='tue'?'rw-tue':''}">${present?'حضور':'عن بُعد'}</td>`;
+      }).join('')}</tr>`;
+    }).join('');
+    return `<div class="rw-gridwrap"><table class="rw-grid">${head}${rows}</table></div>`;
+  }
+
+  function manageBar(cfg){
+    return `
+      <div class="rw-managebar">
+        <label>النمط الفعّال:</label>
+        <select id="rwActive">${cfg.templates.map((t,i)=>`<option value="${i}" ${i===(cfg.activeTemplate||0)?'selected':''}>${t.name}</option>`).join('')}</select>
+        <button class="btn btn-ghost" id="rwEdit">تعديل هذا النمط</button>
+        <button class="btn btn-ghost" id="rwReseed" title="إعادة تحميل القوالب من ملف الدائرة">استرجاع قوالب الملف</button>
+      </div>`;
+  }
+
+  function editView(cfg){
+    const tpl=cfg.templates[editIdx]; const users=state.users||[];
+    const head=`<tr><th>الموظف</th>${RW_DAYS.map(([k,ar])=>`<th class="${k==='tue'?'rw-tue':''}">${ar}</th>`).join('')}</tr>`;
+    const rows=users.map(u=>{
+      const days=(tpl.presence&&tpl.presence[u.username])||{};
+      return `<tr><td class="rw-uname">${u.name}</td>${RW_DAYS.map(([k])=>{
+        if(k==='tue') return `<td class="rw-tue rw-cell in">حضور</td>`;
+        const present=!!days[k];
+        return `<td class="rw-cell ${present?'in':'out'}"><label class="rw-toggle"><input type="checkbox" data-u="${u.username}" data-d="${k}" ${present?'checked':''}><span>${present?'حضور':'عن بُعد'}</span></label></td>`;
+      }).join('')}</tr>`;
+    }).join('');
+    return `
+      <div class="rw-edithead">
+        <input type="text" id="rwTplName" value="${tpl.name}" placeholder="اسم النمط">
+        <div>
+          <button class="btn btn-add" id="rwSaveTpl">حفظ النمط</button>
+          <button class="btn btn-ghost" id="rwBack">رجوع</button>
+        </div>
+      </div>
+      <p class="rw-note">علّم أيام <b>الحضور</b> لكل موظف (المتبقّي يُحتسب عن بُعد). الثلاثاء مثبّت حضوراً للجميع.</p>
+      <div class="rw-gridwrap"><table class="rw-grid">${head}${rows}</table></div>`;
+  }
+
+  async function fill(){
+    await ensure();
+    const cfg=state.remote;
+    if(!cfg){ body.innerHTML='<div class="mw-empty">تعذّر تحميل الجدول.</div>'; return; }
+    if(manage && editIdx!==null){
+      body.innerHTML = editView(cfg);
+      // تفعيل الحفظ والتبديل
+      body.querySelectorAll('input[type=checkbox][data-u]').forEach(chk=>{
+        chk.onchange=()=>{ const sp=chk.parentElement.querySelector('span'); if(sp) sp.textContent=chk.checked?'حضور':'عن بُعد';
+          chk.closest('.rw-cell').classList.toggle('in',chk.checked); chk.closest('.rw-cell').classList.toggle('out',!chk.checked); };
+      });
+      body.querySelector('#rwBack').onclick=()=>{ editIdx=null; fill(); };
+      body.querySelector('#rwSaveTpl').onclick=async()=>{
+        const tpl=JSON.parse(JSON.stringify(cfg.templates[editIdx]));
+        tpl.name=(body.querySelector('#rwTplName').value||tpl.name).trim();
+        (state.users||[]).forEach(u=>{ if(!tpl.presence[u.username]) tpl.presence[u.username]={}; tpl.presence[u.username].tue=true; });
+        body.querySelectorAll('input[type=checkbox][data-u]').forEach(chk=>{
+          const un=chk.getAttribute('data-u'), dk=chk.getAttribute('data-d');
+          if(!tpl.presence[un]) tpl.presence[un]={};
+          tpl.presence[un][dk]=chk.checked;
+        });
+        const templates=cfg.templates.slice(); templates[editIdx]=tpl;
+        try{ await FB.updateDoc(remoteRef(),{templates,updatedAt:new Date().toISOString(),updatedBy:state.appUser?.name||''}); editIdx=null; fill(); }
+        catch(e){ console.error(e); alert('تعذّر حفظ النمط.'); }
+      };
+      return;
+    }
+    body.innerHTML =
+      (manage? manageBar(cfg) : '') +
+      myWeekView() +
+      `<div class="rw-sechead">الجدول الكامل — النمط الفعّال</div>` +
+      fullGrid(cfg);
+    if(manage){
+      const sel=body.querySelector('#rwActive');
+      if(sel) sel.onchange=async()=>{ try{ await FB.updateDoc(remoteRef(),{activeTemplate:Number(sel.value),updatedAt:new Date().toISOString(),updatedBy:state.appUser?.name||''}); }catch(e){ console.error(e);} };
+      const eb=body.querySelector('#rwEdit'); if(eb) eb.onclick=()=>{ editIdx=cfg.activeTemplate||0; fill(); };
+      const rs=body.querySelector('#rwReseed'); if(rs) rs.onclick=async()=>{ if(confirm('استرجاع القوالب الثلاثة من ملف الدائرة؟ سيستبدل القوالب الحالية.')){ try{ await FB.updateDoc(remoteRef(),{templates:rwSeedToTemplates(),updatedAt:new Date().toISOString(),updatedBy:state.appUser?.name||''}); fill(); }catch(e){ console.error(e);} } };
+    }
+  }
+  fill(); overlay._refresh=fill;
+  modal.querySelector('#x').onclick=()=>{remoteModalOpen=false;overlay.remove();};
+  overlay.onclick=(e)=>{if(e.target===overlay){remoteModalOpen=false;overlay.remove();}};
+  root.appendChild(overlay);
+}
+function refreshRemoteModal(){ const ov=document.getElementById('remoteOverlay'); if(ov&&ov._refresh) ov._refresh(); }
 
 /* نموذج تعديل زيارة/اجتماع (للمشارك فيه) */
 function openEditActivity(kind, id, onDone){

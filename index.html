@@ -2766,6 +2766,8 @@ function openRemoteModal(){
         <label>النمط الفعّال:</label>
         <select id="rwActive">${cfg.templates.map((t,i)=>`<option value="${i}" ${i===(cfg.activeTemplate||0)?'selected':''}>${t.name}</option>`).join('')}</select>
         <button class="btn btn-ghost" id="rwEdit">تعديل هذا النمط</button>
+        <button class="btn btn-ghost" id="rwXls">⬇ Excel</button>
+        <button class="btn btn-ghost" id="rwPdf">⬇ PDF</button>
         <button class="btn btn-ghost" id="rwReseed" title="إعادة تحميل القوالب من ملف الدائرة">استرجاع قوالب الملف</button>
       </div>`;
   }
@@ -2837,6 +2839,8 @@ function openRemoteModal(){
       const sel=body.querySelector('#rwActive');
       if(sel) sel.onchange=async()=>{ try{ await FB.updateDoc(remoteRef(),{activeTemplate:Number(sel.value),updatedAt:new Date().toISOString(),updatedBy:state.appUser?.name||''}); }catch(e){ console.error(e);} };
       const eb=body.querySelector('#rwEdit'); if(eb) eb.onclick=()=>{ editIdx=cfg.activeTemplate||0; fill(); };
+      const xb=body.querySelector('#rwXls'); if(xb) xb.onclick=()=>exportRemoteExcel();
+      const pb=body.querySelector('#rwPdf'); if(pb) pb.onclick=()=>exportRemotePDF();
       const rs=body.querySelector('#rwReseed'); if(rs) rs.onclick=async()=>{ if(confirm('استرجاع القوالب الثلاثة من ملف الدائرة؟ سيستبدل القوالب الحالية.')){ try{ await FB.updateDoc(remoteRef(),{templates:rwSeedToTemplates(),updatedAt:new Date().toISOString(),updatedBy:state.appUser?.name||''}); fill(); }catch(e){ console.error(e);} } };
     }
   }
@@ -2846,6 +2850,80 @@ function openRemoteModal(){
   root.appendChild(overlay);
 }
 function refreshRemoteModal(){ const ov=document.getElementById('remoteOverlay'); if(ov&&ov._refresh) ov._refresh(); }
+/* تصدير جدول العمل عن بُعد (النمط الفعّال) — Excel */
+function exportRemoteExcel(){
+  try{
+    const cfg=state.remote; if(!cfg||!cfg.templates) { alert('لا يوجد جدول لتصديره.'); return; }
+    const tpl=cfg.templates[cfg.activeTemplate||0]; if(!tpl){ alert('لا يوجد نمط فعّال.'); return; }
+    const groups=rwUsersByDept();
+    const header=['الموظف',...RW_DAYS.map(([k,ar])=>ar)];
+    const rows=[[`جدول العمل عن بُعد — ${tpl.name}`],[], header];
+    groups.forEach(g=>{
+      rows.push([g.label]);
+      g.users.forEach(u=>{
+        const days=(tpl.presence&&tpl.presence[u.username])||{};
+        rows.push([u.name, ...RW_DAYS.map(([k])=>RW_STAT_AR[rwDayStatus(days,k)])]);
+      });
+    });
+    rows.push([]); rows.push(['ملاحظة: الموظف في إجازة اعتيادية يُعلَّم «إجازة». الثلاثاء حضور إلزامي للجميع.']);
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols']=[{wch:28},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10}];
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'العمل عن بُعد');
+    XLSX.writeFile(wb,`جدول_العمل_عن_بعد_${todayISO()}.xlsx`);
+  }catch(e){ console.error('تصدير Excel:',e); alert('تعذّر تصدير Excel.'); }
+}
+/* تصدير جدول العمل عن بُعد (النمط الفعّال) — PDF عبر نافذة طباعة */
+function exportRemotePDF(){
+  try{
+    const cfg=state.remote; if(!cfg||!cfg.templates){ alert('لا يوجد جدول لتصديره.'); return; }
+    const tpl=cfg.templates[cfg.activeTemplate||0]; if(!tpl){ alert('لا يوجد نمط فعّال.'); return; }
+    const groups=rwUsersByDept();
+    const stColor={in:'#1f7a54',remote:'#3b6ea5',leave:'#b5462f'};
+    const stBg={in:'#e8f5ef',remote:'#f1f5fa',leave:'#fdecec'};
+    const headCells=RW_DAYS.map(([k,ar])=>`<th style="${k==='tue'?'background:#a9761b':''}">${ar}</th>`).join('');
+    let bodyHtml='';
+    groups.forEach(g=>{
+      bodyHtml+=`<tr class="dept"><td colspan="6">${g.label}</td></tr>`;
+      g.users.forEach(u=>{
+        const days=(tpl.presence&&tpl.presence[u.username])||{};
+        bodyHtml+=`<tr><td class="nm">${u.name}</td>${RW_DAYS.map(([k])=>{
+          const st=rwDayStatus(days,k);
+          return `<td style="color:${stColor[st]};background:${stBg[st]};font-weight:700">${RW_STAT_AR[st]}</td>`;
+        }).join('')}</tr>`;
+      });
+    });
+    const today=new Date();
+    const dStr=`${String(today.getDate()).padStart(2,'0')}/${String(today.getMonth()+1).padStart(2,'0')}/${today.getFullYear()}`;
+    const win=window.open('','_blank');
+    if(!win){ alert('فضلاً اسمح بالنوافذ المنبثقة للتصدير.'); return; }
+    win.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
+      <title>جدول العمل عن بُعد</title>
+      <style>
+        @page{size:A4 landscape;margin:12mm}
+        *{box-sizing:border-box;margin:0;padding:0;font-family:'Tajawal',Arial,sans-serif}
+        body{padding:18px;color:#26332c}
+        .head{text-align:center;margin-bottom:14px}
+        .head h1{font-size:20px;color:#16443a}
+        .head .sub{font-size:13px;color:#8a6d2f;margin-top:3px}
+        table{width:100%;border-collapse:collapse;font-size:12.5px}
+        th,td{border:1px solid #d9d2c4;padding:7px 6px;text-align:center}
+        th{background:#1f5d4c;color:#fff}
+        td.nm{text-align:right;font-weight:600;background:#faf7f1;white-space:nowrap}
+        tr.dept td{background:#e8f1ee;color:#16443a;font-weight:800;text-align:right}
+        .note{margin-top:12px;font-size:11px;color:#777;line-height:1.7}
+        .toolbar{text-align:center;margin-bottom:12px}
+        .toolbar button{font-family:'Tajawal';font-size:14px;font-weight:700;border:none;border-radius:8px;padding:8px 18px;margin:0 4px;cursor:pointer}
+        .b1{background:#c9a24b;color:#16201e}.b2{background:#eee;color:#333}
+        @media print{.toolbar{display:none}}
+      </style></head><body>
+      <div class="toolbar"><button class="b1" onclick="window.print()">🖨️ طباعة / حفظ PDF</button><button class="b2" onclick="window.close()">إغلاق</button></div>
+      <div class="head"><h1>جدول العمل عن بُعد — دائرة التصميم المركزي</h1><div class="sub">النمط الفعّال: ${tpl.name} · صدر بتاريخ ${dStr}</div></div>
+      <table><thead><tr><th>الموظف</th>${headCells}</tr></thead><tbody>${bodyHtml}</tbody></table>
+      <div class="note">ملاحظة: الموظف الذي يكون في إجازة اعتيادية يُعلَّم «إجازة». الثلاثاء حضور إلزامي للجميع. في حال أي طارئ أو تغيير يجب إشعار الإدارة مسبقاً.</div>
+      </body></html>`);
+    win.document.close();
+  }catch(e){ console.error('تصدير PDF:',e); alert('تعذّر تصدير PDF.'); }
+}
 
 /* نموذج تعديل زيارة/اجتماع (للمشارك فيه) */
 function openEditActivity(kind, id, onDone){

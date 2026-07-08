@@ -1741,7 +1741,7 @@ function openProjectModal(project){
   form.querySelector('#cancel').onclick=()=>{ if(confirm('إلغاء وإغلاق النموذج؟ ستُحذف المسودّة.')){ clearDraft(); overlay.remove(); flushPendingRender(); } };
   modal.appendChild(form);
   overlay.appendChild(modal);
-  overlay.onclick=(e)=>{if(e.target===overlay){ saveDraft(); overlay.remove(); flushPendingRender(); }};
+  // لا يُغلق النموذج بالضغط على الخلفية — حتى لا يُغلق فجأة أثناء الإدخال. الإغلاق فقط عبر ✕ أو إلغاء.
   root.appendChild(overlay);
 }
 /* هل يحق للمستخدم الحالي تقييم هذا القسم؟ (المشرف أو رئيس القسم نفسه) */

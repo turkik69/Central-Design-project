@@ -187,22 +187,30 @@
   .rw-daychip{flex:1;min-width:88px;border-radius:11px;padding:11px 8px;text-align:center;border:1.5px solid transparent}
   .rw-daychip .rw-dname{display:block;font-weight:700;font-size:13px;margin-bottom:3px;color:var(--ink)}
   .rw-daychip .rw-dstat{display:block;font-size:12px;font-weight:700}
-  .rw-daychip.in{background:#e3f3ec;border-color:#bfe0d5}.rw-daychip.in .rw-dstat{color:#1f7a54}
-  .rw-daychip.out{background:#eef3f9;border-color:#cfe0f0}.rw-daychip.out .rw-dstat{color:#3b6ea5}
+  .rw-daychip.rw-in{background:#e3f3ec;border-color:#bfe0d5}.rw-daychip.rw-in .rw-dstat{color:#1f7a54}
+  .rw-daychip.rw-remote{background:#eef3f9;border-color:#cfe0f0}.rw-daychip.rw-remote .rw-dstat{color:#3b6ea5}
+  .rw-daychip.rw-leave{background:#fdecec;border-color:#f0cccc}.rw-daychip.rw-leave .rw-dstat{color:#b5462f}
   .rw-daychip.tue{background:#fdf4e3;border-color:#ead9b5}.rw-daychip.tue .rw-dstat{color:#a9761b}
   .rw-note{font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.7}
   .rw-sechead{font-weight:700;color:var(--oasis-700);font-size:14px;margin:6px 0 10px}
+  .rw-legend{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;font-size:11.5px}
+  .rw-legend .lg{padding:3px 10px;border-radius:12px;font-weight:700}
+  .rw-legend .lg.in{background:#e8f5ef;color:#1f7a54}
+  .rw-legend .lg.remote{background:#f1f5fa;color:#3b6ea5}
+  .rw-legend .lg.leave{background:#fdecec;color:#b5462f}
+  .rw-legend .lg.hide{background:transparent;color:var(--muted);font-weight:600}
   .rw-gridwrap{overflow-x:auto}
   .rw-grid{width:100%;border-collapse:collapse;font-size:12.5px;min-width:520px}
   .rw-grid th,.rw-grid td{border:1px solid var(--line);padding:8px 6px;text-align:center}
   .rw-grid th{background:var(--oasis);color:#fff;font-weight:700}
   .rw-grid th.rw-tue{background:#a9761b}
   .rw-uname{text-align:right !important;font-weight:600;color:var(--ink);white-space:nowrap;background:var(--sand-50)}
-  .rw-cell.in{background:#e8f5ef;color:#1f7a54;font-weight:700}
-  .rw-cell.out{background:#f1f5fa;color:#3b6ea5}
+  .rw-cell.rw-in{background:#e8f5ef;color:#1f7a54;font-weight:700}
+  .rw-cell.rw-remote{background:#f1f5fa;color:#3b6ea5}
+  .rw-cell.rw-leave{background:#fdecec;color:#b5462f;font-weight:700}
+  .rw-cell.rw-hide{background:#fafafa;color:#c9c9c9}
   .rw-cell.rw-tue{background:#fdf4e3;color:#a9761b;font-weight:700}
-  .rw-toggle{display:flex;align-items:center;gap:5px;justify-content:center;cursor:pointer;font-size:11.5px}
-  .rw-toggle input{width:15px;height:15px;cursor:pointer}
+  .rw-sel{border:1px solid var(--line);border-radius:7px;padding:4px 6px;font-family:inherit;font-size:12px;font-weight:600;background:#fff}
   .rw-edithead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
   .rw-edithead input{padding:9px 12px;border:1px solid var(--line);border-radius:10px;font-family:inherit;font-weight:700;font-size:14px;flex:1;min-width:180px}
   .rw-deptrow td{background:var(--oasis-50);color:var(--oasis-700);font-weight:800;text-align:right !important;font-size:12.5px;padding:6px 10px !important}
@@ -2613,9 +2621,9 @@ function rwSeedToTemplates(){
     users.forEach(u=>{
       const days={};
       RW_DAYS.forEach(([k])=>{
-        if(k==='tue'){ days[k]=true; return; }            // الثلاثاء حضور للجميع
+        if(k==='tue'){ days[k]='in'; return; }            // الثلاثاء حضور للجميع
         const list=tpl.present[k]||[];
-        days[k]= list.some(tok=>rwUserMatchesToken(u.name, tok));
+        days[k]= list.some(tok=>rwUserMatchesToken(u.name, tok)) ? 'in' : 'remote';
       });
       presence[u.username]=days;
     });
@@ -2630,26 +2638,52 @@ async function rwEnsureConfig(){
   return seeded;
 }
 function canManageRemote(){ return isCoordinatorUser() || state.appUser?.role==='admin'; }
+/* من يرى الجدول كاملاً (حضور + عن بُعد + إجازة): الإدارة ورؤساء الأقسام وموظفة التنسيق والمشرف.
+   الموظف العادي يرى الحضور والإجازة فقط (لا يرى عن بُعد). */
+function canSeeFullRemote(){
+  const u=state.appUser; if(!u) return false;
+  if(u.role==='admin') return true;
+  const jt=u.jobTitle||'';
+  return jt==='مدير الدائرة' || jt==='المدير العام' || jt==='تنسيق ومتابعة' || jt.indexOf('رئيس')!==-1;
+}
+/* حالة يوم لموظف: 'in' حضور | 'remote' عن بُعد | 'leave' إجازة. الثلاثاء دائماً حضور. */
+function rwDayStatus(days, k){
+  if(k==='tue') return 'in';
+  const v=days&&days[k];
+  if(v==='leave') return 'leave';
+  if(v===true || v==='in') return 'in';
+  return 'remote';
+}
+const RW_STAT_AR={in:'حضور', remote:'عن بُعد', leave:'إجازة'};
 /* موظفو الجدول: الجميع عدا مدير الدائرة والمدير العام */
 function rwEligibleUsers(){
-  return (state.users||[]).filter(u=>{
-    const jt=u.jobTitle||'';
-    return jt!=='مدير الدائرة' && jt!=='المدير العام';
-  });
+  // يُستثنى المدير العام فقط. مدير الدائرة ورؤساء الأقسام يظهرون ضمن «الإداريون».
+  return (state.users||[]).filter(u=> (u.jobTitle||'')!=='المدير العام');
 }
-/* ترتيب موظفي الجدول حسب الأقسام (كما في ملف الدائرة) */
-const RW_DEPT_ORDER=[['administration','الإداريون'],['architectural','المعماري'],['structural','الإنشائي'],['services','الخدمات']];
+function rwIsHead(jt){ return jt==='رئيس القسم المعماري'||jt==='رئيس القسم الإنشائي'||jt==='رئيس قسم تصميم الخدمات'; }
+/* ترتيب «الإداريون»: مدير الدائرة، ثم رؤساء الأقسام (خدمات، معماري، إنشائي)، ثم التنسيق، ثم بقية الإداريين */
+const RW_ADMIN_ORDER=['مدير الدائرة','رئيس قسم تصميم الخدمات','رئيس القسم المعماري','رئيس القسم الإنشائي','تنسيق ومتابعة'];
 function rwUsersByDept(){
   const users=rwEligibleUsers();
   const groups=[];
-  RW_DEPT_ORDER.forEach(([key,label])=>{
-    const arr=users.filter(u=>(u.dept||'')===key);
+  // ── الإداريون: المدير + الرؤساء + التنسيق + موظفو الإدارة ──
+  const admins=users.filter(u=>{
+    const jt=u.jobTitle||'';
+    return RW_ADMIN_ORDER.includes(jt) || (u.dept||'')==='administration' || rwIsHead(jt);
+  });
+  admins.sort((a,b)=>{
+    const ia=RW_ADMIN_ORDER.indexOf(a.jobTitle||''); const ib=RW_ADMIN_ORDER.indexOf(b.jobTitle||'');
+    return (ia===-1?999:ia)-(ib===-1?999:ib);
+  });
+  if(admins.length) groups.push({label:'الإداريون', users:admins});
+  // ── الأقسام الهندسية: المهندسون فقط (بدون رؤساء الأقسام ولا المدير ولا التنسيق) ──
+  [['architectural','المعماري'],['structural','الإنشائي'],['services','الخدمات']].forEach(([key,label])=>{
+    const arr=users.filter(u=>{
+      const jt=u.jobTitle||'';
+      return (u.dept||'')===key && !rwIsHead(jt) && jt!=='مدير الدائرة' && jt!=='تنسيق ومتابعة';
+    });
     if(arr.length) groups.push({label, users:arr});
   });
-  // أي قسم غير معروف
-  const known=RW_DEPT_ORDER.map(d=>d[0]);
-  const others=users.filter(u=>!known.includes(u.dept||''));
-  if(others.length) groups.push({label:'أخرى', users:others});
   return groups;
 }
 /* أيام حضور/عن بُعد للمستخدم الحالي حسب القالب الفعّال */
@@ -2658,7 +2692,7 @@ function rwMyWeek(){
   const tpl=cfg.templates[cfg.activeTemplate||0]; if(!tpl) return null;
   const u=state.appUser; if(!u) return null;
   const days=(tpl.presence&&tpl.presence[u.username])||{};
-  return RW_DAYS.map(([k,ar])=>({key:k,label:ar, present: k==='tue'?true:!!days[k]}));
+  return RW_DAYS.map(([k,ar])=>({key:k,label:ar, status: rwDayStatus(days,k)}));
 }
 
 let remoteModalOpen=false;
@@ -2676,9 +2710,9 @@ function openRemoteModal(){
   async function ensure(){ if(!(state.remote&&state.remote.templates&&state.remote.templates.length)){ await rwEnsureConfig(); } }
 
   function myWeekView(){
-    // مدير الدائرة/المدير العام غير مُدرَجين في الجدول — لا تظهر لهم بطاقة «أسبوعي»
+    // المدير العام غير مُدرَج في الجدول — لا تظهر له بطاقة «أسبوعي»
     const jt=state.appUser?.jobTitle||'';
-    if(jt==='مدير الدائرة' || jt==='المدير العام') return '';
+    if(jt==='المدير العام') return '';
     const wk=rwMyWeek();
     if(!wk) return '<div class="mw-empty">لم يُفعَّل أي نمط بعد.</div>';
     const cfg=state.remote; const tname=cfg.templates[cfg.activeTemplate||0]?.name||'';
@@ -2686,9 +2720,9 @@ function openRemoteModal(){
       <div class="rw-myweek">
         <div class="rw-active-label">النمط الفعّال هذا الأسبوع: <b>${tname}</b></div>
         <div class="rw-daychips">
-          ${wk.map(d=>`<div class="rw-daychip ${d.present?'in':'out'} ${d.key==='tue'?'tue':''}">
+          ${wk.map(d=>`<div class="rw-daychip rw-${d.status} ${d.key==='tue'?'tue':''}">
             <span class="rw-dname">${d.label}</span>
-            <span class="rw-dstat">${d.present?'حضور':'عن بُعد'}</span>
+            <span class="rw-dstat">${RW_STAT_AR[d.status]}</span>
           </div>`).join('')}
         </div>
         <p class="rw-note">الثلاثاء حضور إلزامي للجميع. في حال أي طارئ أو تغيير يجب إشعار الإدارة مسبقاً.</p>
@@ -2698,20 +2732,26 @@ function openRemoteModal(){
   function fullGrid(cfg){
     const tpl=cfg.templates[cfg.activeTemplate||0]; if(!tpl) return '';
     const groups=rwUsersByDept();
+    const full=canSeeFullRemote();   // الإدارة/الرؤساء يرون كل شيء؛ الموظف يرى الحضور والإجازة فقط
     const head=`<tr><th>الموظف</th>${RW_DAYS.map(([k,ar])=>`<th class="${k==='tue'?'rw-tue':''}">${ar}</th>`).join('')}</tr>`;
     const body=groups.map(g=>{
       const secRow=`<tr class="rw-deptrow"><td colspan="6">${g.label}</td></tr>`;
       const urows=g.users.map(u=>{
         const days=(tpl.presence&&tpl.presence[u.username])||{};
         return `<tr><td class="rw-uname">${u.name}</td>${RW_DAYS.map(([k])=>{
-          const present = k==='tue' ? true : !!days[k];
-          return `<td class="rw-cell ${present?'in':'out'} ${k==='tue'?'rw-tue':''}">${present?'حضور':'عن بُعد'}</td>`;
+          const st=rwDayStatus(days,k);
+          // الموظف العادي: يرى الحضور والإجازة فقط؛ «عن بُعد» تظهر كخانة محايدة بلا تفصيل
+          if(!full && st==='remote') return `<td class="rw-cell rw-hide">—</td>`;
+          return `<td class="rw-cell rw-${st} ${k==='tue'?'rw-tue':''}">${RW_STAT_AR[st]}</td>`;
         }).join('')}</tr>`;
       }).join('');
       return secRow+urows;
     }).join('');
-    return `<div class="rw-gridwrap"><table class="rw-grid">${head}${body}</table></div>
-      <p class="rw-note">ملاحظة: الموظف الذي يكون في إجازة اعتيادية لن يُدرَج اسمه في الجدول. وفي حال أي طارئ أو تغيير يجب إشعار الإدارة مسبقاً.</p>`;
+    const legend = full
+      ? `<div class="rw-legend"><span class="lg in">حضور</span><span class="lg remote">عن بُعد</span><span class="lg leave">إجازة</span></div>`
+      : `<div class="rw-legend"><span class="lg in">حضور</span><span class="lg leave">إجازة</span><span class="lg hide">— لا يظهر تفصيل «عن بُعد» لغير الإدارة</span></div>`;
+    return legend + `<div class="rw-gridwrap"><table class="rw-grid">${head}${body}</table></div>
+      <p class="rw-note">ملاحظة: الموظف الذي يكون في إجازة اعتيادية يُعلَّم «إجازة» في الجدول. وفي حال أي طارئ أو تغيير يجب إشعار الإدارة مسبقاً.</p>`;
   }
 
   function manageBar(cfg){
@@ -2733,9 +2773,13 @@ function openRemoteModal(){
       const urows=g.users.map(u=>{
         const days=(tpl.presence&&tpl.presence[u.username])||{};
         return `<tr><td class="rw-uname">${u.name}</td>${RW_DAYS.map(([k])=>{
-          if(k==='tue') return `<td class="rw-tue rw-cell in">حضور</td>`;
-          const present=!!days[k];
-          return `<td class="rw-cell ${present?'in':'out'}"><label class="rw-toggle"><input type="checkbox" data-u="${u.username}" data-d="${k}" ${present?'checked':''}><span>${present?'حضور':'عن بُعد'}</span></label></td>`;
+          if(k==='tue') return `<td class="rw-tue rw-cell rw-in">حضور</td>`;
+          const st=rwDayStatus(days,k);
+          return `<td class="rw-cell rw-${st}"><select class="rw-sel" data-u="${u.username}" data-d="${k}">
+            <option value="in" ${st==='in'?'selected':''}>حضور</option>
+            <option value="remote" ${st==='remote'?'selected':''}>عن بُعد</option>
+            <option value="leave" ${st==='leave'?'selected':''}>إجازة</option>
+          </select></td>`;
         }).join('')}</tr>`;
       }).join('');
       return secRow+urows;
@@ -2748,7 +2792,7 @@ function openRemoteModal(){
           <button class="btn btn-ghost" id="rwBack">رجوع</button>
         </div>
       </div>
-      <p class="rw-note">علّم أيام <b>الحضور</b> لكل موظف (المتبقّي يُحتسب عن بُعد). الثلاثاء مثبّت حضوراً للجميع. مدير الدائرة والمدير العام غير مُدرَجين.</p>
+      <p class="rw-note">علّم حالة كل موظف لكل يوم (حضور / عن بُعد / إجازة). الثلاثاء مثبّت حضوراً للجميع. المدير العام غير مُدرَج.</p>
       <div class="rw-gridwrap"><table class="rw-grid">${head}${bodyRows}</table></div>`;
   }
 
@@ -2758,20 +2802,19 @@ function openRemoteModal(){
     if(!cfg){ body.innerHTML='<div class="mw-empty">تعذّر تحميل الجدول.</div>'; return; }
     if(manage && editIdx!==null){
       body.innerHTML = editView(cfg);
-      // تفعيل الحفظ والتبديل
-      body.querySelectorAll('input[type=checkbox][data-u]').forEach(chk=>{
-        chk.onchange=()=>{ const sp=chk.parentElement.querySelector('span'); if(sp) sp.textContent=chk.checked?'حضور':'عن بُعد';
-          chk.closest('.rw-cell').classList.toggle('in',chk.checked); chk.closest('.rw-cell').classList.toggle('out',!chk.checked); };
+      // تحديث لون الخانة عند تغيير الحالة
+      body.querySelectorAll('select.rw-sel').forEach(sel=>{
+        sel.onchange=()=>{ const td=sel.closest('.rw-cell'); td.classList.remove('rw-in','rw-remote','rw-leave'); td.classList.add('rw-'+sel.value); };
       });
       body.querySelector('#rwBack').onclick=()=>{ editIdx=null; fill(); };
       body.querySelector('#rwSaveTpl').onclick=async()=>{
         const tpl=JSON.parse(JSON.stringify(cfg.templates[editIdx]));
         tpl.name=(body.querySelector('#rwTplName').value||tpl.name).trim();
         (rwEligibleUsers()).forEach(u=>{ if(!tpl.presence[u.username]) tpl.presence[u.username]={}; tpl.presence[u.username].tue=true; });
-        body.querySelectorAll('input[type=checkbox][data-u]').forEach(chk=>{
-          const un=chk.getAttribute('data-u'), dk=chk.getAttribute('data-d');
+        body.querySelectorAll('select.rw-sel').forEach(sel=>{
+          const un=sel.getAttribute('data-u'), dk=sel.getAttribute('data-d');
           if(!tpl.presence[un]) tpl.presence[un]={};
-          tpl.presence[un][dk]=chk.checked;
+          tpl.presence[un][dk]=sel.value;   // 'in' | 'remote' | 'leave'
         });
         const templates=cfg.templates.slice(); templates[editIdx]=tpl;
         try{ await FB.updateDoc(remoteRef(),{templates,updatedAt:new Date().toISOString(),updatedBy:state.appUser?.name||''}); editIdx=null; fill(); }

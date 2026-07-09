@@ -177,6 +177,14 @@
   .mw-logacts{position:absolute;top:10px;inset-inline-start:10px}
   .mw-empty{text-align:center;color:var(--muted);font-size:13px;padding:26px 10px}
   .act-card:hover{border-color:var(--oasis)!important}
+  .act-month{margin-bottom:10px}
+  .act-month-head{width:100%;display:flex;align-items:center;gap:10px;background:var(--oasis-50);border:1px solid var(--line);border-radius:11px;padding:11px 14px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:800;color:var(--oasis-700);transition:background .12s}
+  .act-month-head:hover{background:#dcebe5}
+  .act-month-head.open{border-bottom-left-radius:0;border-bottom-right-radius:0}
+  .act-month-head .amh-title{flex:1;text-align:right}
+  .act-month-head .amh-count{background:var(--oasis);color:#fff;font-size:12px;font-weight:700;min-width:24px;height:22px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;padding:0 7px}
+  .act-month-head .amh-chev{font-size:15px;color:var(--oasis)}
+  .act-month-body{border:1px solid var(--line);border-top:none;border-radius:0 0 11px 11px;padding:12px 12px 4px;background:#fff}
   .btn-xl{background:var(--clay)}.btn-xl:hover{background:var(--clay-dark)}
   .btn-del{background:var(--danger)}.btn-del:hover{filter:brightness(.92)}
   .btn-ghost{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
@@ -2164,7 +2172,7 @@ function openVisitModal(){
       </form>
       <div class="divider"></div>
       <h3 style="font-size:15px;color:var(--oasis-700);margin-bottom:10px">سجل الزيارات (${list.length})</h3>
-      ${list.length? list.map(v=>activityCard(v,'visit')).join('') : '<div style="text-align:center;color:var(--muted);padding:24px">لا توجد زيارات مسجّلة.</div>'}`;
+      ${renderActivitiesByMonth(list,'visit')}`;
     const form=body.querySelector('#visitForm');
     const dept=form.querySelector('#ap_dept'), people=form.querySelector('#ap_people');
     renderPeopleOptions(people, dept.value, []);
@@ -2192,7 +2200,7 @@ function openVisitModal(){
     body.querySelectorAll('[data-edit-actrec]').forEach(b=>{
       b.onclick=()=>openEditActivity(b.getAttribute('data-kind'), b.getAttribute('data-edit-actrec'), fill);
     });
-    wireActivityCards(body, (kind,id)=> state.visits.find(x=>x.id===id));
+    wireActivityMonths(body, 'visit', (kind,id)=> state.visits.find(x=>x.id===id));
   }
   fill(); overlay._refresh=fill;
   modal.querySelector('#x').onclick=()=>{visitModalOpen=false;overlay.remove();};
@@ -2226,7 +2234,7 @@ function openMeetingModal(){
       </form>
       <div class="divider"></div>
       <h3 style="font-size:15px;color:var(--oasis-700);margin-bottom:10px">سجل الاجتماعات (${list.length})</h3>
-      ${list.length? list.map(m=>activityCard(m,'meeting')).join('') : '<div style="text-align:center;color:var(--muted);padding:24px">لا توجد اجتماعات مسجّلة.</div>'}`;
+      ${renderActivitiesByMonth(list,'meeting')}`;
     const form=body.querySelector('#meetingForm');
     const dept=form.querySelector('#ap_dept'), people=form.querySelector('#ap_people');
     renderPeopleOptions(people, dept.value, []);
@@ -2257,7 +2265,7 @@ function openMeetingModal(){
     body.querySelectorAll('[data-edit-actrec]').forEach(b=>{
       b.onclick=()=>openEditActivity(b.getAttribute('data-kind'), b.getAttribute('data-edit-actrec'), fill);
     });
-    wireActivityCards(body, (kind,id)=> state.meetings.find(x=>x.id===id));
+    wireActivityMonths(body, 'meeting', (kind,id)=> state.meetings.find(x=>x.id===id));
   }
   fill(); overlay._refresh=fill;
   modal.querySelector('#x').onclick=()=>{meetingModalOpen=false;overlay.remove();};
@@ -2347,6 +2355,52 @@ function wireActivityCards(scope, getItem){
       if(item) openActivityDetail(item, kind);
     };
   });
+}
+/* حالة الشهور المفتوحة (تبقى بين عمليات إعادة الرسم) */
+const _actOpenMonths={ visit:new Set(), meeting:new Set() };
+/* يعرض قائمة الزيارات/الاجتماعات مجمّعة بالشهور مع طيّ/فتح */
+function renderActivitiesByMonth(list, kind){
+  if(!list.length) return `<div style="text-align:center;color:var(--muted);padding:24px">لا توجد ${kind==='meeting'?'اجتماعات':'زيارات'} مسجّلة.</div>`;
+  // ترتيب تنازلي بالتاريخ ثم تجميع بالشهر
+  const sorted=list.slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
+  const groups=[]; const idx={};
+  sorted.forEach(a=>{
+    const key=ym(a.date)||'—';
+    if(idx[key]===undefined){ idx[key]=groups.length; groups.push({key,items:[]}); }
+    groups[idx[key]].items.push(a);
+  });
+  // افتح أحدث شهر افتراضياً إن لم يُفتح شيء بعد
+  const openSet=_actOpenMonths[kind];
+  if(openSet.size===0 && groups.length){ openSet.add(groups[0].key); }
+  return groups.map(g=>{
+    const isOpen=openSet.has(g.key);
+    const label = g.key==='—' ? 'بدون تاريخ' : monthLabelStd(g.key);
+    const cards = g.items.map(a=>activityCard(a,kind)).join('');
+    return `<div class="act-month" data-mkey="${g.key}">
+      <button class="act-month-head ${isOpen?'open':''}" data-mtoggle="${g.key}" data-kind="${kind}">
+        <span class="amh-title">${label}</span>
+        <span class="amh-count">${g.items.length}</span>
+        <span class="amh-chev">${isOpen?'▾':'‹'}</span>
+      </button>
+      <div class="act-month-body" style="${isOpen?'':'display:none'}">${cards}</div>
+    </div>`;
+  }).join('');
+}
+/* يربط أزرار طيّ/فتح الشهور ثم يعيد ربط بطاقات النشاط الظاهرة */
+function wireActivityMonths(scope, kind, getItem){
+  scope.querySelectorAll('[data-mtoggle]').forEach(btn=>{
+    btn.onclick=()=>{
+      const key=btn.getAttribute('data-mtoggle');
+      const set=_actOpenMonths[kind];
+      if(set.has(key)) set.delete(key); else set.add(key);
+      const bodyEl=btn.parentElement.querySelector('.act-month-body');
+      const open=set.has(key);
+      btn.classList.toggle('open',open);
+      const chev=btn.querySelector('.amh-chev'); if(chev) chev.textContent=open?'▾':'‹';
+      if(bodyEl) bodyEl.style.display=open?'':'none';
+    };
+  });
+  wireActivityCards(scope, getItem);
 }
 
 /* ════════════ اجتماعاتي وزياراتي (للمهندس) ════════════ */

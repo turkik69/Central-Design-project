@@ -3154,7 +3154,7 @@ function openCertificate(){
   const pron = isFemale ? 'جعلها' : 'جعله';
   const verb1= isFemale ? 'تميّزها واجتهادها' : 'تميّزه واجتهاده';
   const verb2= isFemale ? 'التزامها' : 'التزامه';
-  const reasonHTML = `تقديراً ل${verb1} في إنجاز مشاريع وأعمال الدائرة، و${verb2} بالجودة والمواعيد،<br>مما ${pron} الأجدر بلقب <b>${awardTitle}</b> عن ${label}`;
+  const reasonHTML = `تقديراً ل${verb1} في إنجاز مشاريع وأعمال الدائرة، و${verb2} بالجودة والمواعيد،<br>مما ${pron} الأجدر بلقب <b>${awardTitle}</b>`;
   const introHTML = `تتقدم دائرة التصميم المركزي بالمديرية العامة للشؤون الفنية بخالص الشكر والتقدير إلى`;
   // تحديد قسم الفائز ومسمّى رئيس قسمه
   const winnerUser = state.users.find(u=>u.username===winner.username);
@@ -3201,7 +3201,7 @@ function openCertificate(){
       .cert-title{font-family:'Cairo';font-size:34px;font-weight:800;color:#1f5d4c;margin:4px 0 12px}
       .intro{font-family:'Cairo';font-size:15px;font-weight:700;color:#1f3b33;line-height:2.1;max-width:88%}
       .name{font-family:'Cairo';font-size:30px;font-weight:800;color:#c9a24b;margin:14px 0 8px;padding:0 40px 10px;border-bottom:2px solid #c9a24b;line-height:1.4}
-      .name .pre{color:#c9a24b}
+      .name .pre{color:#1f5d4c}
       .reason{font-family:'Cairo';font-size:15px;font-weight:700;color:#1f3b33;line-height:2.15;max-width:90%;margin:6px 0 4px}
       .month-badge{display:inline-block;background:#1f5d4c;color:#fff;font-weight:700;border-radius:24px;padding:6px 30px;font-size:14px;margin:6px 0 12px}
       .stats{display:flex;gap:48px;justify-content:center;margin:2px 0 8px;flex-wrap:wrap}
@@ -3227,7 +3227,7 @@ function openCertificate(){
         <div class="intro">${introHTML}</div>
         <div class="name"><span class="pre">${engTitle}</span> ${winner.name}</div>
         <div class="reason">${reasonHTML}</div>
-        <div class="month-badge">${label}</div>
+        <div class="month-badge">عن ${label}</div>
         <div class="stats">
           <div class="stat"><b>${winner.doneCount}</b><span>عمل منجز</span></div>
           <div class="stat"><b>${winner.punctuality==null?'—':winner.punctuality+'%'}</b><span>الالتزام بالوقت</span></div>

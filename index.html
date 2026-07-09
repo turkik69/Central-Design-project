@@ -3120,19 +3120,16 @@ function announcedEmployee(){
 /* شهادة شكر وتقدير لموظف الشهر — A4، بثيم البرنامج، تصدير PDF/طباعة (المشرف فقط) */
 function openCertificate(){
   if(state.appUser?.role!=='admin'){ alert('إصدار الشهادة من صلاحية المشرف فقط.'); return; }
-  // تحديد الفائز والفترة تبعاً للفترة المختارة في لوحة المؤشرات (شهر/ربع/نصف/عام/الكل)
+  // الفائز يُطابق تماماً ما تعرضه لوحة المؤشرات (employeeOfMonth) حسب الفترة المختارة
   let winner, label, kind;
+  const eom=employeeOfMonth();
+  winner = eom ? eom.winner : null;
   if(kpiPeriod==='all'){
-    // «الكل» = موظف الشهر المنقضي (السلوك الافتراضي)
-    const a=announcedEmployee();
-    winner = a&&a.winner ? a.winner : (employeeOfMonth()?employeeOfMonth().winner:null);
-    label  = a&&a.winner ? a.label : (employeeOfMonth()?'':'');
-    kind='month';
+    label = 'الأداء العام';
+    kind  = 'all';
   } else {
-    const r=kpiRange(kpiPeriod);
-    winner = employeeOfMonthFor(r.from, r.to);
-    label  = r.label;
-    kind   = kpiPeriod;   // month | quarter | half | year
+    label = kpiRange(kpiPeriod).label;
+    kind  = kpiPeriod;   // month | quarter | half | year
   }
   if(!winner){ alert('لا يوجد فائز لإصدار شهادته في هذه الفترة — لا توجد أعمال منجزة مؤهّلة.'); return; }
   // كشف الجنس تلقائياً من آخر حرف في لقب العائلة (ة = أنثى)
@@ -3141,15 +3138,14 @@ function openCertificate(){
   const engTitle = isFemale ? 'المهندسة' : 'المهندس';
   // صيغة اللقب حسب الفترة (شهر/ربع/نصف/عام) مع التذكير/التأنيث
   const AWARD = {
+    all:     isFemale?'موظفة متميّزة':'موظف متميّز',
     month:   isFemale?'موظفة الشهر' :'موظف الشهر',
     quarter: isFemale?'موظفة الربع' :'موظف الربع',
     half:    isFemale?'موظفة نصف السنة':'موظف نصف السنة',
     year:    isFemale?'موظفة العام' :'موظف العام'
   };
   const awardTitle = AWARD[kind] || AWARD.month;
-  const certSub = isFemale
-    ? { month:'EMPLOYEE OF THE MONTH', quarter:'EMPLOYEE OF THE QUARTER', half:'EMPLOYEE OF THE HALF-YEAR', year:'EMPLOYEE OF THE YEAR' }[kind]
-    : { month:'EMPLOYEE OF THE MONTH', quarter:'EMPLOYEE OF THE QUARTER', half:'EMPLOYEE OF THE HALF-YEAR', year:'EMPLOYEE OF THE YEAR' }[kind];
+  const certSub = { all:'EMPLOYEE OF EXCELLENCE', month:'EMPLOYEE OF THE MONTH', quarter:'EMPLOYEE OF THE QUARTER', half:'EMPLOYEE OF THE HALF-YEAR', year:'EMPLOYEE OF THE YEAR' }[kind] || 'EMPLOYEE OF THE MONTH';
   // نصّ السبب: يُصاغ تلقائياً حسب الفترة والجنس («مما جعلها الأجدر بلقب موظفة العام» ...)
   const pron = isFemale ? 'جعلها' : 'جعله';
   const verb1= isFemale ? 'تميّزها واجتهادها' : 'تميّزه واجتهاده';

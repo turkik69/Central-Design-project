@@ -3071,7 +3071,7 @@ function engineerKpiList(){
     const total2 = total + opinionCount;
     const done2  = done + opinionCount;
     const completion2 = total2?Math.round(done2/total2*100):0;
-    return {name:u.name,username:u.username,total:total2,done:done2,completion:completion2,punctuality,avgRating,onTime,doneCount:done2,opinionCount};
+    return {name:u.name,username:u.username,dept:u.dept,total:total2,done:done2,completion:completion2,punctuality,avgRating,onTime,doneCount:done2,opinionCount};
   }).filter(e=>e.total>0).sort((a,b)=>b.completion-a.completion);
 }
 /* بداية احتساب موظف الشهر: لا تُحتسب الأعمال المؤرشفة قبل انطلاق التطبيق فعلياً */
@@ -3128,50 +3128,73 @@ function announcedEmployee(){
   const yearOfPrev = (m-1<0)? y-1 : y;
   return { winner:employeeOfMonthFor(from,to), label:`${monthName} ${yearOfPrev}` };
 }
-/* شهادة شكر وتقدير لموظف الشهر — A4، بثيم البرنامج، تصدير PDF/طباعة (المشرف فقط) */
+/* شهادات تميّز مستقلة لكل قسم (معماري/إنشائي/خدمات) عن الفترة المختارة حالياً — نافذة واحدة بصفحة لكل قسم فائز فيه */
 function openCertificate(){
   if(state.appUser?.role!=='admin'){ alert('إصدار الشهادة من صلاحية المشرف فقط.'); return; }
-  // الفائز يُطابق تماماً ما تعرضه لوحة المؤشرات (employeeOfMonth) حسب الفترة المختارة
-  let winner, label, kind;
-  const eom=employeeOfMonth();
-  winner = eom ? eom.winner : null;
-  if(kpiPeriod==='all'){
-    label = 'الأداء العام';
-    kind  = 'all';
-  } else {
-    label = kpiRange(kpiPeriod).label;
-    kind  = kpiPeriod;   // month | quarter | half | year
-  }
-  if(!winner){ alert('لا يوجد فائز لإصدار شهادته في هذه الفترة — لا توجد أعمال منجزة مؤهّلة.'); return; }
-  // كشف الجنس تلقائياً من آخر حرف في لقب العائلة (ة = أنثى)
-  const nm=(winner.name||'').trim();
-  const isFemale = /ة$/.test(nm);
-  const engTitle = isFemale ? 'المهندسة' : 'المهندس';
-  // صيغة اللقب حسب الفترة (شهر/ربع/نصف/عام) مع التذكير/التأنيث
-  const AWARD = {
-    all:     isFemale?'موظفة متميّزة':'موظف متميّز',
-    month:   isFemale?'موظفة الشهر' :'موظف الشهر',
-    quarter: isFemale?'موظفة الربع' :'موظف الربع',
-    half:    isFemale?'موظفة نصف السنة':'موظف نصف السنة',
-    year:    isFemale?'موظفة العام' :'موظف العام'
-  };
-  const awardTitle = AWARD[kind] || AWARD.month;
-  const certSub = { all:'EMPLOYEE OF EXCELLENCE', month:'EMPLOYEE OF THE MONTH', quarter:'EMPLOYEE OF THE QUARTER', half:'EMPLOYEE OF THE HALF-YEAR', year:'EMPLOYEE OF THE YEAR' }[kind] || 'EMPLOYEE OF THE MONTH';
-  // نصّ السبب: يُصاغ تلقائياً حسب الفترة والجنس («مما جعلها الأجدر بلقب موظفة العام» ...)
-  const pron = isFemale ? 'جعلها' : 'جعله';
-  const verb1= isFemale ? 'تميّزها واجتهادها' : 'تميّزه واجتهاده';
-  const verb2= isFemale ? 'التزامها' : 'التزامه';
-  const reasonHTML = `تقديراً ل${verb1} في إنجاز مشاريع وأعمال الدائرة، و${verb2} بالجودة والمواعيد،<br>مما ${pron} الأجدر بلقب <b>${awardTitle}</b>`;
-  const introHTML = `تتقدم دائرة التصميم المركزي بالمديرية العامة للشؤون الفنية بخالص الشكر والتقدير إلى`;
-  // تحديد قسم الفائز ومسمّى رئيس قسمه
-  const winnerUser = state.users.find(u=>u.username===winner.username);
+  let label, kind;
+  if(kpiPeriod==='all'){ label='الأداء العام'; kind='all'; }
+  else { label=kpiRange(kpiPeriod).label; kind=kpiPeriod; }
+
   const HEAD_AR={architectural:'رئيس القسم المعماري',structural:'رئيس القسم الإنشائي',services:'رئيس قسم تصميم الخدمات'};
-  const headTitle = (winnerUser && HEAD_AR[winnerUser.dept]) ? HEAD_AR[winnerUser.dept] : 'رئيس القسم';
+  const deptOrder=['architectural','structural','services'];
+  const pages=[]; const skipped=[];
+
   const today=new Date();
   const dStr=`${String(today.getDate()).padStart(2,'0')}/${String(today.getMonth()+1).padStart(2,'0')}/${today.getFullYear()}`;
+
+  deptOrder.forEach(deptKey=>{
+    const winner=employeeOfMonthInDept(deptKey);
+    if(!winner){ skipped.push(DEPT_AR[deptKey]); return; }
+    const nm=(winner.name||'').trim();
+    const isFemale=/ة$/.test(nm);
+    const engTitle=isFemale?'المهندسة':'المهندس';
+    const AWARD={
+      all:     isFemale?'موظفة متميّزة':'موظف متميّز',
+      month:   isFemale?'موظفة الشهر' :'موظف الشهر',
+      quarter: isFemale?'موظفة الربع' :'موظف الربع',
+      half:    isFemale?'موظفة نصف السنة':'موظف نصف السنة',
+      year:    isFemale?'موظفة العام' :'موظف العام'
+    };
+    const awardTitle=AWARD[kind]||AWARD.month;
+    const pron = isFemale?'جعلها':'جعله';
+    const verb1= isFemale?'تميّزها واجتهادها':'تميّزه واجتهاده';
+    const verb2= isFemale?'التزامها':'التزامه';
+    const deptName=DEPT_AR[deptKey];
+    const reasonHTML=`تقديراً ل${verb1} في إنجاز مشاريع وأعمال ${deptName}، و${verb2} بالجودة والمواعيد،<br>مما ${pron} الأجدر بلقب <b>${awardTitle}</b> في ${deptName}`;
+    const introHTML=`تتقدم دائرة التصميم المركزي بالمديرية العامة للشؤون الفنية بخالص الشكر والتقدير إلى`;
+    const headTitle=HEAD_AR[deptKey]||'رئيس القسم';
+    pages.push(`
+    <div class="page">
+      <div class="goldpat"></div><div class="glow"></div>
+      <div class="topband"><div class="pat"></div>
+        <h1>سلطنة عُمان — بلدية مسقط<span>المديرية العامة للشؤون الفنية · دائرة التصميم المركزي</span></h1>
+      </div>
+      <div class="frame">
+        <div class="seal"><img src="${LOGO_CERT}" alt="بلدية مسقط"></div>
+        <div class="cert-title">شهادة شكر وتقدير</div>
+        <div class="intro">${introHTML}</div>
+        <div class="name"><span class="pre">${engTitle}</span> ${winner.name}</div>
+        <div class="reason">${reasonHTML}</div>
+        <div class="month-badge">عن ${label}</div>
+        <div class="stats">
+          <div class="stat"><b>${winner.doneCount}</b><span>عمل منجز</span></div>
+          <div class="stat"><b>${winner.punctuality==null?'—':winner.punctuality+'%'}</b><span>الالتزام بالوقت</span></div>
+          <div class="stat"><b>${winner.avgRating?winner.avgRating:'—'}</b><span>متوسط التقييم</span></div>
+        </div>
+        <div class="signs">
+          <div class="sign"><div class="line"></div>${headTitle}</div>
+          <div class="sign"><div class="line"></div>مدير الدائرة</div>
+        </div>
+      </div>
+      <div class="foot">صدرت هذه الشهادة بتاريخ ${dStr}</div>
+    </div>`);
+  });
+
+  if(!pages.length){ alert('لا يوجد فائز لإصدار شهادته في هذه الفترة في أيّ من الأقسام — لا توجد أعمال منجزة مؤهّلة.'); return; }
+
   const win=window.open('','_blank');
-  if(!win){ alert('فضلاً اسمح بالنوافذ المنبثقة لإصدار الشهادة.'); return; }
-  win.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>شهادة شكر وتقدير — ${winner.name}</title>
+  if(!win){ alert('فضلاً اسمح بالنوافذ المنبثقة لإصدار الشهادات.'); return; }
+  win.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>شهادات تميّز الأقسام</title>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
       @page{size:A4 landscape;margin:0}
@@ -3181,10 +3204,10 @@ function openCertificate(){
       .toolbar button{font-family:'Tajawal';font-size:14px;font-weight:700;border:none;border-radius:9px;padding:9px 20px;cursor:pointer}
       .b-print{background:#c9a24b;color:#16201e}.b-back{background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.6)}
       .spacer{height:62px}
-      /* A4 أفقي (Landscape) */
+      /* A4 أفقي (Landscape) — صفحة مستقلة لكل قسم */
       .page{width:297mm;height:210mm;position:relative;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.2);
-            background:#faf7f1;}
-      /* طبقة النقوش الذهبية الخفيفة خلف اللون الفاتح */
+            background:#faf7f1;margin-bottom:22px;page-break-after:always}
+      .page:last-child{page-break-after:auto}
       .goldpat{position:absolute;inset:0;pointer-events:none;opacity:.5;
         background-image:
           radial-gradient(circle at 12% 20%, rgba(201,162,75,.14) 0 3px, transparent 3px),
@@ -3193,7 +3216,6 @@ function openCertificate(){
           radial-gradient(circle at 88% 78%, rgba(201,162,75,.10) 0 2px, transparent 2px),
           repeating-linear-gradient(45deg, rgba(201,162,75,.05) 0 1px, transparent 1px 26px);
         background-size:120px 120px,120px 120px,120px 120px,120px 120px,auto;}
-      /* بريق ذهبي زاوي خفيف */
       .glow{position:absolute;inset:0;pointer-events:none;
         background:radial-gradient(ellipse at 50% 0%, rgba(201,162,75,.10), transparent 55%);}
       .topband{background:linear-gradient(135deg,#1f5d4c,#16443a);height:96px;display:flex;align-items:center;justify-content:center;color:#fff;position:relative}
@@ -3219,36 +3241,14 @@ function openCertificate(){
       @media print{ body{background:#fff} .toolbar,.spacer{display:none!important} .page{box-shadow:none;margin:0} }
     </style></head><body>
     <div class="toolbar">
-      <button class="b-print" onclick="window.print()">🖨️ طباعة / حفظ PDF (بالعرض)</button>
+      <button class="b-print" onclick="window.print()">🖨️ طباعة / حفظ PDF (${pages.length} ${pages.length===1?'شهادة':'شهادات'})</button>
       <button class="b-back" onclick="window.close()">رجوع ✕</button>
     </div>
     <div class="spacer"></div>
-    <div class="page">
-      <div class="goldpat"></div><div class="glow"></div>
-      <div class="topband"><div class="pat"></div>
-        <h1>سلطنة عُمان — بلدية مسقط<span>المديرية العامة للشؤون الفنية · دائرة التصميم المركزي</span></h1>
-      </div>
-      <div class="frame">
-        <div class="seal"><img src="${LOGO_CERT}" alt="بلدية مسقط"></div>
-        <div class="cert-title">شهادة شكر وتقدير</div>
-        <div class="intro">${introHTML}</div>
-        <div class="name"><span class="pre">${engTitle}</span> ${winner.name}</div>
-        <div class="reason">${reasonHTML}</div>
-        <div class="month-badge">عن ${label}</div>
-        <div class="stats">
-          <div class="stat"><b>${winner.doneCount}</b><span>عمل منجز</span></div>
-          <div class="stat"><b>${winner.punctuality==null?'—':winner.punctuality+'%'}</b><span>الالتزام بالوقت</span></div>
-          <div class="stat"><b>${winner.avgRating?winner.avgRating:'—'}</b><span>متوسط التقييم</span></div>
-        </div>
-        <div class="signs">
-          <div class="sign"><div class="line"></div>${headTitle}</div>
-          <div class="sign"><div class="line"></div>مدير الدائرة</div>
-        </div>
-      </div>
-      <div class="foot">صدرت هذه الشهادة بتاريخ ${dStr}</div>
-    </div>
+    ${pages.join('\n')}
     </body></html>`);
   win.document.close(); win.focus();
+  if(skipped.length){ setTimeout(()=>alert('تنبيه: لا يوجد فائز في هذه الفترة لـ: '+skipped.join('، ')+' — لم تُصدر لهم شهادة.'),300); }
 }
 function employeeOfMonth(){
   const list=engineerKpiList().filter(e=>e.doneCount>0);   // من أنجز عملاً فعلياً
@@ -3264,6 +3264,20 @@ function employeeOfMonth(){
     return {...e, score:Math.round(score*1000)/10};          // نسبة مئوية بخانة عشرية
   }).sort((a,b)=> b.score-a.score || b.doneCount-a.doneCount);
   return {winner:scored[0], ranking:scored};
+}
+/* نفس منطق اختيار الفائز، لكن محصوراً داخل قسم واحد فقط (للشهادات المستقلة لكل قسم) */
+function employeeOfMonthInDept(deptKey){
+  const list=engineerKpiList().filter(e=>e.doneCount>0 && e.dept===deptKey);
+  if(!list.length) return null;
+  const maxDone=Math.max(...list.map(e=>e.doneCount),1);
+  const scored=list.map(e=>{
+    const qtyN = e.doneCount/maxDone;
+    const punctN = (e.punctuality==null?0:e.punctuality)/100;
+    const qualN = (e.avgRating?Number(e.avgRating):0)/5;
+    const score = qtyN*0.40 + punctN*0.30 + qualN*0.30;
+    return {...e, score:Math.round(score*1000)/10};
+  }).sort((a,b)=> b.score-a.score || b.doneCount-a.doneCount);
+  return scored[0];
 }
 /* رسم حلقي SVG لنسبة مئوية */
 function donutSVG(pct,color,label,sub){
@@ -3296,7 +3310,7 @@ function openKpiModal(){
   const overlay=$(`<div class="overlay" id="kpiOverlay"></div>`);
   const modal=$(`<div class="modal" style="max-width:760px"><div class="modal-head"><h2>لوحة مؤشرات الأداء</h2>
     <div style="display:flex;gap:8px;align-items:center">
-      ${state.appUser?.role==='admin'?`<button class="btn btn-add" id="kpiCert" style="padding:7px 12px;font-size:13px">🏆 شهادة تميّز (حسب الفترة المختارة)</button>`:''}
+      ${state.appUser?.role==='admin'?`<button class="btn btn-add" id="kpiCert" style="padding:7px 12px;font-size:13px">🏆 شهادات تميّز الأقسام (حسب الفترة المختارة)</button>`:''}
       <button class="btn btn-ghost" id="kpiPdf" style="padding:7px 12px;font-size:13px">${I.report} PDF</button>
       <button class="btn btn-ghost" id="kpiXls" style="padding:7px 12px;font-size:13px">${I.upload} Excel</button>
       <button class="icon-btn" id="x">${I.close}</button>

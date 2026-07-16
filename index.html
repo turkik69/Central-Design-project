@@ -3348,23 +3348,32 @@ function openKpiModal(){
         <span style="font-size:13px;color:var(--oasis-700);font-weight:700;margin-right:auto">${rangeLabel}</span>
       </div>
       ${(()=>{
-        const eom=employeeOfMonth();
-        if(!eom) return '';
-        const w=eom.winner;
         const periodTxt = kpiPeriod==='all' ? 'الأداء العام' : rangeLabel;
-        return `<div style="background:linear-gradient(135deg,var(--oasis),var(--oasis-700));color:#fff;border-radius:16px;padding:18px 20px;margin-bottom:18px;position:relative;overflow:hidden">
-          <div style="position:absolute;top:-20px;left:-10px;font-size:120px;opacity:.08">🏆</div>
-          <div style="position:relative">
-            <div style="font-size:12px;letter-spacing:.1em;color:#bfe9de;font-weight:700">🏆 موظف الشهر · ${periodTxt}</div>
-            <div style="font-size:24px;font-weight:800;margin:6px 0 2px">${w.name}</div>
-            <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:#eafaf5;margin-top:8px">
-              <span>الأعمال المنجزة: <b>${w.doneCount}</b></span>
-              <span>الالتزام بالوقت: <b>${w.punctuality==null?'—':w.punctuality+'%'}</b></span>
-              <span>التقييم: <b>${w.avgRating?w.avgRating+' ★':'—'}</b></span>
-              <span>الدرجة المركّبة: <b>${w.score}%</b></span>
+        const DEPT_ICON={architectural:'🏛️',structural:'🏗️',services:'🛠️'};
+        const cards = deptData.map(d=>{
+          const w = employeeOfMonthInDept(d.key);
+          if(!w){
+            return `<div style="background:var(--sand-50);border:1px dashed var(--line);color:var(--muted);border-radius:14px;padding:13px 16px;margin-bottom:10px">
+              <div style="font-size:12px;font-weight:700;color:var(--oasis-700)">${DEPT_ICON[d.key]||''} ${d.label} · ${periodTxt}</div>
+              <div style="font-size:12.5px;margin-top:6px">لا يوجد فائز في هذه الفترة — لا توجد أعمال منجزة مؤهّلة.</div>
+            </div>`;
+          }
+          return `<div style="background:linear-gradient(135deg,var(--oasis),var(--oasis-700));color:#fff;border-radius:14px;padding:13px 16px;margin-bottom:10px;position:relative;overflow:hidden">
+            <div style="position:absolute;top:-16px;left:-8px;font-size:80px;opacity:.08">🏆</div>
+            <div style="position:relative">
+              <div style="font-size:11.5px;letter-spacing:.06em;color:#bfe9de;font-weight:700">${DEPT_ICON[d.key]||'🏆'} ${d.label} · ${periodTxt}</div>
+              <div style="font-size:19px;font-weight:800;margin:4px 0 2px">${w.name}</div>
+              <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:#eafaf5;margin-top:5px">
+                <span>الأعمال: <b>${w.doneCount}</b></span>
+                <span>الالتزام: <b>${w.punctuality==null?'—':w.punctuality+'%'}</b></span>
+                <span>التقييم: <b>${w.avgRating?w.avgRating+' ★':'—'}</b></span>
+                <span>الدرجة: <b>${w.score}%</b></span>
+              </div>
             </div>
-          </div>
-        </div>`;
+          </div>`;
+        });
+        return `<h3 style="font-size:14px;color:var(--oasis-700);margin-bottom:10px">🏆 موظف الشهر لكل قسم</h3>
+          <div style="margin-bottom:12px">${cards.join('')}</div>`;
       })()}
       <h3 style="font-size:15px;color:var(--oasis-700);margin-bottom:12px">أداء الدائرة العام</h3>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">

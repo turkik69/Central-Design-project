@@ -3245,7 +3245,7 @@ function openCertificate(){
       <button class="b-back" onclick="window.close()">رجوع ✕</button>
     </div>
     <div class="spacer"></div>
-    ${pages.join('\n')}
+    ${pages.join(String.fromCharCode(10))}
     </body></html>`);
   win.document.close(); win.focus();
   if(skipped.length){ setTimeout(()=>alert('تنبيه: لا يوجد فائز في هذه الفترة لـ: '+skipped.join('، ')+' — لم تُصدر لهم شهادة.'),300); }

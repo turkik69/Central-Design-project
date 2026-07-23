@@ -2178,6 +2178,7 @@ function openVisitModal(){
         <div class="field"><label class="lbl-sm">تاريخ الزيارة</label><input class="inp" type="date" name="date" required></div>
         <div class="field"><label class="lbl-sm">الموقع / الولاية</label><input class="inp" name="location" placeholder="مثال: السيب"></div>
         <div class="field"><label class="lbl-sm">الغرض من الزيارة</label><input class="inp" name="purpose" placeholder="الغرض…"></div>
+        <div class="field"><label class="lbl-sm">رابط/مسار تقرير الزيارة (التقرير والصور)</label><input class="inp" name="reportLink" placeholder="مثال: \\\\server\\reports\\... أو https://" style="direction:ltr;text-align:left;font-size:12px"></div>
         <div class="field"><label class="lbl-sm">ملاحظات</label><textarea class="inp" name="notes" rows="2" style="resize:none"></textarea></div>
         <div class="modal-foot"><button type="submit" class="btn btn-add">${I.save} حفظ الزيارة</button></div>
       </form>
@@ -2200,7 +2201,7 @@ function openVisitModal(){
           dept:dept.value, deptLabel:(ACTIVITY_DEPTS.find(d=>d[0]===dept.value)||['',''])[1],
           persons, personNames:persons.map(p=>p.name).join('، '),
           date:fd.get('date'), location:(fd.get('location')||'').trim(),
-          purpose:(fd.get('purpose')||'').trim(), notes:(fd.get('notes')||'').trim(),
+          purpose:(fd.get('purpose')||'').trim(), reportLink:(fd.get('reportLink')||'').trim(), notes:(fd.get('notes')||'').trim(),
           createdAt:new Date().toISOString(), createdBy:state.appUser?.name||'—'
         });
       }catch(err){ console.error(err); alert('تعذّر حفظ الزيارة.'); }
@@ -2343,14 +2344,33 @@ function openActivityDetail(a, kind){
   const body=document.createElement('div');body.className='modal-body';
   const row=(label,val)=> val ? `<div style="margin-bottom:12px"><div style="font-size:12px;color:var(--oasis-700);font-weight:700;margin-bottom:3px">${label}</div><div style="font-size:13.5px;color:var(--ink);line-height:1.8;white-space:pre-wrap">${val}</div></div>` : '';
   const block=(label,val)=> val ? `<div style="margin-bottom:14px"><div style="font-size:12px;color:var(--oasis-700);font-weight:700;margin-bottom:4px">${label}</div><div style="font-size:13.5px;color:var(--ink);line-height:1.9;white-space:pre-wrap;background:var(--sand-100);border-radius:10px;padding:12px 14px">${val}</div></div>` : '';
+  const rl=(a.reportLink||'').trim();
+  const isWebRL=/^https?:\/\//i.test(rl);
+  const linkBlock = rl ? `<div style="margin-bottom:14px">
+      <div style="font-size:12px;color:var(--oasis-700);font-weight:700;margin-bottom:5px">رابط/مسار تقرير الزيارة</div>
+      ${isWebRL
+        ? `<a href="${rl.replace(/"/g,'&quot;')}" target="_blank" rel="noopener" class="work-link" style="display:inline-flex;align-items:center;gap:6px;font-size:13.5px;color:var(--oasis-700);text-decoration:none;word-break:break-all;background:var(--sand-100);border-radius:9px;padding:8px 12px">${I.link||'🔗'} فتح تقرير الزيارة</a>`
+        : `<a href="#" class="work-link" data-copy="${rl.replace(/"/g,'&quot;')}" style="display:inline-flex;align-items:center;gap:6px;font-size:13.5px;color:var(--oasis-700);text-decoration:none;word-break:break-all;background:var(--sand-100);border-radius:9px;padding:8px 12px" title="${rl.replace(/"/g,'&quot;')}">${I.link||'🔗'} نسخ مسار التقرير</a>`}
+    </div>` : '';
   body.innerHTML=`
     ${row('القسم والتاريخ', `${a.deptLabel||'—'} · ${fmtDate(a.date)||a.date||'—'}`)}
     ${row('الأشخاص', a.personNames||'—')}
     ${row('الموقع', a.location)}
     ${row(kind==='meeting'?'الغرض من الاجتماع':'الغرض من الزيارة', a.purpose)}
+    ${linkBlock}
     ${block(kind==='meeting'?'محضر الاجتماع':'تفاصيل / ملاحظات الزيارة', a.minutes)}
     ${block('ملاحظات', a.notes)}
     <div style="font-size:11px;color:var(--muted);margin-top:6px">سجّله: ${a.createdBy||'—'}${a.createdAt?` · ${a.createdAt}`:''}</div>`;
+  // رابط شبكة محلي: انسخ المسار للحافظة (المتصفح يمنع فتحه مباشرة)
+  body.querySelectorAll('.work-link[data-copy]').forEach(link=>{
+    link.onclick=(e)=>{
+      e.preventDefault();
+      const path=link.getAttribute('data-copy');
+      const done=()=>{ link.innerHTML='✓ تم نسخ المسار — الصقه في مستكشف الملفات'; setTimeout(()=>{link.innerHTML=`${I.link||'🔗'} نسخ مسار التقرير`;},2200); };
+      if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(path).then(done).catch(()=>{prompt('انسخ المسار:',path);}); }
+      else { prompt('انسخ المسار:',path); }
+    };
+  });
   modal.appendChild(body);overlay.appendChild(modal);
   modal.querySelector('#x').onclick=()=>overlay.remove();
   overlay.onclick=(e)=>{if(e.target===overlay) overlay.remove();};
@@ -2659,6 +2679,7 @@ function openEditActivity(kind, id, onDone){
     <div class="field"><label class="lbl-sm">التاريخ</label><input class="inp" type="date" name="date" value="${a.date||''}"></div>
     <div class="field"><label class="lbl-sm">${kind==='meeting'?'الموقع':'الموقع / الولاية'}</label><input class="inp" name="location" value="${a.location||''}"></div>
     <div class="field"><label class="lbl-sm">الغرض</label><input class="inp" name="purpose" value="${a.purpose||''}"></div>
+    ${kind==='visit'?`<div class="field"><label class="lbl-sm">رابط/مسار تقرير الزيارة (التقرير والصور)</label><input class="inp" name="reportLink" value="${(a.reportLink||'').replace(/"/g,'&quot;')}" placeholder="مثال: \\\\server\\reports\\... أو https://" style="direction:ltr;text-align:left;font-size:12px"></div>`:''}
     ${kind==='meeting'?`<div class="field"><label class="lbl-sm">محضر الاجتماع</label><textarea class="inp" name="minutes" rows="4" style="resize:vertical">${a.minutes||''}</textarea></div>`:''}
     <div class="field"><label class="lbl-sm">ملاحظات</label><textarea class="inp" name="notes" rows="2" style="resize:none">${a.notes||''}</textarea></div>
     <div class="modal-foot">
@@ -2671,6 +2692,7 @@ function openEditActivity(kind, id, onDone){
     const upd={ date:fd.get('date'), location:(fd.get('location')||'').trim(),
       purpose:(fd.get('purpose')||'').trim(), notes:(fd.get('notes')||'').trim() };
     if(kind==='meeting'){ upd.title=(fd.get('title')||'').trim(); upd.minutes=(fd.get('minutes')||'').trim(); }
+    if(kind==='visit'){ upd.reportLink=(fd.get('reportLink')||'').trim(); }
     try{
       const path = kind==='meeting' ? 'meetings' : 'visits';
       await FB.updateDoc(FB.doc(db,'artifacts',APP_ID,'public','data',path,id), upd);

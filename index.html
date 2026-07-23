@@ -1797,7 +1797,10 @@ function openProjectModal(project){
       return {...engObj,
         status:get(pf+'_status'), notes:get(pf+'_notes'), workLink:(get(pf+'_workLink')||'').trim(),
         startDate:dateVal(pf,key,'startDate'), endDate:dateVal(pf,key,'endDate'),
-        actualDate:actualVal(pf,key), eval:buildEval(pf,key)};
+        actualDate:actualVal(pf,key), eval:buildEval(pf,key),
+        // احتفظ بحالة موافقة تاريخ التسليم كما هي؛ saveProject وحدها تقرّر تغييرها
+        endDateApproval:(data[key]&&data[key].endDateApproval)||null,
+        endDateSubmittedBy:(data[key]&&data[key].endDateSubmittedBy)||null};
     };
     const payload={
       name:get('name'),projectNo:get('projectNo'),type:get('type'),customType:get('customType'),

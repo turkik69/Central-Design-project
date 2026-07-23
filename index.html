@@ -906,17 +906,88 @@ async function saveProject(data,editingId,prev){
       data.overallStatus='مكتمل';
     }
   }catch(e){ console.error('نقل تلقائي للمنتهية:',e); }
+  // ── موافقة رئيس القسم على تاريخ التسليم المتوقع ──
+  // إن أدخل مهندس (وليس رئيس القسم/المشرف) تاريخاً جديداً، تصبح حالته «قيد الموافقة» وتُرسَل الإشعارات.
+  // إن حفظ رئيس القسم/المشرف والحالة «قيد الموافقة»، تُعتمَد تلقائياً (وتُعامَل كتعديل إن غيّر القيمة).
+  const endDateNotifTasks=[];
+  try{
+    for(const key of ['architectural','structural','services']){
+      if(!data[key]) continue;
+      const prevSec = prev && prev[key] ? prev[key] : null;
+      const newDate = (data[key].endDate||'').trim();
+      const prevDate = (prevSec?.endDate||'').trim();
+      const dateChanged = !!newDate && newDate!==prevDate;
+      const wasPending = prevSec?.endDateApproval==='pending';
+      const isHeadOrAdmin = canEvaluate(key);
+      if(!newDate){ continue; }   // لا تاريخ بعد، لا شيء يُعتمد
+      if(isHeadOrAdmin){
+        if(wasPending){
+          data[key].endDateApproval='approved';
+          endDateNotifTasks.push({ key, kind: dateChanged?'modified':'approved', newDate, toUser: prevSec.endDateSubmittedBy });
+        }else if(dateChanged){
+          data[key].endDateApproval='approved';   // الرئيس أدخله ابتداءً — يُعتمد بصمت دون إشعار
+        }
+      }else{
+        if(dateChanged){
+          const head=findHead(key);
+          if(head){
+            data[key].endDateApproval='pending';
+            data[key].endDateSubmittedBy=state.appUser.username;
+            endDateNotifTasks.push({ key, kind:'pending', newDate, toUser:state.appUser.username, headUser:head.username });
+          }else{
+            data[key].endDateApproval='approved';   // لا رئيس مُعرَّف لهذا القسم — اعتماد تلقائي
+          }
+        }
+      }
+    }
+  }catch(e){ console.error('موافقة تاريخ التسليم:',e); }
   const payload={...data,lastUpdatedBy:state.appUser.name,lastUpdatedAt:new Date().toLocaleString('ar-OM'),updatedAtTS:nowISO};
   if(editingId){await FB.updateDoc(FB.doc(db,'artifacts',APP_ID,'public','data','projects',editingId),payload);logActivity('update');}
   else{await FB.addDoc(colRef(),{...payload,createdAt:nowISO});logActivity('create');}
   // اكتشف الأقسام التي تحوّلت إلى «مكتمل» حديثاً وأنشئ إشعاراً لرئيس كل قسم
   try{ detectCompletions(payload, prev); }catch(e){ console.error("إشعار الإنجاز:",e); }
+  // أرسل إشعارات موافقة/اعتماد/تعديل تاريخ التسليم المتوقع (إن وُجدت)
+  try{ fireEndDateNotifs(endDateNotifTasks, payload); }catch(e){ console.error("إشعار تاريخ التسليم:",e); }
 }
 const HEAD_TITLES={architectural:'رئيس القسم المعماري',structural:'رئيس القسم الإنشائي',services:'رئيس قسم تصميم الخدمات'};
 const DEPT_AR={architectural:'القسم المعماري',structural:'القسم الإنشائي',services:'قسم تصميم الخدمات'};
 /* يجد حساب رئيس القسم من مسماه الوظيفي */
 function findHead(deptKey){
   return state.users.find(u=>u.jobTitle===HEAD_TITLES[deptKey]) || null;
+}
+/* يُرسل إشعارات دورة موافقة تاريخ التسليم المتوقع (تقديم/اعتماد/تعديل) */
+async function fireEndDateNotifs(tasks, payload){
+  for(const t of (tasks||[])){
+    const deptLabel=DEPT_AR[t.key]||t.key;
+    if(t.kind==='pending'){
+      if(t.headUser){
+        await addNotif({
+          toUser:t.headUser, toRole:'head', deptKey:t.key,
+          projectName:payload.name||'', byUser:state.appUser.name,
+          text:`أدخل ${state.appUser.name} تاريخ تسليم متوقع (${dmy(t.newDate)}) لـ«${deptLabel}» بمشروع «${payload.name}» — بانتظار موافقتك أو تعديلك.`
+        });
+      }
+      if(t.toUser){
+        await addNotif({
+          toUser:t.toUser, toRole:'engineer', deptKey:t.key,
+          projectName:payload.name||'', byUser:state.appUser.name,
+          text:`تاريخ التسليم المتوقع (${dmy(t.newDate)}) الذي أدخلته لـ«${deptLabel}» بمشروع «${payload.name}» خاضع لموافقة المسؤول المباشر.`
+        });
+      }
+    }else if(t.kind==='approved' && t.toUser){
+      await addNotif({
+        toUser:t.toUser, toRole:'engineer', deptKey:t.key,
+        projectName:payload.name||'', byUser:state.appUser.name,
+        text:`تم اعتماد تاريخ التسليم المتوقع (${dmy(t.newDate)}) لـ«${deptLabel}» بمشروع «${payload.name}».`
+      });
+    }else if(t.kind==='modified' && t.toUser){
+      await addNotif({
+        toUser:t.toUser, toRole:'engineer', deptKey:t.key,
+        projectName:payload.name||'', byUser:state.appUser.name,
+        text:`تم تعديل تاريخ التسليم المتوقع لـ«${deptLabel}» بمشروع «${payload.name}» إلى ${dmy(t.newDate)}.`
+      });
+    }
+  }
 }
 async function detectCompletions(payload, prev){
   for(const key of ['architectural','structural','services']){
@@ -1381,7 +1452,9 @@ function secRow(title,data){
   const st=data?.status||'قيد الانتظار';
   const [c,bg]=SEC_STYLE[st]||SEC_STYLE['قيد الانتظار'];
   const sd=data?.startDate, ed=data?.endDate, ad=data?.actualDate;
-  const dateLine = (sd||ed) ? `<div class="sec-dates">استلام: ${sd||'—'} · تسليم متوقع: ${ed||'—'}</div>` : '';
+  const endPending = data?.endDateApproval==='pending';
+  const pendingBadge = endPending ? ` <span style="display:inline-block;background:#fdf1dc;color:#a9761b;font-size:10.5px;font-weight:700;border-radius:10px;padding:1px 8px;margin-right:4px">⏳ قيد الموافقة</span>` : '';
+  const dateLine = (sd||ed) ? `<div class="sec-dates">استلام: ${sd||'—'} · تسليم متوقع: ${ed||'—'}${pendingBadge}</div>` : '';
   const actualLine = ad ? `<div class="sec-dates" style="display:flex;justify-content:space-between;align-items:center;gap:6px"><span>تسليم فعلي: ${ad}</span>${deliveryBadge(ed,ad)}</div>` : '';
   const avg=ratingAvg(data?.eval);
   const rateLine = (avg && canViewEval()) ? `<div class="sec-rate">تقييم رئيس القسم: <b>${avg}</b> <span style="color:var(--stop)">★</span></div>` : '';
@@ -1932,6 +2005,10 @@ function deptCard(title,prefixKey,d){
     <input class="inp" type="date" name="${pf}_startDate" value="${d.startDate||''}" ${(lockStart||!canEdit)?'readonly disabled style="background:var(--sand-100);color:var(--muted)"':''}>
     <label class="lbl-sm">تاريخ التسليم المتوقع${lockEnd?lockNote:''}</label>
     <input class="inp" type="date" name="${pf}_endDate" value="${d.endDate||''}" ${(lockEnd||!canEdit)?'readonly disabled style="background:var(--sand-100);color:var(--muted)"':''}>
+    ${d.endDateApproval==='pending' ? (mayEditDates
+        ? `<div style="font-size:11px;color:#a9761b;background:#fdf1dc;border-radius:8px;padding:6px 9px;margin-top:4px">⏳ هذا التاريخ بانتظار اعتمادك. عدّله إن رغبت ثم احفظ المشروع لاعتماده.</div>`
+        : `<div style="font-size:11px;color:#a9761b;background:#fdf1dc;border-radius:8px;padding:6px 9px;margin-top:4px">⏳ بانتظار موافقة ${HEAD_TITLES[prefixKey]||'رئيس القسم'} على هذا التاريخ.</div>`)
+      : ''}
     ${d.actualDate?(mayEditDates?`
       <label class="lbl-sm" style="margin-top:4px">تاريخ التسليم الفعلي ${deliveryBadge(d.endDate,d.actualDate)}</label>
       <input class="inp" type="date" name="${pf}_actualDate" value="${d.actualDate}">

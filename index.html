@@ -1201,9 +1201,11 @@ function renderApp(){
       <div><h1>التصميم المركزي</h1><div class="crumb">بلدية مسقط · الشؤون الفنية</div></div></div>
     <div class="search">${I.search}<input type="text" placeholder="ابحث باسم المشروع أو رقمه أو الجهة…" value="${state.search}"></div>
     ${(()=>{ const a=announcedEmployee(); if(!a||!a.winner) return '';
-      return `<div class="eom-badge" title="موظف شهر ${a.label}" style="display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,var(--oasis),var(--oasis-700));color:#fff;border-radius:22px;padding:6px 14px;font-size:12.5px;white-space:nowrap">
+      const isFemale=/ة$/.test((a.winner.name||'').trim());
+      const roleWord=isFemale?'موظفة':'موظف';
+      return `<div class="eom-badge" title="${roleWord} ${a.label}" style="display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,var(--oasis),var(--oasis-700));color:#fff;border-radius:22px;padding:6px 14px;font-size:12.5px;white-space:nowrap">
         <span style="font-size:15px">🏆</span>
-        <span>موظف شهر ${a.label}: <b>${a.winner.name}</b></span></div>`;
+        <span>${roleWord} ${a.label}: <b>${a.winner.name}</b></span></div>`;
     })()}
     <div class="user-box">
       <div class="user-meta"><div class="nm">${u.name}</div><div class="rl">${u.role==='admin'?'مشرف عام':(u.jobTitle||'مهندس مصمم')}</div></div>
@@ -3108,7 +3110,7 @@ function kpiRange(period){
   const now=new Date(); const y=now.getFullYear(), m=now.getMonth();
   const mk=(yy,mm,dd)=>new Date(yy,mm,dd);
   if(period==='month')   return {from:mk(y,m,1), to:mk(y,m+1,0), label:`شهر ${MONTH_NAMES?MONTH_NAMES[m]:m+1} ${y}`};
-  if(period==='quarter'){ const q=Math.floor(m/3); return {from:mk(y,q*3,1), to:mk(y,q*3+3,0), label:`الربع ${q+1} لعام ${y}`}; }
+  if(period==='quarter'){ const q=Math.floor(m/3); const ordWords=['الأول','الثاني','الثالث','الرابع']; return {from:mk(y,q*3,1), to:mk(y,q*3+3,0), label:`الربع ${ordWords[q]} من عام ${y}`, quarterOrdinal:ordWords[q], quarterNum:q+1}; }
   if(period==='half'){ const h=m<6?0:6; return {from:mk(y,h,1), to:mk(y,h+6,0), label:`نصف ${m<6?'أول':'ثاني'} ${y}`}; }
   if(period==='year')    return {from:mk(y,0,1), to:mk(y,12,0), label:`عام ${y}`};
   return {from:null,to:null,label:'كل الفترات'};
@@ -3235,21 +3237,24 @@ function employeeOfMonthFor(from, to){
   }).sort((a,b)=> b.score-a.score || b.doneCount-a.doneCount);
   return scored[0];
 }
-/* موظف الشهر المُعلَن رسمياً = الشهر المُنقضي (يظهر في أول الشهر التالي) */
+/* موظف الربع المُعلَن رسمياً = الربع المُنقضي (يظهر مع بداية الربع التالي) */
 function announcedEmployee(){
   const now=new Date(); const y=now.getFullYear(), m=now.getMonth();
-  // الشهر المنقضي: الشهر السابق للحالي
-  const from=new Date(y, m-1, 1), to=new Date(y, m, 0);
-  const monthName=MONTH_NAMES[(m-1+12)%12];
-  const yearOfPrev = (m-1<0)? y-1 : y;
-  return { winner:employeeOfMonthFor(from,to), label:`${monthName} ${yearOfPrev}` };
+  const curQ=Math.floor(m/3);
+  // الربع المنقضي: الربع السابق للربع الحالي
+  let prevQ=curQ-1, yearOfPrev=y;
+  if(prevQ<0){ prevQ=3; yearOfPrev=y-1; }
+  const from=new Date(yearOfPrev, prevQ*3, 1), to=new Date(yearOfPrev, prevQ*3+3, 0);
+  const ordWords=['الأول','الثاني','الثالث','الرابع'];
+  const label=`الربع ${ordWords[prevQ]} من عام ${yearOfPrev}`;
+  return { winner:employeeOfMonthFor(from,to), label, ordinal:ordWords[prevQ], year:yearOfPrev };
 }
 /* شهادات تميّز مستقلة لكل قسم (معماري/إنشائي/خدمات) عن الفترة المختارة حالياً — نافذة واحدة بصفحة لكل قسم فائز فيه */
 function openCertificate(){
   if(state.appUser?.role!=='admin'){ alert('إصدار الشهادة من صلاحية المشرف فقط.'); return; }
-  let label, kind;
+  let label, kind, quarterOrdinal='';
   if(kpiPeriod==='all'){ label='الأداء العام'; kind='all'; }
-  else { label=kpiRange(kpiPeriod).label; kind=kpiPeriod; }
+  else { const r=kpiRange(kpiPeriod); label=r.label; kind=kpiPeriod; quarterOrdinal=r.quarterOrdinal||''; }
 
   const HEAD_AR={architectural:'رئيس القسم المعماري',structural:'رئيس القسم الإنشائي',services:'رئيس قسم تصميم الخدمات'};
   const deptOrder=['architectural','structural','services'];
@@ -3267,7 +3272,7 @@ function openCertificate(){
     const AWARD={
       all:     isFemale?'موظفة متميّزة':'موظف متميّز',
       month:   isFemale?'موظفة الشهر' :'موظف الشهر',
-      quarter: isFemale?'موظفة الربع' :'موظف الربع',
+      quarter: isFemale?`موظفة الربع ${quarterOrdinal} من العام` :`موظف الربع ${quarterOrdinal} من العام`,
       half:    isFemale?'موظفة نصف السنة':'موظف نصف السنة',
       year:    isFemale?'موظفة العام' :'موظف العام'
     };

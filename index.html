@@ -1275,7 +1275,7 @@ function renderApp(){
     const rb=toolbar.querySelector('#btnReports'); if(rb) rb.onclick=openReportsModal;
   }
   if(canViewReports()){
-    const eb=toolbar.querySelector('#btnEngSearch'); if(eb) eb.onclick=openEngineerSearch;
+    const eb=toolbar.querySelector('#btnEngSearch'); if(eb) eb.onclick=()=>openEngineerSearch();
   }
   { const tb=toolbar.querySelector('#btnTrashUser'); if(tb) tb.onclick=openTrashModal; }
   { const ab=toolbar.querySelector('#btnAdd'); if(ab) ab.onclick=()=>openProjectModal(null); }
@@ -1535,7 +1535,7 @@ function renderCard(p){
 }
 
 /* ════════════ نافذة المشروع ════════════ */
-function openProjectModal(project){
+function openProjectModal(project, navCtx){
   const data = project ? JSON.parse(JSON.stringify(project)) : {
     name:'',type:'حديقة',customType:'',requestingEntity:'مسقط',area:'',cost:'',
     overallStatus:'قيد التصميم',startDate:'',endDate:'',
@@ -1546,7 +1546,11 @@ function openProjectModal(project){
   const opt=(arr,sel)=>arr.map(o=>`<option ${o===sel?'selected':''}>${o}</option>`).join('');
 
   const overlay=$(`<div class="overlay" id="projectFormOverlay"></div>`);
-  const modal=$(`<div class="modal"><div class="modal-head"><h2>${project?'تحديث المشروع':'إضافة مشروع جديد'}</h2>
+  const modal=$(`<div class="modal"><div class="modal-head">
+    <div style="display:flex;align-items:center;gap:8px">
+      ${navCtx&&navCtx.onBack?`<button type="button" class="icon-btn" id="backToSrc" title="رجوع">${I.chevronR||I.chevron||'‹'}</button>`:''}
+      <h2>${project?'تحديث المشروع':'إضافة مشروع جديد'}</h2>
+    </div>
     <button class="icon-btn" id="x">${I.close}</button></div></div>`);
   const form=document.createElement('form');form.className='modal-body';
   const GDIS = isObserver() ? 'disabled' : '';
@@ -1839,6 +1843,7 @@ function openProjectModal(project){
   };
   modal.querySelector('#x').onclick=()=>{ if(confirm('إغلاق النموذج؟ سيتم حفظ مسودّة يمكن استعادتها لاحقاً.')){ saveDraft(); overlay.remove(); flushPendingRender(); } };
   form.querySelector('#cancel').onclick=()=>{ if(confirm('إلغاء وإغلاق النموذج؟ ستُحذف المسودّة.')){ clearDraft(); overlay.remove(); flushPendingRender(); } };
+  { const backBtn=modal.querySelector('#backToSrc'); if(backBtn) backBtn.onclick=()=>{ saveDraft(); overlay.remove(); flushPendingRender(); navCtx.onBack(); }; }
   modal.appendChild(form);
   overlay.appendChild(modal);
   // لا يُغلق النموذج بالضغط على الخلفية — حتى لا يُغلق فجأة أثناء الإدخال. الإغلاق فقط عبر ✕ أو إلغاء.
@@ -2943,7 +2948,7 @@ function openBackupModal(){
 }
 
 /* ════════════ بحث باسم المهندس ════════════ */
-function openEngineerSearch(){
+function openEngineerSearch(presetUser){
   if(document.getElementById('engOverlay')) return;
   const overlay=$(`<div class="overlay" id="engOverlay"></div>`);
   const modal=$(`<div class="modal"><div class="modal-head"><h2>بحث باسم المهندس</h2>
@@ -2956,7 +2961,7 @@ function openEngineerSearch(){
     .filter(u=>u.role!=='admin' && ['architectural','structural','services'].includes(u.dept))
     .sort((a,b)=>(a.name||'').localeCompare(b.name||'','ar'));
 
-  let selUser='';   // الرقم الوظيفي المختار
+  let selUser=presetUser||'';   // الرقم الوظيفي المختار
   function render(){
     let html=`<label class="lbl-sm">اختر المهندس (من المسجّلين)</label>
       <select class="inp" id="engSel" style="margin-bottom:14px">
@@ -2973,6 +2978,15 @@ function openEngineerSearch(){
     body.innerHTML=html;
     const sel=body.querySelector('#engSel');
     if(sel) sel.onchange=()=>{ selUser=sel.value; render(); };
+    // النقر على شارة الحالة يفتح بطاقة المشروع مباشرة، مع زر رجوع لهذه الصفحة بنفس المهندس
+    body.querySelectorAll('[data-open-proj]').forEach(btn=>{
+      btn.onclick=()=>{
+        const pid=btn.getAttribute('data-open-proj'); if(!pid) return;
+        const proj=state.projects.find(p=>p.id===pid); if(!proj) return;
+        overlay.remove();
+        openProjectModal(proj, { onBack:()=> openEngineerSearch(selUser) });
+      };
+    });
   }
   render();
   modal.querySelector('#x').onclick=()=>overlay.remove();
@@ -2996,7 +3010,7 @@ function engineerReport(username){
       if(!inSection) return;   // أقسام هذا المهندس فقط — لا أقسام زملائه
       const st=sec.status||'قيد الانتظار';
       const ev=sec.eval; const avg=ratingAvg(ev);
-      const item={project:p.name||'—',dept:label,status:st,endDate:sec.endDate||'',avg};
+      const item={id:p.id, project:p.name||'—',dept:label,status:st,endDate:sec.endDate||'',avg};
       if(st==='مكتمل') done.push(item); else active.push(item);
       if(ev){ ['quality','requirements','communication','challenges','delay'].forEach(c=>{const v=Number(ev[c]); if(v>=1&&v<=5) critSum[c].push(v);}); }
     });
@@ -3031,7 +3045,7 @@ function engineerReport(username){
       <span><b>${it.project}</b> <span style="color:var(--muted)">· ${it.dept}</span></span>
       <span style="display:flex;gap:6px;align-items:center;white-space:nowrap">
         ${(showRatings && it.avg)?`<span style="color:var(--stop);font-weight:700">${it.avg}★</span>`:''}
-        <span class="sec-badge" style="color:${c};background:${bg}">${it.status}</span></span>
+        <button type="button" class="sec-badge" data-open-proj="${it.id||''}" style="color:${c};background:${bg};border:none;outline:none;cursor:pointer;font-family:inherit;padding:2px 8px;border-radius:14px;font-size:10px;font-weight:700" title="فتح بطاقة المشروع">${it.status}</button></span>
     </div>`;
   };
 

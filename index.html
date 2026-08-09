@@ -887,29 +887,11 @@ async function saveProject(data,editingId,prev){
       data[key].actualDate = '';   // غير مكتمل ⇒ لا تاريخ فعلي
     }
   }
-  // ── نقل تلقائي إلى «المشاريع المنتهية» ──
-  // أي مشروع تكتمل كل أقسامه المُسنَدة (التي لها مهندس) يُعتبر منتهياً تلقائياً،
-  // بغضّ النظر عن الحالة العامة (فكرة مبدئية/خرائط تفصيلية...). شرط: وجود قسم مُسنَد واحد على الأقل.
-  // «فكرة مبدئية» = المعماري وحده هو المعتبر. المشروع الذي لم تُسنَد بعض أقسامه لا يُنقل.
-  try{
-    const isAssigned=(sec)=> !!sec && Array.isArray(sec.engineers) && sec.engineers.length>0;
-    const isDone=(sec)=> !!sec && sec.status==='مكتمل';
-    const manualHold = (data.overallStatus==='متوقف الى اشعار اخر' || data.overallStatus==='الغي المشروع' || data.overallStatus==='رأي فني');
-    let consider;
-    if(data.overallStatus==='فكرة مبدئية'){
-      consider=['architectural'];   // الفكرة المبدئية من اختصاص المعماري وحده
-    }else{
-      consider=['architectural','structural','services'];
-    }
-    const assigned = consider.filter(k=>isAssigned(data[k]));
-    const allAssignedDone = assigned.length>0 && assigned.every(k=>isDone(data[k]));
-    // حالات تحتفظ بعنوانها الظاهر حتى بعد الاكتمال (لا تتحوّل نصّياً إلى «مكتمل»)،
-    // وتُصنَّف كمنتهية تلقائياً عبر isEffectivelyDone() دون تغيير النص الظاهر على البطاقة.
-    const PRESERVE_TITLE_STATUSES=['فكرة مبدئية','عرض مرئي'];
-    if(allAssignedDone && !manualHold && !PRESERVE_TITLE_STATUSES.includes(data.overallStatus)){
-      data.overallStatus='مكتمل';
-    }
-  }catch(e){ console.error('نقل تلقائي للمنتهية:',e); }
+  // ── لا يُبدَّل عنوان المشروع (overallStatus) تلقائياً إلى «مكتمل» مهما كانت حالته ──
+  // عنوان/نوع المشروع الذي اخترتِه (قيد التصميم، خرائط تفصيلية، فكرة مبدئية، عرض مرئي، رأي فني...)
+  // يبقى كما هو دائماً على البطاقة، ولا يتغيّر إلا إذا غيّرتِه يدوياً من القائمة المنسدلة.
+  // تصنيف المشروع كمنتهٍ (ونقله فعلياً إلى «المشاريع المنتهية») يتم تلقائياً وبصمت
+  // عبر isEffectivelyDone() عند العرض، دون المساس بالعنوان الظاهر إطلاقاً.
   // ── موافقة رئيس القسم على تاريخ التسليم المتوقع ──
   // إن أدخل مهندس (وليس رئيس القسم/المشرف) تاريخاً جديداً، تصبح حالته «قيد الموافقة» وتُرسَل الإشعارات.
   // إن حفظ رئيس القسم/المشرف والحالة «قيد الموافقة»، تُعتمَد تلقائياً (وتُعامَل كتعديل إن غيّر القيمة).

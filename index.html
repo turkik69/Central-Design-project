@@ -903,9 +903,10 @@ async function saveProject(data,editingId,prev){
     }
     const assigned = consider.filter(k=>isAssigned(data[k]));
     const allAssignedDone = assigned.length>0 && assigned.every(k=>isDone(data[k]));
-    // «فكرة مبدئية»: لا تُبدَّل الحالة العامة إلى «مكتمل» — تبقى مُعنوَنة «فكرة مبدئية» (مقتصرة على المعماري)
+    // حالات تحتفظ بعنوانها الظاهر حتى بعد الاكتمال (لا تتحوّل نصّياً إلى «مكتمل»)،
     // وتُصنَّف كمنتهية تلقائياً عبر isEffectivelyDone() دون تغيير النص الظاهر على البطاقة.
-    if(allAssignedDone && !manualHold && data.overallStatus!=='فكرة مبدئية'){
+    const PRESERVE_TITLE_STATUSES=['فكرة مبدئية','عرض مرئي'];
+    if(allAssignedDone && !manualHold && !PRESERVE_TITLE_STATUSES.includes(data.overallStatus)){
       data.overallStatus='مكتمل';
     }
   }catch(e){ console.error('نقل تلقائي للمنتهية:',e); }

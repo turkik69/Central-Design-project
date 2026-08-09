@@ -902,7 +902,9 @@ async function saveProject(data,editingId,prev){
     }
     const assigned = consider.filter(k=>isAssigned(data[k]));
     const allAssignedDone = assigned.length>0 && assigned.every(k=>isDone(data[k]));
-    if(allAssignedDone && !manualHold){
+    // «فكرة مبدئية»: لا تُبدَّل الحالة العامة إلى «مكتمل» — تبقى مُعنوَنة «فكرة مبدئية» (مقتصرة على المعماري)
+    // وتُصنَّف كمنتهية تلقائياً عبر isEffectivelyDone() دون تغيير النص الظاهر على البطاقة.
+    if(allAssignedDone && !manualHold && data.overallStatus!=='فكرة مبدئية'){
       data.overallStatus='مكتمل';
     }
   }catch(e){ console.error('نقل تلقائي للمنتهية:',e); }
@@ -3444,7 +3446,7 @@ function openKpiModal(){
   function fill(){
     // ── مؤشرات الدائرة العامة ──
     const projTotal=state.projects.length;
-    const projDone=state.projects.filter(p=>p.overallStatus==='مكتمل').length;
+    const projDone=state.projects.filter(p=>isEffectivelyDone(p)).length;
     const deptData=DEPT_MAP.map(([key,label])=>({label,key,k:deptKpi(key)}));
     const allDone=deptData.reduce((s,d)=>s+d.k.done,0);
     const allTotal=deptData.reduce((s,d)=>s+d.k.total,0);
@@ -3634,7 +3636,7 @@ function exportKpiExcel(){
     ['لوحة مؤشرات الأداء (KPIs)'],[`الفترة: ${kpiRange(kpiPeriod).label}`],[`تاريخ التصدير: ${dStr}`],[],
     ['مؤشرات الدائرة العامة'],
     ['إجمالي المشاريع','المكتملة','نسبة الإنجاز %','الالتزام بالوقت %','متوسط التقييم'],
-    [state.projects.length, state.projects.filter(p=>p.overallStatus==='مكتمل').length, orgCompletion, orgPunctual, orgRating],
+    [state.projects.length, state.projects.filter(p=>isEffectivelyDone(p)).length, orgCompletion, orgPunctual, orgRating],
     [],
     ['مؤشرات الأقسام'],
     ['القسم','الإجمالي','المنجز','قيد العمل','نسبة الإنجاز %','الالتزام بالوقت %','متوسط التأخير (يوم)','متوسط التقييم'],

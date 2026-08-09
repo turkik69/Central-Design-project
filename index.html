@@ -1919,6 +1919,7 @@ function canDeleteProject(p){
   if(u.role==='admin') return true;
   if(isObserver()) return false;
   if((u.jobTitle||'')==='مدير الدائرة') return true;
+  if(Object.values(HEAD_TITLES).includes(u.jobTitle||'')) return true;   // أي رئيس قسم يحذف أي مشروع
   return projectHasMe(p);
 }
 

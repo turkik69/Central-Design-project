@@ -3089,15 +3089,22 @@ function engineerReport(username){
 
 /* ════════════ لوحة مؤشرات الأداء (KPIs) ════════════ */
 let kpiModalOpen=false;
-let kpiPeriod='all';   // all | month | quarter | half | year (يُحدّث من القائمة)
+let kpiPeriod='all';   // all | month | quarter | half | year — لوحة المؤشرات العامة (أداء الدائرة/الأقسام/المهندسين) — لا علاقة لها بالشهادات
 /* حساب الفرق بالأيام بين تاريخين YYYY-MM-DD */
 function daysBetween(a,b){ if(!a||!b) return null; const d=(new Date(b)-new Date(a))/86400000; return isNaN(d)?null:Math.round(d); }
-/* يعيد {from,to} للفترة المختارة بناءً على تاريخ اليوم */
+/* يعيد {from,to} للفترة المختارة. يدعم فترات اللوحة العامة (all/month/quarter الحالي/half/year)
+   وأيضاً أرباع محدَّدة صراحةً (q1..q4) تُستخدم حصراً في شهادات التميّز. */
 function kpiRange(period){
   const now=new Date(); const y=now.getFullYear(), m=now.getMonth();
   const mk=(yy,mm,dd)=>new Date(yy,mm,dd);
+  const ordWords=['الأول','الثاني','الثالث','الرابع'];
+  const qMap={q1:0,q2:1,q3:2,q4:3};
+  if(period in qMap){
+    const q=qMap[period];
+    return {from:mk(y,q*3,1), to:mk(y,q*3+3,0), label:`الربع ${ordWords[q]} من عام ${y}`, quarterOrdinal:ordWords[q], quarterNum:q+1};
+  }
   if(period==='month')   return {from:mk(y,m,1), to:mk(y,m+1,0), label:`شهر ${MONTH_NAMES?MONTH_NAMES[m]:m+1} ${y}`};
-  if(period==='quarter'){ const q=Math.floor(m/3); const ordWords=['الأول','الثاني','الثالث','الرابع']; return {from:mk(y,q*3,1), to:mk(y,q*3+3,0), label:`الربع ${ordWords[q]} من عام ${y}`, quarterOrdinal:ordWords[q], quarterNum:q+1}; }
+  if(period==='quarter'){ const q=Math.floor(m/3); return {from:mk(y,q*3,1), to:mk(y,q*3+3,0), label:`الربع ${ordWords[q]} من عام ${y}`, quarterOrdinal:ordWords[q], quarterNum:q+1}; }
   if(period==='half'){ const h=m<6?0:6; return {from:mk(y,h,1), to:mk(y,h+6,0), label:`نصف ${m<6?'أول':'ثاني'} ${y}`}; }
   if(period==='year')    return {from:mk(y,0,1), to:mk(y,12,0), label:`عام ${y}`};
   return {from:null,to:null,label:'كل الفترات'};
@@ -3110,6 +3117,9 @@ function inKpiPeriod(dateStr){
   const {from,to}=kpiRange(kpiPeriod);
   return d>=from && d<=to;
 }
+/* ── فترة شهادات التميّز — مستقلة تماماً عن فلتر لوحة المؤشرات (kpiPeriod) ──
+   خيارات محصورة: الأرباع الأربعة صراحةً + السنة، بلا شهر/نصف سنة/كل الفترات. */
+let certPeriod = (()=>{ const m=new Date().getMonth(); return 'q'+(Math.floor(m/3)+1); })();
 /* التاريخ المرجعي للقسم في الفلترة: الفعلي إن وُجد، وإلا المتوقع */
 function secRefDate(sec){ return sec.actualDate || sec.endDate || sec.startDate || ''; }
 /* مؤشرات قسم واحد عبر كل المشاريع (ضمن الفترة المختارة) */
@@ -3236,12 +3246,11 @@ function announcedEmployee(){
   const label=`الربع ${ordWords[prevQ]} من عام ${yearOfPrev}`;
   return { winner:employeeOfMonthFor(from,to), label, ordinal:ordWords[prevQ], year:yearOfPrev };
 }
-/* شهادات تميّز مستقلة لكل قسم (معماري/إنشائي/خدمات) عن الفترة المختارة حالياً — نافذة واحدة بصفحة لكل قسم فائز فيه */
+/* شهادات تميّز مستقلة لكل قسم (معماري/إنشائي/خدمات) عن فترة الشهادات المستقلة (certPeriod) — لا علاقة لها بفلتر لوحة المؤشرات (kpiPeriod) */
 function openCertificate(){
   if(state.appUser?.role!=='admin'){ alert('إصدار الشهادة من صلاحية المشرف فقط.'); return; }
-  let label, kind, quarterOrdinal='';
-  if(kpiPeriod==='all'){ label='الأداء العام'; kind='all'; }
-  else { const r=kpiRange(kpiPeriod); label=r.label; kind=kpiPeriod; quarterOrdinal=r.quarterOrdinal||''; }
+  const r=kpiRange(certPeriod);
+  const label=r.label, quarterOrdinal=r.quarterOrdinal||'';
 
   const HEAD_AR={architectural:'رئيس القسم المعماري',structural:'رئيس القسم الإنشائي',services:'رئيس قسم تصميم الخدمات'};
   const deptOrder=['architectural','structural','services'];
@@ -3250,20 +3259,26 @@ function openCertificate(){
   const today=new Date();
   const dStr=`${String(today.getDate()).padStart(2,'0')}/${String(today.getMonth()+1).padStart(2,'0')}/${today.getFullYear()}`;
 
+  // احسب فائزي الأقسام حسب فترة الشهادات (certPeriod) دون المساس بفلتر لوحة المؤشرات (kpiPeriod) إطلاقاً:
+  // نبدّل القيمة مؤقتاً فقط أثناء الحساب، ونُعيدها فوراً كما كانت مهما حدث.
+  const savedKpiPeriod = kpiPeriod;
+  let winners;
+  try{
+    kpiPeriod = certPeriod;
+    winners = Object.fromEntries(deptOrder.map(k=>[k, employeeOfMonthInDept(k)]));
+  } finally {
+    kpiPeriod = savedKpiPeriod;   // إعادة فورية — لوحة المؤشرات تبقى كما تركها المستخدم تماماً
+  }
+
   deptOrder.forEach(deptKey=>{
-    const winner=employeeOfMonthInDept(deptKey);
+    const winner=winners[deptKey];
     if(!winner){ skipped.push(DEPT_AR[deptKey]); return; }
     const nm=(winner.name||'').trim();
     const isFemale=/ة$/.test(nm);
     const engTitle=isFemale?'المهندسة':'المهندس';
-    const AWARD={
-      all:     isFemale?'موظفة متميّزة':'موظف متميّز',
-      month:   isFemale?'موظفة الشهر' :'موظف الشهر',
-      quarter: isFemale?`موظفة الربع ${quarterOrdinal} من العام` :`موظف الربع ${quarterOrdinal} من العام`,
-      half:    isFemale?'موظفة نصف السنة':'موظف نصف السنة',
-      year:    isFemale?'موظفة العام' :'موظف العام'
-    };
-    const awardTitle=AWARD[kind]||AWARD.month;
+    const awardTitle = certPeriod==='year'
+      ? (isFemale?'موظفة العام':'موظف العام')
+      : (isFemale?`موظفة الربع ${quarterOrdinal} من العام`:`موظف الربع ${quarterOrdinal} من العام`);
     const pron = isFemale?'جعلها':'جعله';
     const verb1= isFemale?'تميّزها واجتهادها':'تميّزه واجتهاده';
     const verb2= isFemale?'التزامها':'التزامه';
@@ -3418,7 +3433,6 @@ function openKpiModal(){
   const overlay=$(`<div class="overlay" id="kpiOverlay"></div>`);
   const modal=$(`<div class="modal" style="max-width:760px"><div class="modal-head"><h2>لوحة مؤشرات الأداء</h2>
     <div style="display:flex;gap:8px;align-items:center">
-      ${state.appUser?.role==='admin'?`<button class="btn btn-add" id="kpiCert" style="padding:7px 12px;font-size:13px">🏆 شهادات تميّز الأقسام (حسب الفترة المختارة)</button>`:''}
       <button class="btn btn-ghost" id="kpiPdf" style="padding:7px 12px;font-size:13px">${I.report} PDF</button>
       <button class="btn btn-ghost" id="kpiXls" style="padding:7px 12px;font-size:13px">${I.upload} Excel</button>
       <button class="icon-btn" id="x">${I.close}</button>
@@ -3480,9 +3494,21 @@ function openKpiModal(){
             </div>
           </div>`;
         });
-        return `<h3 style="font-size:14px;color:var(--oasis-700);margin-bottom:10px">🏆 موظف الشهر لكل قسم</h3>
+        return `<h3 style="font-size:14px;color:var(--oasis-700);margin-bottom:10px">🏆 الفائز لكل قسم — ${periodTxt}</h3>
           <div style="margin-bottom:12px">${cards.join('')}</div>`;
       })()}
+      ${state.appUser?.role==='admin' ? `
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fdf4e3;border:1px solid #ead9b5;border-radius:12px;padding:12px;margin-bottom:16px">
+        <label class="lbl-sm" style="margin:0;font-weight:700;color:#8a6d2f">🏆 شهادات التميّز — فترة مستقلة:</label>
+        <select class="inp" id="certPeriodSel" style="width:auto;min-width:130px">
+          <option value="q1" ${certPeriod==='q1'?'selected':''}>الربع الأول</option>
+          <option value="q2" ${certPeriod==='q2'?'selected':''}>الربع الثاني</option>
+          <option value="q3" ${certPeriod==='q3'?'selected':''}>الربع الثالث</option>
+          <option value="q4" ${certPeriod==='q4'?'selected':''}>الربع الرابع</option>
+          <option value="year" ${certPeriod==='year'?'selected':''}>سنوية (كل الأرباع)</option>
+        </select>
+        <button class="btn btn-add" id="kpiCert" style="padding:7px 14px;font-size:13px;margin-right:auto">إصدار شهادات الأقسام</button>
+      </div>` : ''}
       <h3 style="font-size:15px;color:var(--oasis-700);margin-bottom:12px">أداء الدائرة العام</h3>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
         ${statCard(projTotal,'إجمالي المشاريع')}
@@ -3537,11 +3563,14 @@ function openKpiModal(){
     body.innerHTML=html;
     const ps=body.querySelector('#kpiPeriodSel');
     if(ps) ps.onchange=()=>{ kpiPeriod=ps.value; fill(); };
+    const cps=body.querySelector('#certPeriodSel');
+    if(cps) cps.onchange=()=>{ certPeriod=cps.value; fill(); };
+    const cb=body.querySelector('#kpiCert');
+    if(cb) cb.onclick=()=>openCertificate();
   }
   fill(); overlay._refresh=fill;
   // تصدير PDF عبر الطباعة (المستخدم يحفظ كـ PDF من حوار الطباعة)
   modal.querySelector('#kpiPdf').onclick=()=>exportKpiPdf();
-  { const cb=modal.querySelector('#kpiCert'); if(cb) cb.onclick=()=>openCertificate(); }
   modal.querySelector('#kpiXls').onclick=()=>exportKpiExcel();
   modal.querySelector('#x').onclick=()=>{kpiModalOpen=false;overlay.remove();};
   overlay.onclick=(e)=>{if(e.target===overlay){kpiModalOpen=false;overlay.remove();}};

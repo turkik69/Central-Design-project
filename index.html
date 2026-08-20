@@ -393,7 +393,7 @@ const BASE_OPTS = {
     'المديرية العامة للمشاريع والتشجير','جهة أخرى…'],
   jobTitle:['مهندس معماري','مهندس إنشائي','مهندس تصميم خدمات',
     'رئيس القسم المعماري','رئيس القسم الإنشائي','رئيس قسم تصميم الخدمات',
-    'مدير الدائرة','المدير العام','تنسيق ومتابعة'],
+    'مدير الدائرة','المدير العام','مدير عام مساعد','تنسيق ومتابعة'],
   dept:[]   // الأقسام لها قيم/تسميات خاصة، تُدار بقائمة منفصلة
 };
 const OPT_LABELS = {type:'أنواع المشاريع',entity:'الجهات الطالبة',jobTitle:'المسميات الوظيفية',dept:'الأقسام الفنية'};
@@ -1850,7 +1850,7 @@ function canViewEval(){
   const u=state.appUser; if(!u) return false;
   if(u.role==='admin') return true;
   const jt=u.jobTitle||'';
-  return jt==='مدير الدائرة' || jt==='المدير العام' || jt.indexOf('رئيس')!==-1;
+  return jt==='مدير الدائرة' || jt==='المدير العام' || jt==='مدير عام مساعد' || jt.indexOf('رئيس')!==-1;
 }
 /* من يفتح التقارير الشهرية: كل من يرى التقييم + موظف التنسيق والمتابعة */
 function canViewReports(){
@@ -1864,13 +1864,13 @@ function canEditDept(prefixKey){
   const u=state.appUser; if(!u) return false;
   if(u.role==='admin') return true;
   const jt=u.jobTitle||'';
-  if(jt==='المدير العام') return false;          // المدير العام: مراقب فقط، لا يعدّل
+  if(jt==='المدير العام' || jt==='مدير عام مساعد') return false;          // المدير العام ومدير عام مساعد: مراقبان فقط، لا يعدّلان
   if(jt==='مدير الدائرة') return true;          // مدير الدائرة يعدّل الكل
   if(canEvaluate(prefixKey)) return true;        // رئيس القسم لقسمه
   return u.dept===prefixKey;                     // المهندس لقسمه فقط
 }
-/* المدير العام مراقب فقط: لا ينشئ مشاريع ولا يعدّل الحقول العامة ولا يحذف */
-function isObserver(){ return (state.appUser?.jobTitle||'')==='المدير العام'; }
+/* المدير العام ومدير عام مساعد: مراقبان فقط، لا ينشئان مشاريع ولا يعدّلان الحقول العامة ولا يحذفان */
+function isObserver(){ const jt=state.appUser?.jobTitle||''; return jt==='المدير العام' || jt==='مدير عام مساعد'; }
 /* هل المستخدم مهندس عادي (له قسم فني ومسنَد للأعمال)؟ */
 function isEngineer(){
   const u=state.appUser; if(!u||u.role==='admin') return false;
@@ -2052,7 +2052,17 @@ function openUsersModal(){
 
   function fill(){
     const jobOpts=opts('jobTitle').map(o=>`<option>${o}</option>`).join('');
-    const list=state.users.filter(u=>u.role!=='admin');
+    // ترتيب الحسابات حسب التسلسل الوظيفي المطلوب
+    const JOB_SORT_ORDER={
+      'المدير العام':0, 'مدير عام مساعد':1, 'مدير الدائرة':2, 'تنسيق ومتابعة':3,
+      'رئيس القسم المعماري':4, 'رئيس القسم الإنشائي':5, 'رئيس قسم تصميم الخدمات':6,
+      'مهندس معماري':7, 'مهندس إنشائي':8, 'مهندس تصميم خدمات':9
+    };
+    const list=state.users.filter(u=>u.role!=='admin').sort((a,b)=>{
+      const oa=JOB_SORT_ORDER[a.jobTitle||''] ?? 99, ob=JOB_SORT_ORDER[b.jobTitle||''] ?? 99;
+      if(oa!==ob) return oa-ob;
+      return (a.name||'').localeCompare(b.name||'','ar');   // ترتيب أبجدي عربي عند تساوي المسمى
+    });
     const missingEmail=list.filter(u=>!u.email).length;
     body.innerHTML=`
       <h4 style="font-size:14px;color:var(--oasis-700);margin-bottom:12px">إنشاء حساب جديد</h4>
@@ -2194,7 +2204,7 @@ function renderPeopleOptions(host, dept, selected){
   selected=selected||[];
   if(!dept){ host.innerHTML=`<div style="font-size:12px;color:var(--muted);padding:6px 0">اختر القسم أولاً لعرض الأسماء.</div>`; return; }
   // مسميات القيادة التي تظهر أيضاً ضمن «الإدارة»
-  const LEAD_TITLES=['رئيس القسم المعماري','رئيس القسم الإنشائي','رئيس قسم تصميم الخدمات','مدير الدائرة','المدير العام'];
+  const LEAD_TITLES=['رئيس القسم المعماري','رئيس القسم الإنشائي','رئيس قسم تصميم الخدمات','مدير الدائرة','المدير العام','مدير عام مساعد'];
   const DEPT_AR_SHORT={architectural:'المعماري',structural:'الإنشائي',services:'الخدمات',administration:'الإدارة'};
   let people;
   if(dept==='all'){
@@ -2374,7 +2384,7 @@ function isCoordinatorUser(){
 function canSeeMyWorks(){
   const u=state.appUser; if(!u) return false;
   const jt=u.jobTitle||'';
-  return u.role==='admin' || jt==='تنسيق ومتابعة' || jt==='مدير الدائرة' || jt==='المدير العام';
+  return u.role==='admin' || jt==='تنسيق ومتابعة' || jt==='مدير الدائرة' || jt==='المدير العام' || jt==='مدير عام مساعد';
 }
 function canEditMyWorks(){   // الإنشاء/التعديل/الحذف لموظفة التنسيق فقط
   return isCoordinatorUser();

@@ -1228,6 +1228,15 @@ function renderCard(p){
 
 /* عرض المشروع: ملف مستقل قابل للتعبئة والحفظ والطباعة، دون رفع الصور إلى قاعدة البيانات. */
 function presentationRuntime(){
+  let pdfLibPromise;
+  const loadPdf=()=>{
+    if(!pdfLibPromise) pdfLibPromise=import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/6.3.289/pdf.min.mjs')
+      .then(lib=>{
+        lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/6.3.289/pdf.worker.min.mjs';
+        return lib;
+      }).catch(error=>{pdfLibPromise=null;throw error;});
+    return pdfLibPromise;
+  };
   const frames=document.querySelectorAll('.image-frame');
   frames.forEach(frame=>{
     const slot=frame.querySelector('.image-slot');
@@ -1237,6 +1246,10 @@ function presentationRuntime(){
     const fitButton=frame.querySelector('.image-fit');
     const replaceButton=frame.querySelector('.image-replace');
     const resetButton=frame.querySelector('.image-reset');
+    const pagePicker=frame.querySelector('.pdf-page');
+    const status=frame.querySelector('.image-status');
+    let pdfDoc=null,renderSequence=0;
+    pagePicker.hidden=true;status.textContent='';
     let scale=Number(img.dataset.scale||1), x=Number(img.dataset.x||0), y=Number(img.dataset.y||0);
     let fit=img.dataset.fit||'cover';
     zoom.value=String(scale);
@@ -1247,15 +1260,52 @@ function presentationRuntime(){
       fitButton.textContent=fit==='cover'?'إظهار كاملة':'ملء الإطار';
     };
     apply();
-    input.addEventListener('change',()=>{
+    const setImage=(dataUrl)=>{
+      img.setAttribute('src',dataUrl);
+      slot.classList.add('has-image');
+      frame.classList.add('has-image');
+      scale=1;x=0;y=0;fit='cover';zoom.value='1';apply();
+    };
+    const renderPdfPage=async(number)=>{
+      const seq=++renderSequence;
+      status.textContent='جارٍ تجهيز صفحة '+number+'…';
+      const page=await pdfDoc.getPage(number);
+      const unit=page.getViewport({scale:1});
+      const factor=Math.min(2.5,2400/Math.max(unit.width,unit.height));
+      const viewport=page.getViewport({scale:factor});
+      const canvas=document.createElement('canvas');
+      canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+      const context=canvas.getContext('2d',{alpha:false});
+      context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);
+      await page.render({canvas,canvasContext:context,viewport}).promise;
+      if(seq!==renderSequence)return;
+      setImage(canvas.toDataURL('image/jpeg',0.94));
+      status.textContent='صفحة '+number+' من '+pdfDoc.numPages;
+    };
+    pagePicker.addEventListener('change',()=>{if(pdfDoc)renderPdfPage(Number(pagePicker.value)).catch(()=>{status.textContent='تعذّر عرض الصفحة، حاول مرة أخرى.';});});
+    input.addEventListener('change',async()=>{
       const file=input.files && input.files[0];
-      if(!file || !file.type.startsWith('image/')) return;
+      if(!file)return;
+      if(file.type==='application/pdf'||/\.pdf$/i.test(file.name)){
+        try{
+          status.textContent='جارٍ فتح PDF…';
+          const lib=await loadPdf();
+          pdfDoc=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+          pagePicker.replaceChildren();
+          for(let n=1;n<=pdfDoc.numPages;n++) pagePicker.add(new Option('صفحة '+n,n));
+          pagePicker.hidden=pdfDoc.numPages<2;
+          await renderPdfPage(1);
+        }catch(error){
+          status.textContent='تعذّر فتح PDF. تأكد من أن الملف صالح وغير محمي بكلمة مرور وأن الإنترنت متصل.';
+        }finally{input.value='';}
+        return;
+      }
+      if(!file.type.startsWith('image/')){status.textContent='اختر صورة أو ملف PDF.';input.value='';return;}
+      pdfDoc=null;pagePicker.hidden=true;renderSequence++;
       const reader=new FileReader();
       reader.onload=()=>{
-        img.setAttribute('src',reader.result);
-        slot.classList.add('has-image');
-        frame.classList.add('has-image');
-        scale=1;x=0;y=0;fit='cover';zoom.value='1';apply();
+        setImage(reader.result);
+        status.textContent='';
         input.value='';
       };
       reader.readAsDataURL(file);
@@ -1298,7 +1348,7 @@ function projectPresentationHTML(p){
   const name=esc(p.name);
   const field=(label,value)=>`<div class="fact"><span>${label}</span><strong contenteditable="true">${esc(value)}</strong></div>`;
   const editable=(label,value)=>`<div class="note"><b>${label}</b><div contenteditable="true">${esc(value)}</div></div>`;
-  const slot=(label,hint)=>`<div class="image-frame"><label class="image-slot"><input type="file" accept="image/*" aria-label="إضافة ${label}"><img alt="${label}"><span class="slot-hint"><strong>＋ ${label}</strong><small>${hint||'اضغط لإضافة صورة من جهازك'}</small></span></label><div class="image-tools"><button type="button" class="image-replace">تغيير الصورة</button><button type="button" class="image-fit">إظهار كاملة</button><label>تكبير <input class="image-zoom" type="range" min="1" max="3" step="0.05" value="1"></label><button type="button" class="image-reset">إعادة ضبط</button></div></div>`;
+  const slot=(label,hint)=>`<div class="image-frame"><label class="image-slot"><input type="file" accept="image/*,.pdf,application/pdf" aria-label="إضافة ${label}"><img alt="${label}"><span class="slot-hint"><strong>＋ ${label}</strong><small>${hint||'اضغط لإضافة صورة أو PDF من جهازك'}</small></span></label><div class="image-tools"><button type="button" class="image-replace">تغيير الملف</button><select class="pdf-page" aria-label="اختيار صفحة PDF" hidden></select><button type="button" class="image-fit">إظهار كاملة</button><label>تكبير <input class="image-zoom" type="range" min="1" max="3" step="0.05" value="1"></label><button type="button" class="image-reset">إعادة ضبط</button></div><span class="image-status" aria-live="polite"></span></div>`;
   const css=`
     :root{--oasis:#1f5d4c;--oasis-dark:#184a3c;--sand:#faf7f1;--sand-2:#f3ede1;--clay:#b07d4f;--ink:#2a2620;--muted:#756d60;--line:#dfd4c1}
     *{box-sizing:border-box}body{margin:0;background:#e9e5dc;color:var(--ink);font-family:'Tajawal',Arial,sans-serif;direction:rtl}
@@ -1318,15 +1368,15 @@ function projectPresentationHTML(p){
     .note{border:1px solid var(--line);background:var(--sand);border-radius:2mm;padding:3mm;min-height:0;overflow:hidden}.note b{display:block;color:var(--oasis-dark);font-size:11pt;margin-bottom:2mm}.note div{font-size:10.5pt;line-height:1.6;white-space:pre-wrap;min-height:7mm}
     .image-frame{display:flex;flex:1;min-height:0;position:relative}.image-slot{position:relative;border:1.3px dashed #9db9ad;border-radius:3mm;background:linear-gradient(135deg,#f3f8f5,#f9f6f0);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;min-height:0;flex:1}
     .image-slot input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}.image-slot img{display:none;width:100%;height:100%;object-fit:cover;transform-origin:center center;cursor:grab;touch-action:none;user-select:none}.image-slot img:active{cursor:grabbing}.image-slot.has-image img{display:block}.image-slot.has-image .slot-hint{display:none}.slot-hint{text-align:center;color:var(--oasis);padding:5mm}.slot-hint strong{display:block;font-size:16pt}.slot-hint small{display:block;font-size:10pt;margin-top:2mm;color:var(--muted)}
-    .image-tools{display:none;position:absolute;z-index:2;bottom:2mm;left:2mm;right:2mm;direction:rtl;align-items:center;justify-content:center;gap:2mm;flex-wrap:wrap;background:#184a3cdb;padding:2mm;border-radius:2mm;color:white;font-size:9pt}.image-frame.has-image .image-tools{display:flex}.image-tools button{font:inherit;background:white;color:var(--oasis-dark);border:0;border-radius:1.5mm;padding:1mm 2mm;cursor:pointer}.image-tools label{display:flex;align-items:center;gap:1mm}.image-zoom{width:22mm;accent-color:var(--clay)}
+    .image-tools{display:none;position:absolute;z-index:2;bottom:2mm;left:2mm;right:2mm;direction:rtl;align-items:center;justify-content:center;gap:2mm;flex-wrap:wrap;background:#184a3cdb;padding:2mm;border-radius:2mm;color:white;font-size:9pt}.image-frame.has-image .image-tools{display:flex}.image-tools button,.image-tools select{font:inherit;background:white;color:var(--oasis-dark);border:0;border-radius:1.5mm;padding:1mm 2mm;cursor:pointer}.image-tools label{display:flex;align-items:center;gap:1mm}.image-zoom{width:22mm;accent-color:var(--clay)}.image-status:not(:empty){position:absolute;z-index:2;top:2mm;right:2mm;background:#184a3cdb;color:white;border-radius:1.5mm;padding:1mm 2mm;font-size:8pt;max-width:75%;line-height:1.2}.pdf-page[hidden]{display:none}
     .page-footer{height:10mm;display:flex;justify-content:space-between;align-items:end;border-top:1px solid var(--line);color:var(--muted);font-size:9pt}
     .two-layout{display:grid;grid-template-rows:1fr 1.06fr;gap:5mm;flex:1;min-height:0}.sections,.renders{display:grid;gap:4mm;min-height:0}.sections{grid-template-columns:repeat(2,1fr)}.renders{grid-template-columns:repeat(4,1fr)}.image-group{display:flex;flex-direction:column;gap:2mm;min-height:0}.image-group .image-frame{flex:1}.caption{min-height:8mm;font-size:10pt;color:var(--muted);border-bottom:1px solid var(--line);padding:1mm 0}
     @page{size:A3 landscape;margin:0}
-    @media print{html,body{width:420mm;background:white;-webkit-print-color-adjust:exact;print-color-adjust:exact}.toolbar,.image-tools{display:none!important}.page{margin:0;box-shadow:none;width:420mm;height:297mm}}
+    @media print{html,body{width:420mm;background:white;-webkit-print-color-adjust:exact;print-color-adjust:exact}.toolbar,.image-tools,.image-status{display:none!important}.page{margin:0;box-shadow:none;width:420mm;height:297mm}}
     @media screen and (max-width:1600px){.page{zoom:.8}}@media screen and (max-width:1150px){.page{zoom:.58}}@media screen and (max-width:750px){.page{zoom:.36;margin:10px auto}.toolbar{position:relative}}
   `;
   return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>عرض ${name} — التصميم المركزي</title><style>${css}</style></head><body>
-  <div class="toolbar"><div><b>قالب العرض المعماري · صفحتان A3</b><br><small>أضف الصور، اسحبها داخل الإطار وحرك شريط التكبير لضبطها، ثم احفظ نسخة مكتملة.</small></div><div class="actions"><button id="savePresentation" type="button">حفظ نسخة قابلة للتعديل</button><button id="printPresentation" type="button">طباعة / PDF</button></div></div>
+  <div class="toolbar"><div><b>قالب العرض المعماري · صفحتان A3</b><br><small>أضف صورة أو PDF، واختر صفحته، ثم اسحب المخطط أو كبّره داخل الإطار واحفظ النسخة المكتملة.</small></div><div class="actions"><button id="savePresentation" type="button">حفظ نسخة قابلة للتعديل</button><button id="printPresentation" type="button">طباعة / PDF</button></div></div>
   <section class="page"><div class="mast"><div class="brand"><img src="${LOGO_DARK}" alt="شعار بلدية مسقط"><div><b>دائرة التصميم المركزي</b><small>بلدية مسقط · عرض مشروع تصميمي</small></div></div><span class="page-no">01 / 02 · المخطط العام</span></div>
   <div class="headline"><h1 contenteditable="true">${name}</h1><span class="subtitle">الفكرة التصميمية والمخطط العام</span></div>
   <div class="facts">${field('رقم المشروع',p.projectNo)}${field('نوع المشروع',p.customType||p.type)}${field('الجهة الطالبة',p.requestingEntity)}${field('المساحة',p.area)}${field('التكلفة (ر.ع)',p.cost)}${field('تاريخ الاستلام',p.startDate)}${field('التسليم المتوقع',p.endDate)}${field('المهندس المعماري',p.architectural?.engineer)}${field('المهندس الإنشائي',p.structural?.engineer)}${field('مهندس الخدمات',p.services?.engineer)}</div>

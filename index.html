@@ -1485,6 +1485,7 @@ function renderCard(p){
       ${p.overallStatus==='فكرة مبدئية' ? '' : secRow('الإنشائي',p.structural)}
       ${p.overallStatus==='فكرة مبدئية' ? '' : secRow('الخدمات',p.services)}
     </div>
+    <div style="padding:0 16px 12px"><button type="button" class="btn btn-ghost act-template" style="width:100%;display:flex;justify-content:center;align-items:center;gap:8px;border:1px solid var(--oasis);color:var(--oasis-700);background:var(--oasis-50);border-radius:9px;padding:9px;font-weight:700">▣ إعداد العرض المرئي للمشروع</button></div>
     <div class="card-foot">
       <div class="upd">حدّثه: ${p.lastUpdatedBy||'النظام'}<br>${p.lastUpdatedAt||''}</div>
       <div class="acts">
@@ -1493,6 +1494,7 @@ function renderCard(p){
       </div>
     </div></div>`);
   card.querySelector('.act-edit').onclick=()=>openProjectModal(p);
+  card.querySelector('.act-template').onclick=()=>downloadProjectPresentation(p);
   // روابط الشبكة المحلية: نسخ المسار للحافظة (المتصفح يمنع فتحها مباشرة)
   card.querySelectorAll('.work-link[data-copy]').forEach(a=>{
     a.onclick=(e)=>{
@@ -1520,6 +1522,99 @@ function renderCard(p){
     };
   }
   return card;
+}
+
+/* عرض المشروع: ملف مستقل قابل للتعبئة والحفظ والطباعة، دون رفع الصور إلى قاعدة البيانات. */
+function presentationRuntime(){
+  const slots=document.querySelectorAll('.image-slot');
+  slots.forEach(slot=>{
+    const input=slot.querySelector('input[type=file]');
+    input.addEventListener('change',()=>{
+      const file=input.files && input.files[0];
+      if(!file || !file.type.startsWith('image/')) return;
+      const reader=new FileReader();
+      reader.onload=()=>{
+        const img=slot.querySelector('img');
+        img.setAttribute('src',reader.result);
+        slot.classList.add('has-image');
+        input.value='';
+      };
+      reader.readAsDataURL(file);
+    });
+  });
+  document.getElementById('savePresentation').addEventListener('click',()=>{
+    const clone=document.documentElement.cloneNode(true);
+    clone.querySelectorAll('input[type=file]').forEach(el=>el.removeAttribute('value'));
+    const blob=new Blob(['<!DOCTYPE html>\n',clone.outerHTML],{type:'text/html;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download='عرض-المشروع-المعدل.html';
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+  });
+  document.getElementById('printPresentation').addEventListener('click',()=>window.print());
+}
+
+function projectPresentationHTML(p){
+  const esc=(v)=>String(v==null||v===''?'—':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const name=esc(p.name);
+  const field=(label,value)=>`<div class="fact"><span>${label}</span><strong contenteditable="true">${esc(value)}</strong></div>`;
+  const editable=(label,value)=>`<div class="note"><b>${label}</b><div contenteditable="true">${esc(value)}</div></div>`;
+  const slot=(label,hint)=>`<label class="image-slot"><input type="file" accept="image/*" aria-label="إضافة ${label}"><img alt="${label}"><span class="slot-hint"><strong>＋ ${label}</strong><small>${hint||'اضغط لإضافة صورة من جهازك'}</small></span></label>`;
+  const css=`
+    :root{--oasis:#1f5d4c;--oasis-dark:#184a3c;--sand:#faf7f1;--sand-2:#f3ede1;--clay:#b07d4f;--ink:#2a2620;--muted:#756d60;--line:#dfd4c1}
+    *{box-sizing:border-box}body{margin:0;background:#e9e5dc;color:var(--ink);font-family:'Tajawal',Arial,sans-serif;direction:rtl}
+    .toolbar{position:sticky;top:0;z-index:9;background:var(--oasis-dark);color:white;padding:10px 22px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .toolbar .actions{display:flex;gap:8px}.toolbar button{font:inherit;border:1px solid #a9d1c1;background:white;color:var(--oasis-dark);border-radius:8px;padding:8px 15px;cursor:pointer;font-weight:700}
+    .toolbar button:hover{background:var(--sand-2)}.toolbar small{font-size:12px}
+    .page{width:420mm;height:297mm;margin:18px auto;background:white;box-shadow:0 12px 35px #0002;padding:12mm;display:flex;flex-direction:column;gap:5mm;overflow:hidden;position:relative;page-break-after:always;break-after:page}
+    .page:last-child{page-break-after:auto;break-after:auto}
+    .mast{height:24mm;display:flex;align-items:center;justify-content:space-between;border-bottom:2mm solid var(--oasis);padding-bottom:4mm;gap:8mm}
+    .brand{display:flex;align-items:center;gap:5mm}.brand img{width:17mm;height:19mm;object-fit:contain}.brand b{font-size:19pt;color:var(--oasis-dark)}.brand small{display:block;color:var(--muted);font-size:10pt}
+    .page-no{color:var(--clay);font-size:11pt;font-weight:700}.headline{display:flex;justify-content:space-between;align-items:end;gap:10mm;padding:1mm 0 2mm}.headline h1{font-size:25pt;margin:0;color:var(--oasis-dark);line-height:1.25;max-width:70%}.headline .subtitle{font-size:12pt;color:var(--clay);font-weight:700}
+    [contenteditable]{outline:0;border-radius:3px;min-width:1em;overflow-wrap:anywhere}[contenteditable]:focus{background:#e8f1ee;box-shadow:0 0 0 2px #b4d5c8}
+    .facts{display:grid;grid-template-columns:repeat(5,1fr);gap:2mm}.fact{border:1px solid var(--line);background:var(--sand);border-radius:2mm;padding:2.3mm 3mm;min-height:15mm;overflow:hidden}.fact span{font-size:9pt;color:var(--muted);display:block}.fact strong{font-size:11pt;color:var(--oasis-dark);display:block;line-height:1.25}
+    .section-title{font-size:13pt;color:var(--oasis-dark);font-weight:800;border-right:2mm solid var(--clay);padding-right:3mm;margin:0}
+    .first-layout{display:grid;grid-template-columns:minmax(0,2.55fr) minmax(0,1fr);gap:5mm;flex:1;min-height:0}
+    .plan-block{display:flex;flex-direction:column;gap:3mm;min-height:0}.side{display:flex;flex-direction:column;gap:3mm;min-height:0}.side .note{flex:1}
+    .note{border:1px solid var(--line);background:var(--sand);border-radius:2mm;padding:3mm;min-height:0;overflow:hidden}.note b{display:block;color:var(--oasis-dark);font-size:11pt;margin-bottom:2mm}.note div{font-size:10.5pt;line-height:1.6;white-space:pre-wrap;min-height:7mm}
+    .image-slot{position:relative;border:1.3px dashed #9db9ad;border-radius:3mm;background:linear-gradient(135deg,#f3f8f5,#f9f6f0);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;min-height:0;flex:1}
+    .image-slot input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}.image-slot img{display:none;width:100%;height:100%;object-fit:contain}.image-slot.has-image img{display:block}.image-slot.has-image .slot-hint{display:none}.slot-hint{text-align:center;color:var(--oasis);padding:5mm}.slot-hint strong{display:block;font-size:16pt}.slot-hint small{display:block;font-size:10pt;margin-top:2mm;color:var(--muted)}
+    .page-footer{height:10mm;display:flex;justify-content:space-between;align-items:end;border-top:1px solid var(--line);color:var(--muted);font-size:9pt}
+    .two-layout{display:grid;grid-template-rows:1fr 1.06fr;gap:5mm;flex:1;min-height:0}.sections,.renders{display:grid;gap:4mm;min-height:0}.sections{grid-template-columns:repeat(2,1fr)}.renders{grid-template-columns:repeat(4,1fr)}.image-group{display:flex;flex-direction:column;gap:2mm;min-height:0}.image-group .image-slot{flex:1}.caption{min-height:8mm;font-size:10pt;color:var(--muted);border-bottom:1px solid var(--line);padding:1mm 0}
+    @page{size:A3 landscape;margin:0}
+    @media print{html,body{width:420mm;background:white;-webkit-print-color-adjust:exact;print-color-adjust:exact}.toolbar{display:none}.page{margin:0;box-shadow:none;width:420mm;height:297mm}}
+    @media screen and (max-width:1600px){.page{zoom:.8}}@media screen and (max-width:1150px){.page{zoom:.58}}@media screen and (max-width:750px){.page{zoom:.36;margin:10px auto}.toolbar{position:relative}}
+  `;
+  return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>عرض ${name} — التصميم المركزي</title><style>${css}</style></head><body>
+  <div class="toolbar"><div><b>قالب العرض المعماري · صفحتان A3</b><br><small>اضغط على الفراغات لإضافة الصور، وعلى النصوص لتعديلها، ثم احفظ نسخة مكتملة.</small></div><div class="actions"><button id="savePresentation" type="button">حفظ نسخة قابلة للتعديل</button><button id="printPresentation" type="button">طباعة / PDF</button></div></div>
+  <section class="page"><div class="mast"><div class="brand"><img src="${LOGO_DARK}" alt="شعار بلدية مسقط"><div><b>دائرة التصميم المركزي</b><small>بلدية مسقط · عرض مشروع تصميمي</small></div></div><span class="page-no">01 / 02 · المخطط العام</span></div>
+  <div class="headline"><h1 contenteditable="true">${name}</h1><span class="subtitle">الفكرة التصميمية والمخطط العام</span></div>
+  <div class="facts">${field('رقم المشروع',p.projectNo)}${field('نوع المشروع',p.customType||p.type)}${field('الجهة الطالبة',p.requestingEntity)}${field('المساحة',p.area)}${field('التكلفة (ر.ع)',p.cost)}${field('تاريخ الاستلام',p.startDate)}${field('التسليم المتوقع',p.endDate)}${field('المهندس المعماري',p.architectural?.engineer)}${field('المهندس الإنشائي',p.structural?.engineer)}${field('مهندس الخدمات',p.services?.engineer)}</div>
+  <div class="first-layout"><div class="plan-block"><div class="section-title">المخطط العام للمشروع</div>${slot('المخطط العام','ضع هنا مخطط الموقع أو اللوحة العامة')}</div><div class="side">${editable('الفكرة التصميمية','اكتب وصف الفكرة وعلاقتها بالموقع.')}${editable('مكونات المشروع','اكتب العناصر الأساسية والمساحات أو مراحل التصميم.')}${editable('فريق العمل','المعماري: '+(p.architectural?.engineer||'—')+'\nالإنشائي: '+(p.structural?.engineer||'—')+'\nالخدمات: '+(p.services?.engineer||'—'))}</div></div>
+  <div class="page-footer"><span>بلدية مسقط · دائرة التصميم المركزي</span><span contenteditable="true">${name} · لوحة ١ من ٢</span></div></section>
+  <section class="page"><div class="mast"><div class="brand"><img src="${LOGO_DARK}" alt="شعار بلدية مسقط"><div><b>دائرة التصميم المركزي</b><small>بلدية مسقط · عرض مشروع تصميمي</small></div></div><span class="page-no">02 / 02 · الرسومات والمناظير</span></div>
+  <div class="headline"><h1 contenteditable="true">${name}</h1><span class="subtitle">القطاعات والواجهات ولقطات 3D</span></div>
+  <div class="section-title">القطاعات والواجهات</div><div class="two-layout"><div class="sections">
+  <div class="image-group">${slot('قطاع معماري / Section A')}<div class="caption" contenteditable="true">عنوان القطاع وملاحظاته</div></div>
+  <div class="image-group">${slot('قطاع أو واجهة / Section B')}<div class="caption" contenteditable="true">عنوان القطاع أو الواجهة وملاحظاتها</div></div></div>
+  <div class="image-group"><div class="section-title">المناظير واللقطات ثلاثية الأبعاد</div><div class="renders">
+  ${['منظور رئيسي','منظور جانبي','لقطة تفصيلية','لقطة إضافية'].map(t=>`<div class="image-group">${slot(t)}<div class="caption" contenteditable="true">${t} · اكتب الوصف</div></div>`).join('')}
+  </div></div></div>
+  <div class="page-footer"><span>بلدية مسقط · دائرة التصميم المركزي</span><span contenteditable="true">${name} · لوحة ٢ من ٢</span></div></section>
+  <script>(${presentationRuntime.toString()})();<\/script></body></html>`;
+}
+
+function downloadProjectPresentation(p){
+  const html=projectPresentationHTML(p);
+  const blob=new Blob([html],{type:'text/html;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='عرض-مشروع-'+String(p.projectNo||p.name||'جديد').replace(/[\\/:*?"<>|]/g,'-').slice(0,65)+'.html';
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 
 /* ════════════ نافذة المشروع ════════════ */

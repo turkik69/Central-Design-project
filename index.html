@@ -1526,21 +1526,56 @@ function renderCard(p){
 
 /* عرض المشروع: ملف مستقل قابل للتعبئة والحفظ والطباعة، دون رفع الصور إلى قاعدة البيانات. */
 function presentationRuntime(){
-  const slots=document.querySelectorAll('.image-slot');
-  slots.forEach(slot=>{
+  const frames=document.querySelectorAll('.image-frame');
+  frames.forEach(frame=>{
+    const slot=frame.querySelector('.image-slot');
     const input=slot.querySelector('input[type=file]');
+    const img=slot.querySelector('img');
+    const zoom=frame.querySelector('.image-zoom');
+    const fitButton=frame.querySelector('.image-fit');
+    const replaceButton=frame.querySelector('.image-replace');
+    const resetButton=frame.querySelector('.image-reset');
+    let scale=Number(img.dataset.scale||1), x=Number(img.dataset.x||0), y=Number(img.dataset.y||0);
+    let fit=img.dataset.fit||'cover';
+    zoom.value=String(scale);
+    const apply=()=>{
+      img.style.objectFit=fit;
+      img.style.transform='translate('+x+'px,'+y+'px) scale('+scale+')';
+      img.dataset.scale=String(scale);img.dataset.x=String(x);img.dataset.y=String(y);img.dataset.fit=fit;
+      fitButton.textContent=fit==='cover'?'إظهار كاملة':'ملء الإطار';
+    };
+    apply();
     input.addEventListener('change',()=>{
       const file=input.files && input.files[0];
       if(!file || !file.type.startsWith('image/')) return;
       const reader=new FileReader();
       reader.onload=()=>{
-        const img=slot.querySelector('img');
         img.setAttribute('src',reader.result);
         slot.classList.add('has-image');
+        frame.classList.add('has-image');
+        scale=1;x=0;y=0;fit='cover';zoom.value='1';apply();
         input.value='';
       };
       reader.readAsDataURL(file);
     });
+    slot.addEventListener('click',e=>{if(slot.classList.contains('has-image') && e.target!==input) e.preventDefault();});
+    replaceButton.addEventListener('click',()=>input.click());
+    zoom.addEventListener('input',()=>{scale=Number(zoom.value);apply();});
+    fitButton.addEventListener('click',()=>{fit=fit==='cover'?'contain':'cover';x=0;y=0;apply();});
+    resetButton.addEventListener('click',()=>{scale=1;x=0;y=0;fit='cover';zoom.value='1';apply();});
+    let dragging=false,lastX=0,lastY=0;
+    img.addEventListener('pointerdown',e=>{
+      e.preventDefault();dragging=true;lastX=e.clientX;lastY=e.clientY;
+      img.setPointerCapture(e.pointerId);
+    });
+    img.addEventListener('pointermove',e=>{
+      if(!dragging)return;
+      const ratio=slot.offsetWidth/slot.getBoundingClientRect().width || 1;
+      x+=(e.clientX-lastX)*ratio;y+=(e.clientY-lastY)*ratio;
+      lastX=e.clientX;lastY=e.clientY;apply();
+    });
+    const stop=()=>{dragging=false;};
+    img.addEventListener('pointerup',stop);img.addEventListener('pointercancel',stop);
   });
   document.getElementById('savePresentation').addEventListener('click',()=>{
     const clone=document.documentElement.cloneNode(true);
@@ -1561,7 +1596,7 @@ function projectPresentationHTML(p){
   const name=esc(p.name);
   const field=(label,value)=>`<div class="fact"><span>${label}</span><strong contenteditable="true">${esc(value)}</strong></div>`;
   const editable=(label,value)=>`<div class="note"><b>${label}</b><div contenteditable="true">${esc(value)}</div></div>`;
-  const slot=(label,hint)=>`<label class="image-slot"><input type="file" accept="image/*" aria-label="إضافة ${label}"><img alt="${label}"><span class="slot-hint"><strong>＋ ${label}</strong><small>${hint||'اضغط لإضافة صورة من جهازك'}</small></span></label>`;
+  const slot=(label,hint)=>`<div class="image-frame"><label class="image-slot"><input type="file" accept="image/*" aria-label="إضافة ${label}"><img alt="${label}"><span class="slot-hint"><strong>＋ ${label}</strong><small>${hint||'اضغط لإضافة صورة من جهازك'}</small></span></label><div class="image-tools"><button type="button" class="image-replace">تغيير الصورة</button><button type="button" class="image-fit">إظهار كاملة</button><label>تكبير <input class="image-zoom" type="range" min="1" max="3" step="0.05" value="1"></label><button type="button" class="image-reset">إعادة ضبط</button></div></div>`;
   const css=`
     :root{--oasis:#1f5d4c;--oasis-dark:#184a3c;--sand:#faf7f1;--sand-2:#f3ede1;--clay:#b07d4f;--ink:#2a2620;--muted:#756d60;--line:#dfd4c1}
     *{box-sizing:border-box}body{margin:0;background:#e9e5dc;color:var(--ink);font-family:'Tajawal',Arial,sans-serif;direction:rtl}
@@ -1579,20 +1614,21 @@ function projectPresentationHTML(p){
     .first-layout{display:grid;grid-template-columns:minmax(0,2.55fr) minmax(0,1fr);gap:5mm;flex:1;min-height:0}
     .plan-block{display:flex;flex-direction:column;gap:3mm;min-height:0}.side{display:flex;flex-direction:column;gap:3mm;min-height:0}.side .note{flex:1}
     .note{border:1px solid var(--line);background:var(--sand);border-radius:2mm;padding:3mm;min-height:0;overflow:hidden}.note b{display:block;color:var(--oasis-dark);font-size:11pt;margin-bottom:2mm}.note div{font-size:10.5pt;line-height:1.6;white-space:pre-wrap;min-height:7mm}
-    .image-slot{position:relative;border:1.3px dashed #9db9ad;border-radius:3mm;background:linear-gradient(135deg,#f3f8f5,#f9f6f0);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;min-height:0;flex:1}
-    .image-slot input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}.image-slot img{display:none;width:100%;height:100%;object-fit:contain}.image-slot.has-image img{display:block}.image-slot.has-image .slot-hint{display:none}.slot-hint{text-align:center;color:var(--oasis);padding:5mm}.slot-hint strong{display:block;font-size:16pt}.slot-hint small{display:block;font-size:10pt;margin-top:2mm;color:var(--muted)}
+    .image-frame{display:flex;flex:1;min-height:0;position:relative}.image-slot{position:relative;border:1.3px dashed #9db9ad;border-radius:3mm;background:linear-gradient(135deg,#f3f8f5,#f9f6f0);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;min-height:0;flex:1}
+    .image-slot input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}.image-slot img{display:none;width:100%;height:100%;object-fit:cover;transform-origin:center center;cursor:grab;touch-action:none;user-select:none}.image-slot img:active{cursor:grabbing}.image-slot.has-image img{display:block}.image-slot.has-image .slot-hint{display:none}.slot-hint{text-align:center;color:var(--oasis);padding:5mm}.slot-hint strong{display:block;font-size:16pt}.slot-hint small{display:block;font-size:10pt;margin-top:2mm;color:var(--muted)}
+    .image-tools{display:none;position:absolute;z-index:2;bottom:2mm;left:2mm;right:2mm;direction:rtl;align-items:center;justify-content:center;gap:2mm;flex-wrap:wrap;background:#184a3cdb;padding:2mm;border-radius:2mm;color:white;font-size:9pt}.image-frame.has-image .image-tools{display:flex}.image-tools button{font:inherit;background:white;color:var(--oasis-dark);border:0;border-radius:1.5mm;padding:1mm 2mm;cursor:pointer}.image-tools label{display:flex;align-items:center;gap:1mm}.image-zoom{width:22mm;accent-color:var(--clay)}
     .page-footer{height:10mm;display:flex;justify-content:space-between;align-items:end;border-top:1px solid var(--line);color:var(--muted);font-size:9pt}
-    .two-layout{display:grid;grid-template-rows:1fr 1.06fr;gap:5mm;flex:1;min-height:0}.sections,.renders{display:grid;gap:4mm;min-height:0}.sections{grid-template-columns:repeat(2,1fr)}.renders{grid-template-columns:repeat(4,1fr)}.image-group{display:flex;flex-direction:column;gap:2mm;min-height:0}.image-group .image-slot{flex:1}.caption{min-height:8mm;font-size:10pt;color:var(--muted);border-bottom:1px solid var(--line);padding:1mm 0}
+    .two-layout{display:grid;grid-template-rows:1fr 1.06fr;gap:5mm;flex:1;min-height:0}.sections,.renders{display:grid;gap:4mm;min-height:0}.sections{grid-template-columns:repeat(2,1fr)}.renders{grid-template-columns:repeat(4,1fr)}.image-group{display:flex;flex-direction:column;gap:2mm;min-height:0}.image-group .image-frame{flex:1}.caption{min-height:8mm;font-size:10pt;color:var(--muted);border-bottom:1px solid var(--line);padding:1mm 0}
     @page{size:A3 landscape;margin:0}
-    @media print{html,body{width:420mm;background:white;-webkit-print-color-adjust:exact;print-color-adjust:exact}.toolbar{display:none}.page{margin:0;box-shadow:none;width:420mm;height:297mm}}
+    @media print{html,body{width:420mm;background:white;-webkit-print-color-adjust:exact;print-color-adjust:exact}.toolbar,.image-tools{display:none!important}.page{margin:0;box-shadow:none;width:420mm;height:297mm}}
     @media screen and (max-width:1600px){.page{zoom:.8}}@media screen and (max-width:1150px){.page{zoom:.58}}@media screen and (max-width:750px){.page{zoom:.36;margin:10px auto}.toolbar{position:relative}}
   `;
   return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>عرض ${name} — التصميم المركزي</title><style>${css}</style></head><body>
-  <div class="toolbar"><div><b>قالب العرض المعماري · صفحتان A3</b><br><small>اضغط على الفراغات لإضافة الصور، وعلى النصوص لتعديلها، ثم احفظ نسخة مكتملة.</small></div><div class="actions"><button id="savePresentation" type="button">حفظ نسخة قابلة للتعديل</button><button id="printPresentation" type="button">طباعة / PDF</button></div></div>
+  <div class="toolbar"><div><b>قالب العرض المعماري · صفحتان A3</b><br><small>أضف الصور، اسحبها داخل الإطار وحرك شريط التكبير لضبطها، ثم احفظ نسخة مكتملة.</small></div><div class="actions"><button id="savePresentation" type="button">حفظ نسخة قابلة للتعديل</button><button id="printPresentation" type="button">طباعة / PDF</button></div></div>
   <section class="page"><div class="mast"><div class="brand"><img src="${LOGO_DARK}" alt="شعار بلدية مسقط"><div><b>دائرة التصميم المركزي</b><small>بلدية مسقط · عرض مشروع تصميمي</small></div></div><span class="page-no">01 / 02 · المخطط العام</span></div>
   <div class="headline"><h1 contenteditable="true">${name}</h1><span class="subtitle">الفكرة التصميمية والمخطط العام</span></div>
   <div class="facts">${field('رقم المشروع',p.projectNo)}${field('نوع المشروع',p.customType||p.type)}${field('الجهة الطالبة',p.requestingEntity)}${field('المساحة',p.area)}${field('التكلفة (ر.ع)',p.cost)}${field('تاريخ الاستلام',p.startDate)}${field('التسليم المتوقع',p.endDate)}${field('المهندس المعماري',p.architectural?.engineer)}${field('المهندس الإنشائي',p.structural?.engineer)}${field('مهندس الخدمات',p.services?.engineer)}</div>
-  <div class="first-layout"><div class="plan-block"><div class="section-title">المخطط العام للمشروع</div>${slot('المخطط العام','ضع هنا مخطط الموقع أو اللوحة العامة')}</div><div class="side">${editable('الفكرة التصميمية','اكتب وصف الفكرة وعلاقتها بالموقع.')}${editable('مكونات المشروع','اكتب العناصر الأساسية والمساحات أو مراحل التصميم.')}${editable('فريق العمل','المعماري: '+(p.architectural?.engineer||'—')+'\nالإنشائي: '+(p.structural?.engineer||'—')+'\nالخدمات: '+(p.services?.engineer||'—'))}</div></div>
+  <div class="first-layout"><div class="plan-block"><div class="section-title">المخطط العام للمشروع</div>${slot('المخطط العام','ضع هنا مخطط الموقع أو اللوحة العامة')}</div><div class="side">${editable('الفكرة التصميمية','اكتب وصف الفكرة وعلاقتها بالموقع.')}${editable('مكونات المشروع','اكتب العناصر الأساسية والمساحات أو مراحل التصميم.')}${editable('وصف المشروع','اكتب موقع المشروع ونطاقه وأهدافه وأبرز ملامح التصميم.')}</div></div>
   <div class="page-footer"><span>بلدية مسقط · دائرة التصميم المركزي</span><span contenteditable="true">${name} · لوحة ١ من ٢</span></div></section>
   <section class="page"><div class="mast"><div class="brand"><img src="${LOGO_DARK}" alt="شعار بلدية مسقط"><div><b>دائرة التصميم المركزي</b><small>بلدية مسقط · عرض مشروع تصميمي</small></div></div><span class="page-no">02 / 02 · الرسومات والمناظير</span></div>
   <div class="headline"><h1 contenteditable="true">${name}</h1><span class="subtitle">القطاعات والواجهات ولقطات 3D</span></div>

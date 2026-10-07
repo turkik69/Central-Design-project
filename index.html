@@ -4016,7 +4016,7 @@ function reportActivitySection(entries,kind,number){
 }
 
 function reportProjectGroups(d){
-  const groups=[{title:'تحتاج متابعة',tone:'attention',projects:[]},{title:'جارية أو قيد التصميم',tone:'active',projects:[]},{title:'مكتملة',tone:'complete',projects:[]},{title:'حالات أخرى',tone:'other',projects:[]}];
+  const groups=[{title:'مشاريع تتطلب إجراء',tone:'attention',projects:[]},{title:'جارية أو قيد التصميم',tone:'active',projects:[]},{title:'مكتملة',tone:'complete',projects:[]},{title:'حالات أخرى',tone:'other',projects:[]}];
   d.projects.forEach(p=>{
     const overdue=d.planned.some(x=>x.p===p&&x.sec.status!=='مكتمل'&&x.sec.endDate<reportToday());
     const group=p.riskLevel==='مرتفع'||p.blocker||p.decisionRequired||overdue||DEPT_MAP.some(([key])=>p[key]?.delayReason)?groups[0]:isEffectivelyDone(p)?groups[2]:['متوقف الى اشعار اخر','الغي المشروع'].includes(p.overallStatus)?groups[3]:groups[1];
@@ -4028,13 +4028,14 @@ function reportProjectGroups(d){
 function reportBriefText(value,max=95){const s=String(value||'').replace(/\s+/g,' ').trim();return s.length>max?s.slice(0,max-1).trimEnd()+'…':s;}
 function reportProjectMatrix(projects,d){
   const esc=reportEsc;
-  return `<div class="pr-matrix-wrap"><table class="pr-matrix"><thead><tr><th>المشروع والجهة</th><th>الحالة والأقسام</th><th>الموعد</th><th>حركة الفترة</th><th>المتابعة</th></tr></thead><tbody>${projects.map(p=>{
+  return `<div class="pr-matrix-wrap"><table class="pr-matrix"><thead><tr><th>المشروع والجهة</th><th>الحالة والأقسام</th><th>الموعد</th><th>حالة التسليم خلال الفترة</th><th>ملاحظات المشروع</th></tr></thead><tbody>${projects.map(p=>{
     const sections=DEPT_MAP.map(([key,label])=>({label,sec:p[key]})).filter(x=>x.sec&&x.sec.status&&x.sec.status!=='قيد الانتظار');
-    const status=isEffectivelyDone(p)?'مكتمل':p.overallStatus||'قيد المتابعة';
+    const rawStatus=isEffectivelyDone(p)?'مكتمل':p.overallStatus||'قيد العمل';const status=rawStatus==='قيد المتابعة'?'قيد العمل':rawStatus;
     const done=d.done.filter(x=>x.p===p).length,planned=d.planned.filter(x=>x.p===p).length;
     const delays=sections.filter(x=>x.sec.delayReason).map(x=>x.sec.delayReason).join('؛ ');const follow=[p.decisionRequired&&`قرار: ${p.decisionRequired}`,p.blocker&&`عائق: ${p.blocker}`,delays&&`تأخير: ${delays}`,p.nextAction&&`التالي: ${p.nextAction}`].filter(Boolean).join(' · ')||'—';
+    const movement=[done&&'تم تسليم أعمال خلال الفترة',planned&&'تم تحديد موعد التسليم'].filter(Boolean).join(' · ')||'لا توجد حركة مسجلة';
     const due=p.endDate||sections.map(x=>x.sec.endDate).filter(Boolean).sort().at(-1)||'—';
-    return `<tr role="button" tabindex="0" data-report-project="${esc(p.id||'')}"><td data-label="المشروع"><strong>${esc(p.name||'مشروع بلا اسم')}</strong><small>${esc(p.projectNo||'بلا رقم')} · ${esc(p.requestingEntity||'—')} · ${esc(p.customType||p.type||'—')}</small></td><td data-label="الحالة"><span class="pr-matrix-state">${esc(status)}</span><small>${sections.length?sections.map(x=>`${esc(x.label.replace('القسم ','').replace('قسم تصميم ',''))}: ${esc(x.sec.status)}`).join(' · '):'لا توجد أعمال أقسام مسجلة'}</small></td><td data-label="الموعد">${esc(due)}</td><td data-label="حركة الفترة"><b>${done}</b> تسليم<br><b>${planned}</b> موعد</td><td data-label="المتابعة">${esc(reportBriefText(follow,125))}</td></tr>`;
+    return `<tr role="button" tabindex="0" data-report-project="${esc(p.id||'')}"><td data-label="المشروع"><strong>${esc(p.name||'مشروع بلا اسم')}</strong><small>${esc(p.projectNo||'بلا رقم')} · ${esc(p.requestingEntity||'—')} · ${esc(p.customType||p.type||'—')}</small></td><td data-label="الحالة"><span class="pr-matrix-state">${esc(status)}</span><small>${sections.length?sections.map(x=>`${esc(x.label.replace('القسم ','').replace('قسم تصميم ',''))}: ${esc(x.sec.status)}`).join(' · '):'لا توجد أعمال أقسام مسجلة'}</small></td><td data-label="الموعد">${esc(due)}</td><td data-label="حالة التسليم خلال الفترة">${esc(movement)}</td><td data-label="ملاحظات المشروع">${esc(reportBriefText(follow,125))}</td></tr>`;
   }).join('')}</tbody></table></div>`;
 }
 function reportProjectPortfolio(d){
@@ -4071,6 +4072,7 @@ function slideDeckStyles(){return `${reportViewStyles()}
   .deck-toolbar button{background:#fff;color:#16443a;border:0;border-radius:8px;padding:8px 14px;cursor:pointer;font:700 14px 'Tajawal',Arial}.deck-toolbar span{font-size:12px}
   .lead-slide{width:min(96vw,1200px);min-height:675px;margin:20px auto;padding:38px;background:#fff;border-radius:16px;box-shadow:0 10px 35px #123f3525;overflow:hidden;position:relative}
   .lead-slide:before{content:'';position:absolute;top:0;right:0;left:0;height:9px;background:linear-gradient(90deg,#c9a24b,#1f5d4c)}
+  .lead-slide .pr-exec-head h1{color:#fff;font-size:25px;line-height:1.4}.lead-slide .pr-exec-head p{color:#e1eee6;line-height:1.5}.lead-slide .pr-exec-head{padding:20px 24px}
   .lead-slide h1{font-size:32px;color:#16443a;margin:14px 0}.lead-slide h2{font-size:23px;color:#16443a;margin:6px 0 16px}.lead-slide h3{font-size:17px;color:#16443a}.lead-slide p{line-height:1.7}
   .slide-kicker{color:#9a762c;font-size:13px;font-weight:800}.slide-sub{color:#678075;font-size:13px}.slide-footer{position:absolute;bottom:22px;right:38px;left:38px;border-top:1px solid #dde7df;padding-top:8px;color:#667c70;font-size:11px;display:flex;justify-content:space-between}
   .lead-slide .rp-dossier{border:0;box-shadow:none;padding:0;margin:8px 0}.lead-slide .rp-dossier-head strong{font-size:23px}.lead-slide .rp-facts{grid-template-columns:repeat(4,minmax(0,1fr))}.lead-slide .rp-stage-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -4143,37 +4145,56 @@ function openSlideDeck(title,slides,downloadNow=false,exports={}){
   if(exports.excel)win.document.getElementById('deckExcel').onclick=exports.excel;
   const pdfButton=win.document.getElementById('deckPdf');
   const status=win.document.getElementById('deckStatus');
-  const loadPdf=()=>new Promise((resolve,reject)=>{
-    if(win.html2pdf){resolve();return;}
+  const loadScript=(src,global)=>new Promise((resolve,reject)=>{
+    if(global()){resolve();return;}
     const script=win.document.createElement('script');
-    script.src='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-    script.onload=()=>win.html2pdf?resolve():reject(new Error('PDF library unavailable'));
+    script.src=src;
+    script.onload=()=>global()?resolve():reject(new Error('PDF library unavailable'));
     script.onerror=()=>reject(new Error('PDF library failed to load'));
     win.document.head.appendChild(script);
   });
   pdfButton.onclick=async()=>{
     if(pdfButton.disabled)return;
     pdfButton.disabled=true;status.textContent='جارٍ تجهيز ملف PDF…';
+    const original=pages.map(page=>page.getAttribute('style'));
     try{
-      await loadPdf();
+      await Promise.all([
+        loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',()=>win.html2canvas),
+        loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',()=>win.jspdf?.jsPDF)
+      ]);
       if(win.closed)return;
-      const copy=win.document.getElementById('deckExport').cloneNode(true);
-      copy.style.width=posterMode?'1430px':'1120px';
-      copy.querySelectorAll('.lead-slide').forEach(page=>{
-        page.style.display='block';page.style.width='100%';page.style.margin='0';page.style.boxShadow='none';page.style.borderRadius='0';
-      });
-      const filename=title.replace(/[\\/:*?"<>|]/g,'-')+'.pdf';
-      await win.html2pdf().set({
-        filename,margin:0,
-        image:{type:'jpeg',quality:0.94},
-        html2canvas:{scale:1.5,useCORS:true,backgroundColor:'#fff',logging:false},
-        jsPDF:{unit:'mm',format:posterMode?'a3':'a4',orientation:'landscape'},
-        pagebreak:{mode:[],before:'.lead-slide + .lead-slide'}
-      }).from(copy).save();
+      if(win.document.fonts?.ready)await win.document.fonts.ready;
+      const format=posterMode?'a3':'a4';
+      const pdf=new win.jspdf.jsPDF({orientation:'landscape',unit:'mm',format,compress:true});
+      const width=pdf.internal.pageSize.getWidth(),height=pdf.internal.pageSize.getHeight();
+      for(let i=0;i<pages.length;i++){
+        if(win.closed)return;
+        pages.forEach(page=>page.style.display='none');
+        const page=pages[i];
+        page.style.display='block';
+        page.style.width=posterMode?'1430px':'1120px';
+        page.style.minHeight='0';
+        page.style.height='auto';
+        page.style.maxHeight='none';
+        page.style.margin='0';
+        page.style.overflow='visible';
+        page.style.boxShadow='none';
+        page.style.borderRadius='0';
+        status.textContent=`جارٍ تجهيز الصفحة ${i+1} من ${pages.length}…`;
+        const canvas=await win.html2canvas(page,{scale:2,useCORS:true,backgroundColor:'#fff',logging:false,windowWidth:Math.max(win.innerWidth,page.scrollWidth)});
+        const ratio=Math.min(width/canvas.width,height/canvas.height);
+        const w=canvas.width*ratio,h=canvas.height*ratio;
+        if(i)pdf.addPage(format,'landscape');
+        pdf.addImage(canvas.toDataURL('image/jpeg',0.95),'JPEG',(width-w)/2,(height-h)/2,w,h,undefined,'FAST');
+        canvas.width=0;canvas.height=0;
+      }
+      pdf.save(title.replace(/[\\/:*?"<>|]/g,'-')+'.pdf');
       if(!win.closed)status.textContent='اكتمل تنزيل ملف PDF.';
     }catch(err){
       if(!win.closed){status.textContent='تعذّر تنزيل PDF. استخدم زر الطباعة أو Ctrl+P ثم اختر حفظ كملف PDF.';console.error('PDF export failed:',err);}
-    }finally{if(!win.closed)pdfButton.disabled=false;}
+    }finally{
+      if(!win.closed){pages.forEach((page,i)=>{if(original[i]===null)page.removeAttribute('style');else page.setAttribute('style',original[i]);});pdfButton.disabled=false;}
+    }
   };
   show();win.focus();if(downloadNow)pdfButton.click();
 }

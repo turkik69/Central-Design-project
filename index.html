@@ -3759,7 +3759,7 @@ function openKpiModal(){
     <div style="display:flex;gap:8px;align-items:center">
       <button class="btn btn-ghost" id="kpiSlides" style="padding:7px 12px;font-size:13px">${I.chart} عرض البوستر</button>
        <button class="btn btn-ghost" id="kpiPdf" style="padding:7px 12px;font-size:13px">${I.report} بوستر PDF</button>
-      <button class="btn btn-ghost" id="kpiXls" style="padding:7px 12px;font-size:13px">${I.upload} Excel</button>
+      <button class="btn btn-ghost" id="kpiWord" style="padding:7px 12px;font-size:13px">${I.report} Word</button> <button class="btn btn-ghost" id="kpiXls" style="padding:7px 12px;font-size:13px">${I.upload} Excel</button>
       <button class="icon-btn" id="x">${I.close}</button>
     </div></div>`);
   const body=document.createElement('div');body.className='modal-body';
@@ -3775,9 +3775,9 @@ function openKpiModal(){
   }
   fill(); overlay._refresh=fill;
   // تصدير PDF عبر الطباعة (المستخدم يحفظ كـ PDF من حوار الطباعة)
-  modal.querySelector('#kpiSlides').onclick=()=>openSlideDeck('لوحة مؤشرات الأداء',kpiSlides());
+  modal.querySelector('#kpiSlides').onclick=()=>openSlideDeck('لوحة مؤشرات الأداء',kpiSlides(),false,{word:exportKpiWord,excel:exportKpiExcel});
   modal.querySelector('#kpiPdf').onclick=()=>exportKpiPdf();
-  modal.querySelector('#kpiXls').onclick=()=>exportKpiExcel();
+  modal.querySelector('#kpiWord').onclick=()=>exportKpiWord(); modal.querySelector('#kpiXls').onclick=()=>exportKpiExcel();
   modal.querySelector('#x').onclick=()=>{kpiModalOpen=false;overlay.remove();};
   overlay.onclick=(e)=>{if(e.target===overlay){kpiModalOpen=false;overlay.remove();}};
   root.appendChild(overlay);
@@ -3785,8 +3785,15 @@ function openKpiModal(){
 function refreshKpiModal(){ const ov=document.getElementById('kpiOverlay'); if(ov&&ov._refresh) ov._refresh(); }
 
 /* تصدير لوحة المؤشرات إلى PDF عبر نافذة طباعة مخصّصة */
-function exportKpiPdf(){openSlideDeck('لوحة مؤشرات الأداء',kpiSlides(),true);}
+function exportKpiPdf(){openSlideDeck('لوحة مؤشرات الأداء',kpiSlides(),true,{word:exportKpiWord,excel:exportKpiExcel});}
 
+function exportKpiWord(){
+  const html=`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>بوستر مؤشرات الأداء</title><style>${slideDeckStyles()}${kpiPosterStyles()}body{background:#fff;font-family:Arial,sans-serif}.kpi-poster-page{width:100%;margin:0;box-shadow:none}.kpost-indicators{display:table;width:100%;table-layout:fixed;border-spacing:5px}.kpost-indicator{display:table-cell;width:16%;vertical-align:top}.kpost-grid{display:table;width:100%;table-layout:fixed;border-spacing:8px}.kpost-panel{display:block;margin-bottom:9px;page-break-inside:avoid}.kpost-head{background:#16443a;color:#fff}.kpost-head h1{color:#fff}</style></head><body>${kpiPosterHTML()}</body></html>`;
+  const blob=new Blob(['\ufeff'+html],{type:'application/msword;charset=utf-8'});
+  const url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=`بوستر_مؤشرات_الأداء_${kpiPeriod}.doc`;
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);
+}
 /* تصدير لوحة المؤشرات إلى Excel (بيانات جدولية منسّقة) */
 function exportKpiExcel(){
   if(!window.XLSX){ alert('تعذّر تحميل أداة Excel، حاول لاحقاً.'); return; }
@@ -4120,11 +4127,11 @@ function kpiPosterHTML(){
 function kpiSlides(){return [kpiPosterHTML()];}
 
 function kpiPosterStyles(){return `.kpi-poster-page{width:min(98vw,1430px);min-height:0;height:auto;padding:18px;margin:12px auto;overflow:hidden;background:#f7faf7}.kpi-poster-page:before{display:none}.kpost{direction:rtl;font-family:'Tajawal',Arial,sans-serif;color:#153e32}.kpost *{box-sizing:border-box}.kpost-head{background:linear-gradient(125deg,#123e34,#286a53);color:#fff;border-radius:15px;padding:14px 21px;display:flex;justify-content:space-between;align-items:center;border-bottom:5px solid #c8a85a}.kpost-head small{color:#e8cf83;font-size:11px}.kpost-head h1{font-size:25px;color:#fff;margin:3px 0;border:0}.kpost-head p{font-size:12px;color:#e1f0e5;margin:0}.kpost-seal{border:1px solid #ffffff75;border-radius:13px;padding:9px 16px;font-size:18px;font-weight:800;letter-spacing:.05em}.kpost-seal span{display:block;font-size:10px;color:#e8cf83;text-align:center}.kpost-indicators{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin:12px 0}.kpost-indicator{position:relative;min-width:0;border:1px solid #d6e3d8;background:linear-gradient(155deg,#fff 0%,#f6faf7 72%,#e8f0e9 100%);border-radius:13px;padding:13px 13px 10px;box-shadow:0 7px 0 #c8d8c9,0 12px 16px #163c2c1c,inset 0 2px 0 #fff;transform:translateY(-2px)}.kpost-indicator:after{content:'';position:absolute;right:8px;left:8px;bottom:2px;height:3px;background:linear-gradient(90deg,#c7a558,#1f765a);border-radius:3px;opacity:.7}.kpost-indicator>span{position:absolute;left:11px;top:8px;font-size:10px;font-weight:800;color:#b39446}.kpost-indicator b,.kpost-indicator strong,.kpost-indicator small{display:block}.kpost-indicator b{font-size:26px;color:#1b624c;line-height:1.2}.kpost-indicator strong{font-size:11px;margin-top:2px}.kpost-indicator small{font-size:9px;color:#697f70}.kpost-grid{display:grid;grid-template-columns:1.18fr .82fr;gap:10px}.kpost-panel{border:1px solid #d9e5dc;border-radius:13px;padding:12px 14px;background:linear-gradient(155deg,#fff,#fcfdfb);min-width:0;box-shadow:0 5px 0 #d4e0d5,0 10px 16px #183b2b0e,inset 0 1px 0 #fff}.kpost-title{display:flex;align-items:baseline;gap:9px;border-bottom:2px solid #c8a85a;padding-bottom:5px;margin-bottom:8px}.kpost-title>span{font-size:10px;color:#a17d33;font-weight:800;white-space:nowrap}.kpost-title h2{font-size:14px;margin:0;color:#174c3a;border:0}.kpost-title .kd-legend{margin-inline-start:auto}.kpost .kd-trend-svg{height:177px}.kpost-status{display:flex;align-items:center;justify-content:space-evenly;gap:15px;height:177px}.kpost-donut{width:125px;height:125px;min-width:125px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(#277858 0 var(--kd-first),#c4a457 var(--kd-first) var(--kd-second),#d9e5dd var(--kd-second) 100%)}.kpost-donut>div{width:89px;height:89px;display:flex;align-items:center;justify-content:center;flex-direction:column;background:#fff;border-radius:50%}.kpost-donut b{font-size:25px;color:#1a5d48}.kpost-donut small{font-size:10px}.kpost-status p{display:flex;align-items:center;gap:7px;font-size:11px;margin:8px 0}.kpost-status p b{margin-inline-start:auto;padding-inline-start:15px;color:#1b604a}.kpost-dept{margin:8px 0}.kpost-dept>div{display:flex;justify-content:space-between;gap:10px;font-size:11px}.kpost-dept>div span{color:#657c6d}.kpost-dept>i,.kpost-type>i{display:block;height:8px;background:#e5eee6;border-radius:10px;overflow:hidden;margin:4px 0}.kpost-dept em,.kpost-type em{display:block;height:100%;background:linear-gradient(90deg,#c4a457,#217456);border-radius:10px}.kpost-dept small{font-size:9px;color:#657c6d}.kpost-type{display:grid;grid-template-columns:38% 1fr 22px;align-items:center;gap:8px;font-size:10px;margin:9px 0}.kpost-type>i{width:100%}.kpost-type b{color:#1c624b}.kpost-priority-count{background:#eef5ee;border-radius:7px;padding:6px 9px;color:#5b705f;font-size:10px}.kpost-priority-count b{font-size:14px;color:#1e634b}.kpost-priorities{display:grid;grid-template-columns:repeat(2,1fr);gap:5px;margin-top:7px}.kpost-priorities>div{border-inline-start:3px solid #c4a457;background:#f9faf7;border-radius:5px;padding:5px 7px;min-width:0}.kpost-priorities b,.kpost-priorities span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px}.kpost-priorities span{color:#677a6a}.kpost-panel>small{font-size:9px;color:#617765}.kpost-activities{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.kpost-activities>div{text-align:center;background:#f0f6f1;border-radius:8px;padding:9px 4px}.kpost-activities b,.kpost-activities span{display:block}.kpost-activities b{font-size:22px;color:#1c654c}.kpost-activities span{font-size:9px}.kpost-panel>p{font-size:9px;color:#748577;line-height:1.5;margin:8px 0 0}.kpost-foot{display:flex;justify-content:space-between;gap:10px;font-size:9px;color:#6e8375;border-top:1px solid #dbe7de;margin-top:11px;padding:6px 3px 0}@media(max-width:850px){.kpi-poster-page{overflow:auto}.kpost{min-width:1050px}}@page{size:A3 landscape;margin:8mm}@media print{.kpi-poster-page{width:100%;height:281mm;min-height:0;max-height:281mm;margin:0;padding:0;overflow:hidden;break-after:auto;page-break-after:auto;box-shadow:none}.kpost{min-width:0}.kpost-head,.kpost-indicator,.kpost-panel,.kpost-donut{-webkit-print-color-adjust:exact;print-color-adjust:exact}.kpost-indicator{box-shadow:0 4px 0 #c8d8c9,0 6px 8px #163c2c20}.kpost-panel{box-shadow:0 3px 0 #d4e0d5}.kpost-grid{gap:7px}.kpost .kd-trend-svg,.kpost-status{height:145px}.kpost-indicators{margin:9px 0}.kpost-indicator{padding:10px}.kpost-panel{padding:9px 11px}}`;}
-function openSlideDeck(title,slides,downloadNow=false){
+function openSlideDeck(title,slides,downloadNow=false,exports={}){
   const posterMode=slides.length===1&&slides[0].includes('kpi-poster-page');
   const win=window.open('','_blank');
   if(!win){alert('تعذّر فتح العرض. اسمح بالنوافذ المنبثقة لهذا الموقع ثم جرّب مجدداً.');return;}
-  win.document.write(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${reportEsc(title)}</title><style>${slideDeckStyles()}${posterMode?kpiPosterStyles():''}</style></head><body><nav class="deck-toolbar"><button type="button" id="deckPrev">السابق</button><span id="deckCount"></span><button type="button" id="deckNext">التالي</button><button type="button" id="deckPdf">تنزيل PDF</button><button type="button" id="deckPrint" onclick="window.focus(); window.print()">طباعة (Ctrl+P)</button><button type="button" id="deckClose">إغلاق</button><span id="deckStatus" role="status" aria-live="polite"></span></nav><main id="deckExport">${slides.join('')}</main></body></html>`);
+  win.document.write(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${reportEsc(title)}</title><style>${slideDeckStyles()}${posterMode?kpiPosterStyles():''}</style></head><body><nav class="deck-toolbar"><button type="button" id="deckPrev">السابق</button><span id="deckCount"></span><button type="button" id="deckNext">التالي</button><button type="button" id="deckPdf">تنزيل PDF</button>${exports.word?'<button type="button" id="deckWord">تنزيل Word</button>':''}${exports.excel?'<button type="button" id="deckExcel">تنزيل Excel</button>':''}<button type="button" id="deckPrint" onclick="window.focus(); window.print()">طباعة (Ctrl+P)</button><button type="button" id="deckClose">إغلاق</button><span id="deckStatus" role="status" aria-live="polite"></span></nav><main id="deckExport">${slides.join('')}</main></body></html>`);
   win.document.close();
   const pages=[...win.document.querySelectorAll('.lead-slide')];let index=0;
   const show=()=>{pages.forEach((p,i)=>p.style.display=i===index?'block':'none');win.document.getElementById('deckCount').textContent=posterMode?'بوستر واحد':`${index+1} / ${pages.length}`;win.scrollTo(0,0);};
@@ -4132,6 +4139,8 @@ function openSlideDeck(title,slides,downloadNow=false){
   win.document.getElementById('deckNext').onclick=()=>{index=Math.min(pages.length-1,index+1);show();};
   win.document.getElementById('deckClose').onclick=()=>win.close();
   win.addEventListener('keydown',e=>{if(e.key==='ArrowLeft'){index=Math.min(pages.length-1,index+1);show();}if(e.key==='ArrowRight'){index=Math.max(0,index-1);show();}});
+  if(exports.word)win.document.getElementById('deckWord').onclick=exports.word;
+  if(exports.excel)win.document.getElementById('deckExcel').onclick=exports.excel;
   const pdfButton=win.document.getElementById('deckPdf');
   const status=win.document.getElementById('deckStatus');
   const loadPdf=()=>new Promise((resolve,reject)=>{
@@ -4170,7 +4179,7 @@ function openSlideDeck(title,slides,downloadNow=false){
 }
 /* تصدير التقرير PDF عبر نافذة طباعة فيها زرّا طباعة ورجوع */
 function exportReportPdf(selType,periodKind,periodKey){
-  openSlideDeck('تقرير '+reportPeriodSpec(periodKind,periodKey).label,reportSlides(selType,periodKind,periodKey),true);
+  openSlideDeck('تقرير '+reportPeriodSpec(periodKind,periodKey).label,reportSlides(selType,periodKind,periodKey),true,{word:()=>exportReportWord(selType,periodKind,periodKey),excel:()=>exportPeriodExcel(selType,periodKind,periodKey)});
 }
 function exportReportWord(selType,periodKind,periodKey){
   const spec=reportPeriodSpec(periodKind,periodKey),content=buildReportHTML(selType,periodKind,periodKey);
@@ -4259,7 +4268,7 @@ function openReportsModal(){
       const open=()=>{const p=state.projects.find(x=>String(x.id||'')===card.dataset.reportProject);if(p)openProjectOverview(p);};
       card.onclick=open;card.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}};
     });
-    const slide=body.querySelector('#repSlides');if(slide)slide.onclick=()=>openSlideDeck('التقرير الدوري',reportSlides(selType,selPeriodKind,selPeriodKey));
+    const slide=body.querySelector('#repSlides');if(slide)slide.onclick=()=>openSlideDeck('التقرير الدوري',reportSlides(selType,selPeriodKind,selPeriodKey),false,{word:()=>exportReportWord(selType,selPeriodKind,selPeriodKey),excel:()=>exportPeriodExcel(selType,selPeriodKind,selPeriodKey)});
     const pdf=body.querySelector('#repPdf');if(pdf)pdf.onclick=()=>exportReportPdf(selType,selPeriodKind,selPeriodKey);
     const word=body.querySelector('#repWord');if(word)word.onclick=()=>exportReportWord(selType,selPeriodKind,selPeriodKey);
     const excel=body.querySelector('#repExport');if(excel)excel.onclick=()=>exportPeriodExcel(selType,selPeriodKind,selPeriodKey);

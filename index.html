@@ -1234,6 +1234,7 @@ function renderApp(){
         <button class="btn btn-ghost" id="btnTrash">${I.trashbin}<span class="lbl">سلة المحذوفات</span></button>
         <input type="file" id="xlFile" accept=".xlsx,.xls" class="hidden">`:''}
       ${canViewEval()?`<button class="btn btn-ghost" id="btnKpi">${I.chart}<span class="lbl">لوحة المؤشرات</span></button>`:''}
+      ${canViewEval()?`<button class="btn btn-ghost" id="btnEngineerKpi">${I.person}<span class="lbl">مؤشرات المهندسين</span></button>`:''}
       ${canViewReports()?`<button class="btn btn-ghost" id="btnReports">${I.report}<span class="lbl">التقارير الشهرية</span></button>`:''}
       ${canViewReports()?`<button class="btn btn-ghost" id="btnEngSearch">${I.person}<span class="lbl">بحث باسم المهندس</span></button>`:''}
       ${isEngineer()?`<button class="btn btn-ghost" id="btnMine">${I.build}<span class="lbl">مشاريعي</span></button>`:''}
@@ -1258,6 +1259,7 @@ function renderApp(){
   }
   if(canViewEval()){
     const kb=toolbar.querySelector('#btnKpi'); if(kb) kb.onclick=openKpiModal;
+    const ek=toolbar.querySelector('#btnEngineerKpi'); if(ek) ek.onclick=openEngineerKpiModal;
   }
   if(canViewReports()){
     const rb=toolbar.querySelector('#btnReports'); if(rb) rb.onclick=openReportsModal;
@@ -1978,7 +1980,7 @@ function openProjectModal(project, navCtx){
         return (data[key]) ? {...data[key]} : {};   // قسم غير مخوّل ⇒ لا تغيير إطلاقاً
       }
       return {...engObj,
-        status:get(pf+'_status'), notes:get(pf+'_notes'), workLink:(get(pf+'_workLink')||'').trim(),
+        status:get(pf+'_status'), notes:get(pf+'_notes'), delayReason:get(pf+'_delayReason'), workLink:(get(pf+'_workLink')||'').trim(),
         startDate:dateVal(pf,key,'startDate'), endDate:dateVal(pf,key,'endDate'),
         actualDate:actualVal(pf,key), eval:buildEval(pf,key),
         // احتفظ بحالة موافقة تاريخ التسليم كما هي؛ saveProject وحدها تقرّر تغييرها
@@ -2207,6 +2209,8 @@ function deptCard(title,prefixKey,d){
       <div class="inp" style="background:var(--sand-100);display:flex;justify-content:space-between;align-items:center">
         <span>${dmy(d.actualDate)}</span>${deliveryBadge(d.endDate,d.actualDate)}</div>`):''}
     <textarea class="inp" name="${pf}_notes" rows="2" placeholder="ملاحظات…" style="resize:none;margin-top:4px" ${DIS}>${d.notes||''}</textarea>
+    <label class="lbl-sm" style="margin-top:7px">سبب التأخير (إن وجد)</label>
+    <textarea class="inp" name="${pf}_delayReason" rows="2" placeholder="اذكر السبب والإجراء المتخذ" style="resize:vertical" ${DIS}>${reportEsc(d.delayReason||'')}</textarea>
     <label class="lbl-sm" style="margin-top:4px">رابط مسار العمل (مجلّد القسم على الشبكة)</label>
     <input class="inp" name="${pf}_workLink" value="${(d.workLink||'').replace(/"/g,'&quot;')}" placeholder="مثال: \\\\server\\projects\\... أو https://" style="direction:ltr;text-align:left;font-size:12px" ${DIS}>
     ${rateBlock}
@@ -3641,13 +3645,42 @@ function leadershipKpiHTML(){
     <div class="rp-split"><div class="rp-panel"><h3>الأعمال المتأخرة حسب الأولوية الزمنية</h3>${d.overdue.length?d.overdue.slice(0,8).map(x=>`<div class="rp-follow"><b>${esc(x.p.name||'مشروع بلا اسم')}</b><span>${esc(x.label)} · متوقع ${esc(x.sec.endDate)} · ${daysBetween(x.sec.endDate,d.today)} يوم</span></div>`).join(''):'<p class="rp-empty">لا توجد أعمال جارية متأخرة.</p>'}</div><div class="rp-panel"><h3>جودة البيانات والمواعيد القادمة</h3><div class="rp-follow"><b>${d.soon.length} أعمال تستحق خلال 30 يوماً</b><span>تُراجع مع الأقسام قبل موعدها</span></div><div class="rp-follow"><b>${d.decisions.length} مشاريع ذات قرار مطلوب</b><span>من الحقل المسجل في بطاقة المشروع</span></div><div class="rp-follow"><b>${d.highRisk.length} مشاريع عالية المخاطر</b><span>وفق تصنيف المخاطر المسجل</span></div><div class="rp-follow"><b>${d.missing.length} أعمال جارية بلا تاريخ متوقع</b><span>تحتاج استكمال حقل الموعد</span></div><div class="rp-follow"><b>${d.undated.length} أعمال مكتملة بلا تاريخ فعلي</b><span>موعدها المخطط في الشهر الحالي</span></div></div></div>
     <p class="rp-caption">الملخص أعلاه لقطة حالية، بينما مرشح الفترة أدناه يخص مؤشرات أداء الأقسام والمهندسين. المشروع الواحد قد يتضمن أعمالاً في أكثر من قسم.</p></section>`;
 }
+function engineerKpiTable(engs){
+  const esc=reportEsc;
+  return engs.length?`<div class="rp-table-wrap"><table class="slide-table"><thead><tr><th>المهندس</th><th>القسم</th><th>الأعمال</th><th>المنجز</th><th>الآراء الفنية</th><th>الإنجاز</th><th>الالتزام</th><th>التقييم</th></tr></thead><tbody>${engs.map(e=>`<tr><td>${esc(e.name||'—')}</td><td>${esc(DEPT_MAP.find(([k])=>k===e.dept)?.[1]||'—')}</td><td>${e.total}</td><td>${e.done}</td><td>${e.opinionCount||0}</td><td>${e.completion}%</td><td>${e.punctuality==null?'—':e.punctuality+'%'}</td><td>${e.avgRating||'—'}</td></tr>`).join('')}</tbody></table></div>`:'<p class="rp-empty">لا توجد بيانات مهندسين للفترة المختارة.</p>';
+}
+function engineerSlides(){
+  const engs=engineerKpiList(),title=kpiRange(kpiPeriod).label;
+  const contents=[['مؤشرات المهندسين',`<h1>أداء المهندسين</h1><p class="slide-sub">${reportEsc(title)}</p><div class="rp-stats"><div class="rp-stat"><b>${engs.length}</b><strong>مهندسون لديهم أعمال</strong></div><div class="rp-stat"><b>${engs.reduce((n,e)=>n+e.done,0)}</b><strong>أعمال منجزة وآراء فنية</strong></div></div>`,true],['جدول مؤشرات المهندسين',engineerKpiTable(engs)]];
+  return contents.map(([name,html,cover],i)=>slideFrame(name,html,i+1,contents.length,cover));
+}
+function openEngineerKpiModal(){
+  if(document.getElementById('engineerKpiOverlay'))return;
+  const overlay=$(`<div class="overlay" id="engineerKpiOverlay"></div>`);
+  const modal=$(`<div class="modal" style="max-width:1050px"><div class="modal-head"><h2>مؤشرات المهندسين</h2><div style="display:flex;gap:8px"><button class="btn btn-ghost" id="engKpiPdf">${I.report} PDF / شرائح</button><button class="icon-btn" id="x">${I.close}</button></div></div></div>`);
+  const body=document.createElement('div');body.className='modal-body';modal.appendChild(body);overlay.appendChild(modal);
+  function fill(){
+    const engs=engineerKpiList(),label=kpiRange(kpiPeriod).label;
+    const awards=DEPT_MAP.map(([key,dept])=>{
+      const winner=employeeOfMonthInDept(key);
+      return `<div class="rp-dept"><b>${reportEsc(dept)}</b><div><strong style="font-size:16px">${winner?reportEsc(winner.name):'—'}</strong><small>${winner?'أعمال: '+winner.doneCount+' · التزام: '+(winner.punctuality==null?'—':winner.punctuality+'%'):'لا يوجد فائز مؤهل'}</small></div></div>`;
+    }).join('');
+    body.innerHTML=`<style>${reportViewStyles()}</style><section class="rp-report"><div class="rp-heading"><span>${reportEsc(label)}</span><h2>الأداء الفردي والتميّز</h2></div><label class="lbl-sm">فترة القياس</label><select class="inp" id="engPeriod" style="max-width:240px"><option value="all" ${kpiPeriod==='all'?'selected':''}>كل الفترات</option><option value="month" ${kpiPeriod==='month'?'selected':''}>الشهر الحالي</option><option value="quarter" ${kpiPeriod==='quarter'?'selected':''}>الربع الحالي</option><option value="half" ${kpiPeriod==='half'?'selected':''}>النصف الحالي</option><option value="year" ${kpiPeriod==='year'?'selected':''}>السنة الحالية</option></select><div class="rp-stats" style="margin:16px 0"><div class="rp-stat"><b>${engs.length}</b><strong>مهندسون لهم أعمال</strong></div><div class="rp-stat"><b>${engs.reduce((n,e)=>n+e.total,0)}</b><strong>إجمالي الأعمال المحتسبة</strong></div><div class="rp-stat"><b>${engs.reduce((n,e)=>n+e.done,0)}</b><strong>المنجز</strong></div><div class="rp-stat"><b>${engs.reduce((n,e)=>n+(e.opinionCount||0),0)}</b><strong>آراء فنية ضمن المنجز</strong></div></div><h3>تميّز الأقسام</h3><div class="rp-dept-grid">${awards}</div><h3 style="margin-top:20px">تفاصيل المهندسين</h3>${engineerKpiTable(engs)}<p class="rp-caption">كل مرحلة رأي فني مُسندة للمهندس تُحتسب عملاً منجزاً مستقلاً. الالتزام يحتاج تاريخاً متوقعاً وفعلياً.</p>${state.appUser?.role==='admin'?`<div class="rp-panel" style="margin-top:16px"><b>شهادات التميّز</b><select class="inp" id="engCertPeriod" style="max-width:220px;margin:8px"><option value="q1" ${certPeriod==='q1'?'selected':''}>الربع الأول</option><option value="q2" ${certPeriod==='q2'?'selected':''}>الربع الثاني</option><option value="q3" ${certPeriod==='q3'?'selected':''}>الربع الثالث</option><option value="q4" ${certPeriod==='q4'?'selected':''}>الربع الرابع</option><option value="year" ${certPeriod==='year'?'selected':''}>السنة</option></select><button class="btn btn-add" id="engCert">إصدار شهادات الأقسام</button></div>`:''}</section>`;
+    body.querySelector('#engPeriod').onchange=e=>{kpiPeriod=e.target.value;fill();refreshKpiModal();};
+    const cert=body.querySelector('#engCertPeriod');if(cert)cert.onchange=e=>{certPeriod=e.target.value;};
+    const certBtn=body.querySelector('#engCert');if(certBtn)certBtn.onclick=()=>openCertificate();
+  }
+  fill();modal.querySelector('#engKpiPdf').onclick=()=>openSlideDeck('مؤشرات المهندسين',engineerSlides());
+  modal.querySelector('#x').onclick=()=>overlay.remove();overlay.onclick=e=>{if(e.target===overlay)overlay.remove();};root.appendChild(overlay);
+}
 function openKpiModal(){
   if(document.getElementById('kpiOverlay')) return;
   kpiModalOpen=true;
   const overlay=$(`<div class="overlay" id="kpiOverlay"></div>`);
-  const modal=$(`<div class="modal" style="max-width:1100px"><div class="modal-head"><h2>لوحة مؤشرات الأداء</h2>
+  const modal=$(`<div class="modal" style="max-width:1100px"><div class="modal-head" style="flex-wrap:wrap"><h2>لوحة مؤشرات الأداء</h2>
     <div style="display:flex;gap:8px;align-items:center">
-      <button class="btn btn-ghost" id="kpiPdf" style="padding:7px 12px;font-size:13px">${I.report} PDF</button>
+      <button class="btn btn-ghost" id="kpiSlides" style="padding:7px 12px;font-size:13px">${I.chart} عرض شرائح</button>
+       <button class="btn btn-ghost" id="kpiPdf" style="padding:7px 12px;font-size:13px">${I.report} PDF</button>
       <button class="btn btn-ghost" id="kpiXls" style="padding:7px 12px;font-size:13px">${I.upload} Excel</button>
       <button class="icon-btn" id="x">${I.close}</button>
     </div></div>`);
@@ -3668,7 +3701,6 @@ function openKpiModal(){
     const orgPunctual=(onTimeAll+lateAll)?Math.round(onTimeAll/(onTimeAll+lateAll)*100):null;
     const ratedDepts=deptData.filter(d=>d.k.avgRating);
     const orgRating=ratedDepts.length?(ratedDepts.reduce((s,d)=>s+Number(d.k.avgRating),0)/ratedDepts.length).toFixed(1):null;
-    const engs=engineerKpiList();
     const rangeLabel=kpiRange(kpiPeriod).label;
 
     let html=`
@@ -3684,107 +3716,25 @@ function openKpiModal(){
         <span style="font-size:13px;color:var(--oasis-700);font-weight:700;margin-right:auto">${rangeLabel}</span>
       </div>
       ${leadershipKpiHTML()}
-      ${(()=>{
-        const periodTxt = kpiPeriod==='all' ? 'الأداء العام' : rangeLabel;
-        const DEPT_ICON={architectural:'🏛️',structural:'🏗️',services:'🛠️'};
-        const cards = deptData.map(d=>{
-          const w = employeeOfMonthInDept(d.key);
-          if(!w){
-            return `<div style="background:var(--sand-50);border:1px dashed var(--line);color:var(--muted);border-radius:14px;padding:13px 16px;margin-bottom:10px">
-              <div style="font-size:12px;font-weight:700;color:var(--oasis-700)">${DEPT_ICON[d.key]||''} ${d.label} · ${periodTxt}</div>
-              <div style="font-size:12.5px;margin-top:6px">لا يوجد فائز في هذه الفترة — لا توجد أعمال منجزة مؤهّلة.</div>
-            </div>`;
-          }
-          return `<div style="background:linear-gradient(135deg,var(--oasis),var(--oasis-700));color:#fff;border-radius:14px;padding:13px 16px;margin-bottom:10px;position:relative;overflow:hidden">
-            <div style="position:absolute;top:-16px;left:-8px;font-size:80px;opacity:.08">🏆</div>
-            <div style="position:relative">
-              <div style="font-size:11.5px;letter-spacing:.06em;color:#bfe9de;font-weight:700">${DEPT_ICON[d.key]||'🏆'} ${d.label} · ${periodTxt}</div>
-              <div style="font-size:19px;font-weight:800;margin:4px 0 2px">${w.name}</div>
-              <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:#eafaf5;margin-top:5px">
-                <span>الأعمال: <b>${w.doneCount}</b></span>
-                <span>الالتزام: <b>${w.punctuality==null?'—':w.punctuality+'%'}</b></span>
-                <span>التقييم: <b>${w.avgRating?w.avgRating+' ★':'—'}</b></span>
-                <span>الدرجة: <b>${w.score}%</b></span>
-              </div>
-            </div>
-          </div>`;
-        });
-        return `<h3 style="font-size:14px;color:var(--oasis-700);margin-bottom:10px">🏆 الفائز لكل قسم — ${periodTxt}</h3>
-          <div style="margin-bottom:12px">${cards.join('')}</div>`;
-      })()}
-      ${state.appUser?.role==='admin' ? `
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fdf4e3;border:1px solid #ead9b5;border-radius:12px;padding:12px;margin-bottom:16px">
-        <label class="lbl-sm" style="margin:0;font-weight:700;color:#8a6d2f">🏆 شهادات التميّز — فترة مستقلة:</label>
-        <select class="inp" id="certPeriodSel" style="width:auto;min-width:130px">
-          <option value="q1" ${certPeriod==='q1'?'selected':''}>الربع الأول</option>
-          <option value="q2" ${certPeriod==='q2'?'selected':''}>الربع الثاني</option>
-          <option value="q3" ${certPeriod==='q3'?'selected':''}>الربع الثالث</option>
-          <option value="q4" ${certPeriod==='q4'?'selected':''}>الربع الرابع</option>
-          <option value="year" ${certPeriod==='year'?'selected':''}>سنوية (كل الأرباع)</option>
-        </select>
-        <button class="btn btn-add" id="kpiCert" style="padding:7px 14px;font-size:13px;margin-right:auto">إصدار شهادات الأقسام</button>
-      </div>` : ''}
-      <h3 style="font-size:15px;color:var(--oasis-700);margin-bottom:12px">أداء الدائرة العام</h3>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
-        ${statCard(projTotal,'إجمالي المشاريع')}
-        ${statCard(projDone,'مشاريع مكتملة','#1f5d4c')}
-        ${statCard(orgRating?orgRating+' ★':'—','متوسط التقييم','#b8860b')}
-        ${statCard(orgPunctual==null?'—':orgPunctual+'%','الالتزام بالوقت','#3b6ea5')}
-      </div>
-      <div style="display:flex;justify-content:space-around;gap:10px;background:var(--sand-50);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:22px;flex-wrap:wrap">
-        ${donutSVG(orgCompletion,'#1f5d4c','نسبة الإنجاز','المكتمل ÷ الإجمالي')}
-        ${donutSVG(orgPunctual,'#3b6ea5','الالتزام بالوقت','المسلَّم في موعده')}
-        ${donutSVG(orgRating?Math.round(orgRating/5*100):null,'#b8860b','مستوى الجودة','من التقييمات')}
-      </div>
-
-      <h3 style="font-size:15px;color:var(--oasis-700);margin-bottom:12px">مؤشرات الأقسام</h3>
-      <div style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:10px">
-        <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">نسبة الإنجاز لكل قسم</div>
-        ${deptData.map(d=>barRow(d.label,d.k.completion,'#1f5d4c')).join('')}
-      </div>
-      <div style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:22px">
-        <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">الالتزام بالوقت لكل قسم</div>
-        ${deptData.map(d=>barRow(d.label,d.k.punctuality,'#3b6ea5')).join('')}
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:24px">
-        ${deptData.map(d=>`<div style="background:var(--sand-50);border:1px solid var(--line);border-radius:12px;padding:12px;text-align:center">
-            <div style="font-weight:700;color:var(--oasis-700);font-size:13px;margin-bottom:6px">${d.label}</div>
-            <div style="font-size:12px;color:var(--muted)">قائم: ${d.k.wip} · منجز: ${d.k.done}</div>
-            <div style="font-size:12px;color:var(--muted)">التقييم: ${d.k.avgRating?d.k.avgRating+' ★':'—'}</div>
-            <div style="font-size:12px;color:var(--muted)">متوسط التأخير: ${d.k.avgDelay?d.k.avgDelay+' يوم':'—'}</div>
-          </div>`).join('')}
-      </div>
-
-      <h3 style="font-size:15px;color:var(--oasis-700);margin-bottom:12px">مؤشرات المهندسين</h3>
-      ${engs.length? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
-        <thead><tr style="background:var(--oasis);color:#fff">
-          <th style="padding:9px;text-align:right">المهندس</th><th style="padding:9px">الأعمال</th><th style="padding:9px">المنجز</th><th style="padding:9px">منها آراء فنية</th><th style="padding:9px">الإنجاز</th><th style="padding:9px">الالتزام</th><th style="padding:9px">التقييم</th>
-        </tr></thead><tbody>
-        ${engs.map((e,i)=>`<tr style="background:${i%2?'var(--sand-50)':'#fff'};border-bottom:1px solid var(--line)">
-          <td style="padding:9px;text-align:right;font-weight:600">${e.name}</td>
-          <td style="padding:9px;text-align:center">${e.total}</td>
-          <td style="padding:9px;text-align:center">${e.done}</td>
-          <td style="padding:9px;text-align:center;color:#8a6d2f;font-weight:700">${e.opinionCount||0}</td>
-          <td style="padding:9px;text-align:center;font-weight:700;color:#1f5d4c">${e.completion}%</td>
-          <td style="padding:9px;text-align:center;color:#3b6ea5">${e.punctuality==null?'—':e.punctuality+'%'}</td>
-          <td style="padding:9px;text-align:center;color:#b8860b">${e.avgRating?e.avgRating+' ★':'—'}</td>
-        </tr>`).join('')}
-        </tbody></table></div>`
-        : '<div style="text-align:center;color:var(--muted);padding:20px">لا توجد بيانات مهندسين بعد.</div>'}
-
-      <p style="font-size:11px;color:var(--muted);margin-top:16px;line-height:1.7">
-        تُحتسب المؤشرات تلقائياً من حالات الأقسام وتواريخ التسليم والتقييمات. «الالتزام بالوقت» = نسبة الأقسام المسلَّمة في موعدها من إجمالي المسلَّمة.
-        كما تُحتسب كل مرحلة رأي فني يقدّمها المهندس كعمل منجَز مستقل ضمن رصيده (لِما تتطلبه من جهد ووقت)؛ وعمود «منها آراء فنية» يبيّن عددها.</p>`;
+<section class="rp-report"><div class="rp-heading"><span>مؤشر أداء الدائرة · ${reportEsc(rangeLabel)}</span><h2>إنجاز الأعمال وجودة التسليم</h2></div>
+        <div class="rp-stats">
+          <div class="rp-stat"><b>${allDone} / ${allTotal}</b><strong>أعمال الأقسام المنجزة</strong><small>ضمن فترة القياس</small></div>
+          <div class="rp-stat"><b>${orgCompletion}%</b><strong>نسبة الإنجاز</strong><small>من الأعمال المدرجة في الفترة</small></div>
+          <div class="rp-stat"><b>${orgPunctual==null?'—':orgPunctual+'%'}</b><strong>الالتزام بالمواعيد</strong><small>${onTimeAll} في الموعد من ${onTimeAll+lateAll} تسليم له تاريخان</small></div>
+          <div class="rp-stat"><b>${orgRating?orgRating+' / 5':'—'}</b><strong>متوسط تقييم الأقسام</strong><small>للأقسام ذات تقييم مسجل</small></div>
+        </div>
+        <div class="rp-insight"><b>محفظة الدائرة الحالية</b><p>إجمالي المشاريع المسجلة: ${projTotal} · المشاريع المكتملة: ${projDone}. هذان العددان لقطة عامة ولا يتغيران عند اختيار فترة أداء الأقسام.</p></div>
+        <div class="rp-dept-grid" style="margin-top:16px">${deptData.map(d=>`<div class="rp-dept"><b>${reportEsc(d.label)}</b><div><strong>${d.k.completion}%</strong><small>إنجاز ${d.k.done} من ${d.k.total}</small></div><div><strong>${d.k.punctuality==null?'—':d.k.punctuality+'%'}</strong><small>الالتزام بالموعد</small></div><div class="rp-track"><i style="width:${d.k.completion}%"></i></div><p style="font-size:11px;color:var(--muted)">قيد العمل: ${d.k.wip} · قيد الانتظار: ${d.k.waiting}<br>تأخرت عند التسليم: ${d.k.late} · متوسط التأخير: ${d.k.avgDelay||'—'} يوم<br>متوسط التقييم: ${d.k.avgRating||'—'} / 5</p></div>`).join('')}</div>
+        <p class="rp-caption">نسبة الإنجاز = أعمال الأقسام المكتملة ÷ أعمال الأقسام المدرجة في الفترة. الالتزام = ما سُلّم في أو قبل الموعد ÷ التسليمات التي لها تاريخ متوقع وفعلي. يستند مرشح الفترة إلى تاريخ القسم الفعلي ثم المتوقع ثم الاستلام بحسب المتاح.</p>
+      </section>
+      <p class="rp-caption">تجد مؤشرات المهندسين والشهادات في قائمة «مؤشرات المهندسين» المستقلة.</p>`;
     body.innerHTML=html;
     const ps=body.querySelector('#kpiPeriodSel');
     if(ps) ps.onchange=()=>{ kpiPeriod=ps.value; fill(); };
-    const cps=body.querySelector('#certPeriodSel');
-    if(cps) cps.onchange=()=>{ certPeriod=cps.value; fill(); };
-    const cb=body.querySelector('#kpiCert');
-    if(cb) cb.onclick=()=>openCertificate();
   }
   fill(); overlay._refresh=fill;
   // تصدير PDF عبر الطباعة (المستخدم يحفظ كـ PDF من حوار الطباعة)
+  modal.querySelector('#kpiSlides').onclick=()=>openSlideDeck('لوحة مؤشرات الأداء',kpiSlides());
   modal.querySelector('#kpiPdf').onclick=()=>exportKpiPdf();
   modal.querySelector('#kpiXls').onclick=()=>exportKpiExcel();
   modal.querySelector('#x').onclick=()=>{kpiModalOpen=false;overlay.remove();};
@@ -3794,55 +3744,7 @@ function openKpiModal(){
 function refreshKpiModal(){ const ov=document.getElementById('kpiOverlay'); if(ov&&ov._refresh) ov._refresh(); }
 
 /* تصدير لوحة المؤشرات إلى PDF عبر نافذة طباعة مخصّصة */
-function exportKpiPdf(){
-  const src=document.getElementById('kpiBody');
-  if(!src){ alert('افتح اللوحة أولاً.'); return; }
-  const today=new Date();
-  const dStr=`${String(today.getDate()).padStart(2,'0')}/${String(today.getMonth()+1).padStart(2,'0')}/${today.getFullYear()}`;
-  const reportHeader=(selType==='projects'||selType==='all')?'':`<div class="hd"><div><h1>التقرير الشهري — ${reportEsc(monthLabelStd(selMonth))}</h1><div class="sub">نظام مشاريع التصميم المركزي — بلدية مسقط</div></div><div class="sub">تاريخ التصدير: ${dStr}</div></div>`;
-  const win=window.open('','_blank');
-  if(!win){ alert('فضلاً اسمح بالنوافذ المنبثقة لتصدير PDF.'); return; }
-  win.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>لوحة مؤشرات الأداء</title>
-    <style>
-      @page{size:A4;margin:14mm}
-      *{box-sizing:border-box}
-      body{font-family:'Tajawal',Arial,sans-serif;color:#16201e;margin:0;padding:0 0 90px}
-      :root{--oasis:#1f5d4c;--oasis-700:#16443a;--line:#e4e0d6;--sand-50:#f7f4ee;--sand-100:#efeae0;--muted:#6b6357}
-      .hd{background:#16443a;color:#fff;padding:18px 22px;border-radius:12px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center}
-      .hd h1{margin:0;font-size:19px}
-      .hd .sub{font-size:12px;color:#bfe9de}
-      table{width:100%;border-collapse:collapse}
-      svg{max-width:100%}
-      h3{color:var(--oasis-700)}
-      .page-pad{padding:0 14px}
-      /* شريط أدوات ثابت لا يظهر في الطباعة */
-      .toolbar{position:fixed;top:0;left:0;right:0;background:#16443a;display:flex;gap:10px;justify-content:center;align-items:center;padding:12px;z-index:99;box-shadow:0 4px 14px rgba(0,0,0,.2)}
-      .toolbar button{font-family:'Tajawal',Arial,sans-serif;font-size:14px;font-weight:700;border:none;border-radius:9px;padding:10px 20px;cursor:pointer}
-      .b-print{background:#fff;color:#16443a}
-      .b-back{background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.6)}
-      .spacer{height:66px}
-      @media print{ .toolbar,.spacer{display:none!important} body{padding:0} }
-    </style></head><body>
-    <div class="toolbar">
-      <button class="b-print" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
-      <button class="b-back" onclick="window.close()">رجوع للبرنامج ✕</button>
-    </div>
-    <div class="spacer"></div>
-    <div class="page-pad">
-      <div class="hd"><div><h1>لوحة مؤشرات الأداء</h1><div class="sub">نظام مشاريع التصميم المركزي — بلدية مسقط</div></div>
-        <div class="sub">تاريخ التصدير: ${dStr}</div></div>
-      ${src.innerHTML}
-    </div>
-    <script>
-      // لو تعذّر إغلاق النافذة (بعض المتصفحات)، نرجع للخلف
-      document.querySelector('.b-back').addEventListener('click',function(){
-        setTimeout(function(){ try{ window.close(); }catch(e){} if(!window.closed){ history.back(); } }, 60);
-      });
-    <\/script>
-    </body></html>`);
-  win.document.close();
-  win.focus();
-}
+function exportKpiPdf(){openSlideDeck('لوحة مؤشرات الأداء',kpiSlides(),true);}
 
 /* تصدير لوحة المؤشرات إلى Excel (بيانات جدولية منسّقة) */
 function exportKpiExcel(){
@@ -3967,9 +3869,21 @@ function reportProjectSection(title,items,empty){
   }).join(''):`<p class="rp-empty">${esc(empty||'لا توجد بيانات مسجلة.')}</p>`}</section>`;
 }
 function reportProjectDossier(p){
-  const esc=reportEsc;
-  const steps=DEPT_MAP.map(([key,label])=>({label,sec:p[key]})).filter(x=>x.sec&&((x.sec.status&&x.sec.status!=='قيد الانتظار')||x.sec.endDate||x.sec.startDate||x.sec.engineer||x.sec.engineers?.length));
-  return `<article class="rp-dossier"><div class="rp-dossier-head"><div><strong>${esc(p.name||'مشروع بلا اسم')}</strong><div class="rp-meta">${esc(p.projectNo||'بلا رقم')} · ${esc(p.requestingEntity||'جهة غير محددة')} · ${esc(p.customType||p.type||'نوع غير محدد')}</div></div><span class="rp-badge">${esc(isEffectivelyDone(p)?'مكتمل':p.overallStatus||'قيد المتابعة')}${p.riskLevel?' · '+esc(p.riskLevel):''}</span></div><div class="rp-grid"><span>بداية المشروع: <b>${esc(p.startDate||'—')}</b></span><span>التسليم المخطط: <b>${esc(p.endDate||'—')}</b></span>${p.area?`<span>المساحة: <b>${esc(p.area)}</b></span>`:''}${p.cost?`<span>التكلفة: <b>${esc(p.cost)} ر.ع</b></span>`:''}</div>${p.executiveSummary?`<div class="rp-note"><b>الملخص:</b> ${esc(p.executiveSummary)}</div>`:''}${p.blocker?`<div class="rp-note"><b>العوائق:</b> ${esc(p.blocker)}</div>`:''}${p.nextAction?`<div class="rp-note"><b>الخطوة التالية:</b> ${esc(p.nextAction)}</div>`:''}${p.decisionRequired?`<div class="rp-decision"><b>القرار المطلوب:</b> ${esc(p.decisionRequired)}</div>`:''}<div class="rp-milestones">${steps.length?steps.map(({label,sec})=>`<div><b>${esc(label)}</b><span>${esc(sec.status||'قيد الانتظار')}</span><small>متوقع ${esc(sec.endDate||'—')} · فعلي ${esc(sec.actualDate||'—')}</small></div>`).join(''):'<p class="rp-empty">لم تُسند أعمال الأقسام بعد.</p>'}</div></article>`;
+  const esc=reportEsc, today=reportToday();
+  const stages=DEPT_MAP.map(([key,label])=>{
+    const sec=p[key]||{},st=sec.status||'قيد الانتظار';
+    const engineer=Array.isArray(sec.engineers)&&sec.engineers.length?sec.engineers.map(e=>e.name||e.username).filter(Boolean).join('، '):sec.engineer||'—';
+    const late=st==='قيد العمل'&&sec.endDate&&sec.endDate<today;
+    const days=late?daysBetween(sec.endDate,today):0;
+    const deliveredLate=st==='مكتمل'&&sec.endDate&&sec.actualDate&&sec.actualDate>sec.endDate;
+    const badge=late?`متأخر ${days} يوم`:deliveredLate?`سُلّم بعد الموعد ${daysBetween(sec.endDate,sec.actualDate)} يوم`:st;
+    return `<div class="rp-stage ${late?'rp-stage-late':''}"><div class="rp-stage-title"><b>${esc(label)}</b><span>${esc(badge)}</span></div><p>المهندس: <strong>${esc(engineer)}</strong></p><div class="rp-stage-dates"><span>استلام: ${esc(sec.startDate||'—')}</span><span>متوقع: ${esc(sec.endDate||'—')}</span><span>فعلي: ${esc(sec.actualDate||'—')}</span></div>${sec.delayReason?`<div class="rp-delay"><b>سبب التأخير:</b> ${esc(sec.delayReason)}</div>`:''}${sec.notes?`<div class="rp-stage-note">ملاحظات: ${esc(sec.notes)}</div>`:''}</div>`;
+  }).join('');
+  const status=isEffectivelyDone(p)?'مكتمل':p.overallStatus||'قيد المتابعة';
+  const designStages=[...(Array.isArray(p.ideaStages)?p.ideaStages.map((x,i)=>({title:'مرحلة الفكرة '+(x.stage||i+1),date:x.date,notes:x.notes})):[]),...(Array.isArray(p.opinionStages)?p.opinionStages.map((x,i)=>({title:'الرأي الفني '+(i+1),date:x.date,notes:x.notes})):[])];
+  const stageHistory=designStages.length?`<div class="rp-note"><b>مراحل التصميم والرأي الفني</b>${designStages.map(x=>`<p>${esc(x.title)} · ${esc(x.date||'—')} — ${esc(x.notes||'—')}</p>`).join('')}</div>`:'';
+  const summary=[['رقم المشروع',p.projectNo],['نوع المشروع',p.customType||p.type],['الجهة الطالبة',p.requestingEntity],['المساحة',p.area],['التكلفة (ر.ع)',p.cost],['الاستلام العام',p.startDate],['التسليم العام',p.endDate]];
+  return `<article class="rp-dossier"><div class="rp-dossier-head"><div><div class="rp-kicker">ملف المشروع</div><strong>${esc(p.name||'مشروع بلا اسم')}</strong></div><span class="rp-badge">${esc(status)}${p.riskLevel?' · مخاطر '+esc(p.riskLevel):''}</span></div><div class="rp-facts">${summary.map(([k,v])=>`<div><small>${k}</small><b>${esc(v||'—')}</b></div>`).join('')}</div>${p.executiveSummary?`<div class="rp-note"><b>ملخص التصميم:</b> ${esc(p.executiveSummary)}</div>`:''}<div class="rp-stage-grid">${stages}</div>${stageHistory}<div class="rp-management">${p.blocker?`<div><b>العوائق العامة</b><p>${esc(p.blocker)}</p></div>`:''}${p.nextAction?`<div><b>الخطوة التالية</b><p>${esc(p.nextAction)}</p></div>`:''}${p.decisionRequired?`<div class="rp-decision"><b>القرار المطلوب</b><p>${esc(p.decisionRequired)}</p></div>`:''}</div></article>`;
 }
 function buildReportHTML(selType,selMonth){
   const esc=reportEsc,label=monthLabelStd(selMonth),d=reportProjectData(selMonth);
@@ -3981,18 +3895,18 @@ function buildReportHTML(selType,selMonth){
     const max=Math.max(1,...d.trend.map(t=>t.count));
     const attention=[...d.overdue.slice(0,6),...d.missing.slice(0,3)];
     const totalEntities=sorted(d.byEntity).slice(0,6);
-    const dossiers=state.projects.filter(p=>d.activeProjects.includes(p)||d.done.some(x=>x.p===p));
+    const dossiers=state.projects.slice().sort((a,b)=>{
+      const priority=p=>d.overdue.filter(x=>x.p===p).length*4+(p.riskLevel==='مرتفع'?2:0)+(p.decisionRequired?1:0);
+      return priority(b)-priority(a)||String(a.name||'').localeCompare(String(b.name||''),'ar');
+    });
     out+=`<div class="rp-report"><header class="rp-cover"><div class="rp-kicker">بلدية مسقط · دائرة التصميم المركزي</div><h1>التقرير القيادي للمشاريع</h1><p>${esc(label)} · متابعة الإنجاز ومحفظة المشاريع</p><div class="rp-cover-foot"><span>تاريخ الاستخراج: ${esc(d.today)}</span><span>مصدر المؤشرات: سجلات المشاريع والأقسام في المنصة</span></div></header>
       <section class="rp-section"><div class="rp-heading"><span>01 / الملخص التنفيذي</span><h2>ما الذي تحقق، وما الذي يحتاج المتابعة؟</h2></div><div class="rp-stats">${stat(d.done.length,'تسليمات الشهر','أعمال الأقسام بتاريخ فعلي')}${stat(d.activeProjects.length,'مشاريع نشطة','لقطة للحالة الحالية')}${stat(d.overdue.length,'أعمال متأخرة','تجاوزت الموعد المتوقع')}${stat(d.soon.length,'استحقاق قريب','خلال 30 يوماً')}</div>
       <div class="rp-insight"><b>قراءة سريعة</b><p>سُجّل ${d.done.length} تسليم فعلي خلال ${esc(label)} عبر ${new Set(d.done.map(x=>x.p)).size} مشروع. يوجد حالياً ${d.overdue.length} عمل قسم متأخر و${d.missing.length} عمل جارٍ بلا موعد تسليم. تتطلب ${d.decisions.length} مشاريع نشطة قراراً مدوناً، وصُنفت ${d.highRisk.length} مشاريع عالية المخاطر. ${d.undated.length?`تحتاج ${d.undated.length} أعمال مكتملة إلى استكمال تاريخ التسليم الفعلي.`:'تواريخ التسليم الفعلي للأعمال المكتملة ذات الموعد المخطط في هذا الشهر مكتملة.'}</p></div></section>
       <section class="rp-section"><div class="rp-heading"><span>02 / حركة الإنجاز</span><h2>ستة أشهر من التسليمات الفعلية</h2></div><div class="rp-trend">${d.trend.map(t=>`<div class="rp-trend-col"><b>${t.count}</b><div><i style="height:${t.count?Math.max(8,Math.round(t.count/max*100)):0}%"></i></div><small>${esc(monthLabelStd(t.month))}</small></div>`).join('')}</div><p class="rp-caption">عدد أعمال الأقسام التي لها تاريخ تسليم فعلي في كل شهر؛ هذه أعداد، وليست نسبة تقدم تقديرية.</p></section>
       <section class="rp-section"><div class="rp-heading"><span>03 / أداء الأقسام</span><h2>الإنجاز والعبء الحالي</h2></div><div class="rp-dept-grid">${d.byDept.map(x=>`<div class="rp-dept"><b>${esc(x.label)}</b><div><strong>${x.done}</strong><small>سُلّم في الشهر</small></div><div><strong>${x.active}</strong><small>جارٍ حالياً</small></div><div class="rp-dept-alert">${x.overdue} متأخر</div></div>`).join('')}</div><p class="rp-caption">الالتزام بمواعيد تسليمات الشهر: <b>${punctual}</b> (${d.onTime} في الموعد من ${d.onTime+d.lateDone} تسليم له موعد متوقع). غياب الموعد المتوقع مستبعد من المقام.</p></section>
       <section class="rp-section"><div class="rp-heading"><span>04 / توزيع المحفظة</span><h2>أنواع المشاريع والجهات الطالبة</h2></div><div class="rp-split"><div class="rp-panel"><h3>حسب نوع المشروع</h3>${reportBars(sorted(d.byType).slice(0,8),d.activeProjects.length)}</div><div class="rp-panel"><h3>حسب الجهة الطالبة</h3>${reportBars(totalEntities,d.activeProjects.length)}</div></div></section>
-      <section class="rp-section"><div class="rp-heading"><span>05 / أولويات المتابعة</span><h2>المواعيد والتوثيق</h2></div><div class="rp-split"><div class="rp-panel"><h3>تجاوزت موعد التسليم</h3>${d.overdue.length?d.overdue.slice(0,8).map(x=>`<div class="rp-follow"><b>${esc(x.p.name||'مشروع بلا اسم')}</b><span>${esc(x.label)} · ${esc(x.sec.endDate)} · ${daysBetween(x.sec.endDate,d.today)} يوم تأخير</span></div>`).join(''):'<p class="rp-empty">لا توجد أعمال جارية متأخرة.</p>'}</div><div class="rp-panel"><h3>خلال 30 يوماً / بلا موعد</h3><div class="rp-follow"><b>${d.soon.length} أعمال قريبة</b><span>${d.missing.length} أعمال جارية تحتاج تاريخاً متوقعاً</span></div>${d.soon.slice(0,6).map(x=>`<div class="rp-follow"><b>${esc(x.p.name||'مشروع بلا اسم')}</b><span>${esc(x.label)} · ${esc(x.sec.endDate)}</span></div>`).join('')}</div></div></section>
-      <section class="rp-section"><div class="rp-heading"><span>06 / متطلبات القيادة</span><h2>القرارات والمخاطر المسجلة</h2></div><div class="rp-split"><div class="rp-panel"><h3>قرارات مطلوبة · ${d.decisions.length}</h3>${d.decisions.length?d.decisions.map(p=>`<div class="rp-follow"><b>${esc(p.name||'مشروع بلا اسم')}</b><span>${esc(p.decisionRequired)}</span></div>`).join(''):'<p class="rp-empty">لا توجد قرارات مطلوبة مدونة.</p>'}</div><div class="rp-panel"><h3>مخاطر مرتفعة · ${d.highRisk.length}</h3>${d.highRisk.length?d.highRisk.map(p=>`<div class="rp-follow"><b>${esc(p.name||'مشروع بلا اسم')}</b><span>${esc(p.blocker||'لم يُدوّن سبب أو عائق.')}</span></div>`).join(''):'<p class="rp-empty">لا توجد مشاريع نشطة مصنفة عالية المخاطر.</p>'}</div></div></section>
-      ${reportProjectSection('07 / التسليمات الفعلية للشهر',d.done,'لا توجد تسليمات فعلية مسجلة لهذا الشهر.')}
-      ${reportProjectSection('08 / أعمال مكتملة تحتاج توثيق تاريخ التسليم',d.undated,'لا توجد أعمال في هذه الفئة.')}
-      <section class="rp-section"><div class="rp-heading"><span>09 / ملف المشاريع</span><h2>تفاصيل المشاريع ومراحل الأقسام</h2></div><p class="rp-caption">المشاريع النشطة حالياً أو التي شهدت تسليماً فعلياً خلال الشهر المختار؛ يظهر المشروع مرة واحدة، مع حالة كل قسم مسند.</p>${dossiers.length?dossiers.map(reportProjectDossier).join(''):'<p class="rp-empty">لا توجد مشاريع مطابقة.</p>'}</section>
+<section class="rp-section"><div class="rp-heading"><span>05 / أولويات المتابعة</span><h2>المواعيد والقرارات</h2></div><div class="rp-stats">${stat(d.overdue.length,'تجاوز الموعد','أعمال أقسام جارية')}${stat(d.soon.length,'تستحق قريباً','خلال 30 يوماً')}${stat(d.decisions.length,'قرارات مطلوبة','مشاريع نشطة')}${stat(d.highRisk.length,'مخاطر مرتفعة','بحسب التصنيف المسجل')}</div><p class="rp-caption">يظهر سبب التأخير والقرار المطلوب داخل ملف المشروع نفسه. الأعمال الجارية بلا موعد متوقع: ${d.missing.length}. الأعمال المكتملة بلا تاريخ فعلي وموعدها في الشهر: ${d.undated.length}.</p></section>
+      <section class="rp-section"><div class="rp-heading"><span>06 / محفظة المشاريع</span><h2>كل مشروع مرة واحدة، بجميع أقسامه</h2></div><p class="rp-caption">مرتبة حسب الحاجة للمتابعة: المتأخرة ثم عالية المخاطر ثم المشاريع الأخرى. تشمل جميع المشاريع المسجلة، بما فيها المكتملة والمتوقفة، وتظهر الحالة بوضوح داخل كل ملف.</p>${dossiers.length?dossiers.map(reportProjectDossier).join(''):'<p class="rp-empty">لا توجد مشاريع مسجلة.</p>'}</section>
       <footer class="rp-method"><b>منهجية القراءة</b><p>تسليمات الشهر تُنسب إلى تاريخ التسليم الفعلي للقسم. تأخر العمل الجاري يُقاس إلى تاريخ استخراج التقرير. المشاريع النشطة والعبء والمواعيد القريبة لقطة حالية، ولا تعيد بناء وضع شهر سابق. وحدة العد في أعمال الأقسام قد تتكرر للمشروع الواحد؛ لذلك تُعرض المشاريع الفريدة بصورة مستقلة. المخاطر والقرارات والملخصات تظهر فقط إذا سُجلت في بطاقة المشروع؛ غيابها لا يعني عدم وجودها. البيانات الناقصة لا تُقدّر تلقائياً.</p></footer></div>`;
   }
   const table=(heads,rows,empty)=>rows.length?`<div class="rp-table-wrap"><table><thead><tr>${heads.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:`<p class="rp-empty">${empty}</p>`;
@@ -4019,29 +3933,79 @@ function reportDocStyles(){
     tr:nth-child(even) td{background:#f5f7f5}
     .empty{color:#888;font-size:12.5px;padding:6px 0}`;
 }
-function reportViewStyles(){return ".rp-report{color:#19342c;line-height:1.55}.rp-cover{background:linear-gradient(120deg,#123f35 0%,#1f5d4c 72%,#317561 100%);color:#fff;border-radius:18px;padding:30px;min-height:178px;position:relative;overflow:hidden;margin-bottom:22px}.rp-cover:after{content:'';position:absolute;width:200px;height:200px;border:30px solid rgba(210,182,110,.19);border-radius:50%;left:-70px;top:-100px}.rp-kicker{font-size:12px;color:#dfc77e;font-weight:800;letter-spacing:.05em}.rp-cover h1{font-size:30px;color:#fff;margin:14px 0 2px;border:0}.rp-cover p{color:#deefe7;font-size:15px;margin:0}.rp-cover-foot{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:30px;border-top:1px solid rgba(255,255,255,.3);padding-top:10px;font-size:11px;color:#e8f3ed}.rp-section{margin:24px 0;break-inside:auto}.rp-heading{margin-bottom:13px}.rp-heading>span{color:#a37a27;font-size:11px;font-weight:800;letter-spacing:.04em}.rp-heading h2{color:#16443a;font-size:21px;margin:3px 0 0;border:0}.rp-section>h3{font-size:17px;color:#16443a;border-bottom:2px solid #c9a24b;padding-bottom:7px}.rp-count{font-size:12px;background:#e7f2eb;color:#1f5d4c;border-radius:99px;padding:3px 8px;margin-inline-start:7px}.rp-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.rp-stat{background:#f7f6f1;border:1px solid #dce7df;border-radius:13px;padding:15px;min-height:99px;display:flex;flex-direction:column}.rp-stat b{font-size:29px;color:#1f5d4c;line-height:1.1}.rp-stat strong{font-size:12px;margin-top:5px}.rp-stat small{color:#728078;font-size:10px}.rp-insight{border-inline-start:4px solid #c9a24b;background:#f7f6f1;padding:14px 17px;margin-top:13px;border-radius:11px}.rp-insight b{color:#16443a}.rp-insight p{font-size:13px;margin:5px 0 0;line-height:1.8}.rp-trend{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;align-items:end;background:#f8f9f6;border:1px solid #e2e9e3;border-radius:14px;padding:17px}.rp-trend-col{text-align:center;min-width:0}.rp-trend-col>b{font-size:14px;color:#16443a}.rp-trend-col>div{height:105px;display:flex;align-items:end;justify-content:center;border-bottom:1px solid #b8cabd;margin:4px 0}.rp-trend-col i{display:block;width:60%;background:linear-gradient(#c9a24b,#1f5d4c);border-radius:7px 7px 0 0;min-width:12px}.rp-trend-col small{font-size:10px;color:#576c61;white-space:normal}.rp-caption{font-size:11px;line-height:1.7;color:#617369;margin:9px 0}.rp-dept-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.rp-dept,.rp-panel{border:1px solid #dce5de;border-radius:13px;padding:15px;background:#fff}.rp-dept>b{display:block;color:#16443a;margin-bottom:10px;font-size:13px}.rp-dept>div:not(.rp-dept-alert){display:inline-flex;flex-direction:column;min-width:45%;padding:5px 0}.rp-dept strong{font-size:23px;color:#1f5d4c;line-height:1}.rp-dept small{font-size:10px;color:#63776a}.rp-dept-alert{border-top:1px solid #e2e8e1;padding-top:8px;color:#a54032;font-size:12px;font-weight:700}.rp-split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.rp-panel h3{color:#16443a;font-size:14px;margin:0 0 10px;border:0}.rp-bar{margin:10px 0}.rp-bar-label{display:flex;justify-content:space-between;gap:8px;font-size:12px}.rp-track{height:7px;background:#e9efea;border-radius:8px;margin-top:4px;overflow:hidden}.rp-track i{display:block;height:100%;background:#b99543;border-radius:8px}.rp-follow{padding:8px 0;border-bottom:1px solid #e5eae5;font-size:12px}.rp-follow b,.rp-follow span{display:block}.rp-follow span{color:#65786c}.rp-item,.rp-dossier{background:#fff;border:1px solid #d9e2de;border-inline-start:4px solid #c9a24b;border-radius:12px;margin:9px 0;padding:13px;break-inside:avoid;page-break-inside:avoid}.rp-item-head,.rp-dossier-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.rp-item-head strong,.rp-dossier-head strong{font-size:15px}.rp-badge{background:#e8f2ed;color:#1f5d4c;padding:4px 8px;border-radius:7px;font-size:11px;white-space:nowrap}.rp-meta{color:#67796f;font-size:12px;margin:5px 0 10px}.rp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 12px;color:#596b63;font-size:12px}.rp-grid b{color:#1b3d33}.rp-note{background:#faf7ee;border-radius:7px;padding:8px;margin-top:9px;font-size:12px;white-space:pre-wrap}.rp-alert{display:inline-block;color:#a54032;background:#fff1ed;border-radius:7px;padding:5px 8px;margin-top:8px;font-size:11px;font-weight:700}.rp-empty{background:#f6f7f4;color:#67796f;border-radius:10px;padding:15px;font-size:12px}.rp-milestones{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;border-top:1px solid #e2e9e4;margin-top:12px;padding-top:12px}.rp-milestones>div{background:#f5f8f5;border-radius:8px;padding:8px;font-size:11px}.rp-milestones b,.rp-milestones span,.rp-milestones small{display:block}.rp-milestones span{color:#1f5d4c}.rp-milestones small{color:#708177;font-size:10px}.rp-method{background:#f0f4ef;border-top:3px solid #c9a24b;padding:15px;border-radius:9px;margin:24px 0;font-size:11px;color:#566a5e}.rp-method p{margin:4px 0;line-height:1.8}.rp-activity{margin-top:28px}.rp-table-wrap{overflow-x:auto}.rp-section table{width:100%;border-collapse:collapse;font-size:11px}.rp-section th{background:#1f5d4c;color:#fff;padding:7px}.rp-section td{padding:7px;border:1px solid #dae3de}.rp-section tr:nth-child(even) td{background:#f5f7f5}@media(max-width:720px){.rp-stats,.rp-dept-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-split{grid-template-columns:1fr}.rp-milestones{grid-template-columns:1fr 1fr}.rp-cover h1{font-size:24px}.rp-trend-col small{font-size:9px}}@media(max-width:460px){.rp-cover{padding:20px}.rp-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-dept-grid,.rp-milestones,.rp-grid{grid-template-columns:1fr}.rp-trend{gap:3px;padding:8px}}@media print{.rp-cover,.rp-stat,.rp-dept,.rp-panel,.rp-insight,.rp-trend{-webkit-print-color-adjust:exact;print-color-adjust:exact}.rp-cover{min-height:0}.rp-section h2,.rp-section h3,.rp-heading{break-after:avoid}.rp-stats{grid-template-columns:repeat(4,1fr)}.rp-dept-grid{grid-template-columns:repeat(3,1fr)}.rp-split{grid-template-columns:repeat(2,1fr)}.rp-trend-col{break-inside:avoid}.rp-report{font-size:11px}}.rp-decision{background:#fff7e6;border-inline-start:3px solid #b99543;border-radius:7px;padding:9px;margin-top:9px;font-size:12px;white-space:pre-wrap;color:#5f491e}";}
-/* تصدير التقرير PDF عبر نافذة طباعة فيها زرّا طباعة ورجوع */
-function exportReportPdf(selType, selMonth){
-  const content=buildReportHTML(selType, selMonth);
-  const today=new Date();
-  const dStr=`${String(today.getDate()).padStart(2,'0')}/${String(today.getMonth()+1).padStart(2,'0')}/${today.getFullYear()}`;
-  const win=window.open('','_blank');
-  if(!win){ alert('فضلاً اسمح بالنوافذ المنبثقة لتصدير PDF.'); return; }
-  win.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>التقرير الشهري</title>
-    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
-    <style>@page{size:A4;margin:12mm}${reportDocStyles()}${reportViewStyles()}
-      .toolbar{position:fixed;top:0;left:0;right:0;background:#16443a;display:flex;gap:10px;justify-content:center;padding:11px;z-index:99}
-      .toolbar button{font-family:'Tajawal';font-size:14px;font-weight:700;border:none;border-radius:9px;padding:9px 18px;cursor:pointer}
-      .b-print{background:#fff;color:#16443a}.b-back{background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.6)}
-      .spacer{height:60px}@media print{.toolbar,.spacer{display:none!important}body{padding:0}}
-    </style></head><body>
-    <div class="toolbar"><button class="b-print" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
-      <button class="b-back" onclick="window.close()">رجوع للبرنامج ✕</button></div>
-    <div class="spacer"></div>
-    <div style="padding:0 14px">${reportHeader}${content}</div>
-    </body></html>`);
-  win.document.close(); win.focus();
+function reportViewStyles(){return ".rp-report{color:#19342c;line-height:1.55}.rp-cover{background:linear-gradient(120deg,#123f35 0%,#1f5d4c 72%,#317561 100%);color:#fff;border-radius:18px;padding:30px;min-height:178px;position:relative;overflow:hidden;margin-bottom:22px}.rp-cover:after{content:'';position:absolute;width:200px;height:200px;border:30px solid rgba(210,182,110,.19);border-radius:50%;left:-70px;top:-100px}.rp-kicker{font-size:12px;color:#dfc77e;font-weight:800;letter-spacing:.05em}.rp-cover h1{font-size:30px;color:#fff;margin:14px 0 2px;border:0}.rp-cover p{color:#deefe7;font-size:15px;margin:0}.rp-cover-foot{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:30px;border-top:1px solid rgba(255,255,255,.3);padding-top:10px;font-size:11px;color:#e8f3ed}.rp-section{margin:24px 0;break-inside:auto}.rp-heading{margin-bottom:13px}.rp-heading>span{color:#a37a27;font-size:11px;font-weight:800;letter-spacing:.04em}.rp-heading h2{color:#16443a;font-size:21px;margin:3px 0 0;border:0}.rp-section>h3{font-size:17px;color:#16443a;border-bottom:2px solid #c9a24b;padding-bottom:7px}.rp-count{font-size:12px;background:#e7f2eb;color:#1f5d4c;border-radius:99px;padding:3px 8px;margin-inline-start:7px}.rp-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.rp-stat{background:#f7f6f1;border:1px solid #dce7df;border-radius:13px;padding:15px;min-height:99px;display:flex;flex-direction:column}.rp-stat b{font-size:29px;color:#1f5d4c;line-height:1.1}.rp-stat strong{font-size:12px;margin-top:5px}.rp-stat small{color:#728078;font-size:10px}.rp-insight{border-inline-start:4px solid #c9a24b;background:#f7f6f1;padding:14px 17px;margin-top:13px;border-radius:11px}.rp-insight b{color:#16443a}.rp-insight p{font-size:13px;margin:5px 0 0;line-height:1.8}.rp-trend{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;align-items:end;background:#f8f9f6;border:1px solid #e2e9e3;border-radius:14px;padding:17px}.rp-trend-col{text-align:center;min-width:0}.rp-trend-col>b{font-size:14px;color:#16443a}.rp-trend-col>div{height:105px;display:flex;align-items:end;justify-content:center;border-bottom:1px solid #b8cabd;margin:4px 0}.rp-trend-col i{display:block;width:60%;background:linear-gradient(#c9a24b,#1f5d4c);border-radius:7px 7px 0 0;min-width:12px}.rp-trend-col small{font-size:10px;color:#576c61;white-space:normal}.rp-caption{font-size:11px;line-height:1.7;color:#617369;margin:9px 0}.rp-dept-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.rp-dept,.rp-panel{border:1px solid #dce5de;border-radius:13px;padding:15px;background:#fff}.rp-dept>b{display:block;color:#16443a;margin-bottom:10px;font-size:13px}.rp-dept>div:not(.rp-dept-alert){display:inline-flex;flex-direction:column;min-width:45%;padding:5px 0}.rp-dept strong{font-size:23px;color:#1f5d4c;line-height:1}.rp-dept small{font-size:10px;color:#63776a}.rp-dept-alert{border-top:1px solid #e2e8e1;padding-top:8px;color:#a54032;font-size:12px;font-weight:700}.rp-split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.rp-panel h3{color:#16443a;font-size:14px;margin:0 0 10px;border:0}.rp-bar{margin:10px 0}.rp-bar-label{display:flex;justify-content:space-between;gap:8px;font-size:12px}.rp-track{height:7px;background:#e9efea;border-radius:8px;margin-top:4px;overflow:hidden}.rp-track i{display:block;height:100%;background:#b99543;border-radius:8px}.rp-follow{padding:8px 0;border-bottom:1px solid #e5eae5;font-size:12px}.rp-follow b,.rp-follow span{display:block}.rp-follow span{color:#65786c}.rp-item,.rp-dossier{background:#fff;border:1px solid #d9e2de;border-inline-start:4px solid #c9a24b;border-radius:12px;margin:9px 0;padding:13px;break-inside:avoid;page-break-inside:avoid}.rp-item-head,.rp-dossier-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.rp-item-head strong,.rp-dossier-head strong{font-size:15px}.rp-badge{background:#e8f2ed;color:#1f5d4c;padding:4px 8px;border-radius:7px;font-size:11px;white-space:nowrap}.rp-meta{color:#67796f;font-size:12px;margin:5px 0 10px}.rp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 12px;color:#596b63;font-size:12px}.rp-grid b{color:#1b3d33}.rp-note{background:#faf7ee;border-radius:7px;padding:8px;margin-top:9px;font-size:12px;white-space:pre-wrap}.rp-alert{display:inline-block;color:#a54032;background:#fff1ed;border-radius:7px;padding:5px 8px;margin-top:8px;font-size:11px;font-weight:700}.rp-empty{background:#f6f7f4;color:#67796f;border-radius:10px;padding:15px;font-size:12px}.rp-milestones{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;border-top:1px solid #e2e9e4;margin-top:12px;padding-top:12px}.rp-milestones>div{background:#f5f8f5;border-radius:8px;padding:8px;font-size:11px}.rp-milestones b,.rp-milestones span,.rp-milestones small{display:block}.rp-milestones span{color:#1f5d4c}.rp-milestones small{color:#708177;font-size:10px}.rp-method{background:#f0f4ef;border-top:3px solid #c9a24b;padding:15px;border-radius:9px;margin:24px 0;font-size:11px;color:#566a5e}.rp-method p{margin:4px 0;line-height:1.8}.rp-activity{margin-top:28px}.rp-table-wrap{overflow-x:auto}.rp-section table{width:100%;border-collapse:collapse;font-size:11px}.rp-section th{background:#1f5d4c;color:#fff;padding:7px}.rp-section td{padding:7px;border:1px solid #dae3de}.rp-section tr:nth-child(even) td{background:#f5f7f5}@media(max-width:720px){.rp-stats,.rp-dept-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-split{grid-template-columns:1fr}.rp-milestones{grid-template-columns:1fr 1fr}.rp-cover h1{font-size:24px}.rp-trend-col small{font-size:9px}}@media(max-width:460px){.rp-cover{padding:20px}.rp-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-dept-grid,.rp-milestones,.rp-grid{grid-template-columns:1fr}.rp-trend{gap:3px;padding:8px}}@media print{.rp-cover,.rp-stat,.rp-dept,.rp-panel,.rp-insight,.rp-trend{-webkit-print-color-adjust:exact;print-color-adjust:exact}.rp-cover{min-height:0}.rp-section h2,.rp-section h3,.rp-heading{break-after:avoid}.rp-stats{grid-template-columns:repeat(4,1fr)}.rp-dept-grid{grid-template-columns:repeat(3,1fr)}.rp-split{grid-template-columns:repeat(2,1fr)}.rp-trend-col{break-inside:avoid}.rp-report{font-size:11px}}.rp-decision{background:#fff7e6;border-inline-start:3px solid #b99543;border-radius:7px;padding:9px;margin-top:9px;font-size:12px;white-space:pre-wrap;color:#5f491e}.rp-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:14px 0}.rp-facts>div{background:#f5f8f5;border:1px solid #e1e8e2;border-radius:8px;padding:8px;min-width:0}.rp-facts small,.rp-facts b{display:block}.rp-facts small{color:#65776d;font-size:10px}.rp-facts b{font-size:12px;overflow-wrap:anywhere}.rp-stage-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:14px}.rp-stage{background:#f7f9f6;border:1px solid #dfe8e0;border-radius:10px;padding:11px;min-width:0;font-size:11px;overflow-wrap:anywhere}.rp-stage-late{border-color:#e8b9aa;background:#fff8f5}.rp-stage-title{display:flex;justify-content:space-between;gap:4px;align-items:center;color:#16443a}.rp-stage-title span{font-size:10px;color:#8d5b36}.rp-stage p{margin:7px 0}.rp-stage-dates{display:grid;gap:3px;color:#667b6e}.rp-delay{color:#a54032;background:#fff0eb;padding:7px;margin-top:7px;border-radius:7px;white-space:pre-wrap}.rp-stage-note{margin-top:7px;color:#596d62;white-space:pre-wrap}.rp-management{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-top:12px}.rp-management>div{background:#f8f7f2;border-radius:9px;padding:10px;font-size:12px}.rp-management p{margin:4px 0;white-space:pre-wrap}.rp-management .rp-decision{background:#fff5dc}.rp-dossier-head .rp-kicker{font-size:10px;color:#a7802b}.rp-dossier-head strong{font-size:19px}@media(max-width:720px){.rp-facts{grid-template-columns:repeat(2,1fr)}.rp-stage-grid{grid-template-columns:1fr}.rp-management{grid-template-columns:1fr}}@media print{.rp-dossier{break-inside:avoid;page-break-inside:avoid}.rp-stage-grid{grid-template-columns:repeat(3,1fr)}.rp-facts{grid-template-columns:repeat(4,1fr)}}.rp-table-wrap{overflow-x:auto}.rp-table-wrap .slide-table{width:100%;min-width:720px;border-collapse:collapse;font-size:12px}.rp-table-wrap .slide-table th{background:#1f5d4c;color:#fff}.rp-table-wrap .slide-table th,.rp-table-wrap .slide-table td{padding:9px;border:1px solid #dce5df;text-align:right}.rp-table-wrap .slide-table tr:nth-child(even){background:#f6f8f5}";}
+function slideDeckStyles(){return `${reportViewStyles()}
+  *{box-sizing:border-box}body{margin:0;background:#e8eee9;color:#19342c;font-family:'Tajawal',Arial,sans-serif;direction:rtl}
+  .deck-toolbar{position:sticky;top:0;z-index:20;background:#16443a;color:#fff;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding:10px}
+  .deck-toolbar button{background:#fff;color:#16443a;border:0;border-radius:8px;padding:8px 14px;cursor:pointer;font:700 14px 'Tajawal',Arial}.deck-toolbar span{font-size:12px}
+  .lead-slide{width:min(96vw,1200px);min-height:675px;margin:20px auto;padding:38px;background:#fff;border-radius:16px;box-shadow:0 10px 35px #123f3525;overflow:hidden;position:relative}
+  .lead-slide:before{content:'';position:absolute;top:0;right:0;left:0;height:9px;background:linear-gradient(90deg,#c9a24b,#1f5d4c)}
+  .lead-slide h1{font-size:32px;color:#16443a;margin:14px 0}.lead-slide h2{font-size:23px;color:#16443a;margin:6px 0 16px}.lead-slide h3{font-size:17px;color:#16443a}.lead-slide p{line-height:1.7}
+  .slide-kicker{color:#9a762c;font-size:13px;font-weight:800}.slide-sub{color:#678075;font-size:13px}.slide-footer{position:absolute;bottom:22px;right:38px;left:38px;border-top:1px solid #dde7df;padding-top:8px;color:#667c70;font-size:11px;display:flex;justify-content:space-between}
+  .lead-slide .rp-dossier{border:0;box-shadow:none;padding:0;margin:8px 0}.lead-slide .rp-dossier-head strong{font-size:23px}.lead-slide .rp-facts{grid-template-columns:repeat(4,minmax(0,1fr))}.lead-slide .rp-stage-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .slide-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:18px}.slide-grid>.rp-panel{padding:20px}.slide-table{width:100%;border-collapse:collapse;font-size:13px}.slide-table th{background:#1f5d4c;color:#fff}.slide-table th,.slide-table td{padding:8px;border:1px solid #dce5df;text-align:right}
+  .slide-cover{background:linear-gradient(135deg,#123f35,#1f5d4c 70%,#2b6f59);color:#fff;display:flex;flex-direction:column;justify-content:center}.slide-cover h1{color:#fff;font-size:42px}.slide-cover .slide-kicker,.slide-cover .slide-sub{color:#e5cc87}.slide-cover .slide-footer{color:#d9eee2;border-color:#ffffff60}
+  @media(max-width:700px){.lead-slide{width:100%;min-height:0;margin:0 0 12px;border-radius:0;padding:22px 18px 52px}.slide-grid,.lead-slide .rp-stage-grid,.lead-slide .rp-facts{grid-template-columns:1fr}.slide-footer{right:18px;left:18px}.deck-toolbar button{padding:7px 9px}}
+  @page{size:A4 landscape;margin:10mm}@media print{body{background:#fff}.deck-toolbar{display:none}.lead-slide{width:100%;min-height:190mm;height:auto;max-height:none;margin:0;padding:10mm 12mm 12mm;border-radius:0;box-shadow:none;break-after:page;page-break-after:always;overflow:visible}.lead-slide{display:block!important}.lead-slide:last-child{break-after:auto;page-break-after:auto}.lead-slide .rp-dossier{break-inside:avoid}.lead-slide .rp-stage-grid{grid-template-columns:repeat(3,1fr)}.slide-grid{grid-template-columns:repeat(2,1fr)}.lead-slide .rp-facts{grid-template-columns:repeat(4,1fr)}.slide-cover,.rp-stat,.rp-panel,.rp-dept,.rp-stage{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+`}
+function slideFrame(title,content,index,total,cover){
+  return `<section class="lead-slide${cover?' slide-cover':''}"><div class="slide-kicker">دائرة التصميم المركزي · بلدية مسقط</div><h2>${reportEsc(title)}</h2>${content}<div class="slide-footer"><span>نظام مشاريع التصميم المركزي</span><span>${index} / ${total}</span></div></section>`;
 }
+function projectSlides(selType,month){
+  const esc=reportEsc,d=reportProjectData(month),label=monthLabelStd(month);
+  const projects=state.projects.slice().sort((a,b)=>{
+    const priority=p=>d.overdue.filter(x=>x.p===p).length*4+(p.riskLevel==='مرتفع'?2:0)+(p.decisionRequired?1:0);
+    return priority(b)-priority(a)||String(a.name||'').localeCompare(String(b.name||''),'ar');
+  });
+  const slideContents=[];
+  slideContents.push(['التقرير الشهري',`<h1>مشاريع التصميم المركزي</h1><p class="slide-sub">${esc(label)} · تقرير قيادي متكامل</p><p>الإنجاز · الأداء · أولويات المتابعة · ملفات المشاريع</p><p style="margin-top:50px">تاريخ الاستخراج: ${esc(d.today)}</p>`,true]);
+  if(selType==='projects'||selType==='all'){
+    slideContents.push(['الملخص التنفيذي',`<div class="rp-stats"><div class="rp-stat"><b>${d.done.length}</b><strong>تسليمات فعلية</strong><small>أعمال أقسام خلال الشهر</small></div><div class="rp-stat"><b>${d.activeProjects.length}</b><strong>مشاريع نشطة</strong><small>الحالة الحالية</small></div><div class="rp-stat"><b>${d.overdue.length}</b><strong>أعمال متأخرة</strong><small>تجاوزت الموعد</small></div><div class="rp-stat"><b>${d.soon.length}</b><strong>خلال 30 يوماً</strong><small>استحقاقات قريبة</small></div></div><div class="rp-insight"><b>قراءة القيادة</b><p>سُلّم ${d.done.length} عمل قسم فعلياً في ${esc(label)}. يوجد ${d.decisions.length} مشاريع بها قرار مطلوب و${d.highRisk.length} مشاريع نشطة مصنفة عالية المخاطر. تظهر التفاصيل والأسباب المدونة في شريحة واحدة لكل مشروع.</p></div><p class="rp-caption">التسليمات حركة شهرية؛ النشط والمتأخر لقطة عند استخراج التقرير. لا تُفسر الأعداد على أنها نسبة تقدم.</p>`]);
+    slideContents.push(['اتجاه الإنجاز وأداء الأقسام',`<div class="slide-grid"><div class="rp-panel"><h3>التسليمات الفعلية · ستة أشهر</h3>${reportBars(d.trend.map(x=>[monthLabelStd(x.month),x.count]),Math.max(1,...d.trend.map(x=>x.count)))}</div><div class="rp-panel"><h3>الأقسام</h3><table class="slide-table"><thead><tr><th>القسم</th><th>سُلّم</th><th>جارٍ</th><th>متأخر</th></tr></thead><tbody>${d.byDept.map(x=>`<tr><td>${esc(x.label)}</td><td>${x.done}</td><td>${x.active}</td><td>${x.overdue}</td></tr>`).join('')}</tbody></table></div></div><p class="rp-caption">وحدة القياس في الأقسام هي العمل، وقد يكون للمشروع أكثر من قسم. ملفات المشاريع أدناه غير مكررة.</p>`]);
+    slideContents.push(['توزيع المحفظة وأولويات المتابعة',`<div class="slide-grid"><div class="rp-panel"><h3>حسب نوع المشروع</h3>${reportBars([...d.byType].sort((a,b)=>b[1]-a[1]).slice(0,7),d.activeProjects.length)}</div><div class="rp-panel"><h3>حسب الجهة الطالبة</h3>${reportBars([...d.byEntity].sort((a,b)=>b[1]-a[1]).slice(0,7),d.activeProjects.length)}</div></div><div class="rp-stats" style="margin-top:18px"><div class="rp-stat"><b>${d.missing.length}</b><strong>بلا موعد متوقع</strong></div><div class="rp-stat"><b>${d.undated.length}</b><strong>مكتمل بلا تاريخ فعلي</strong></div><div class="rp-stat"><b>${d.decisions.length}</b><strong>قرارات مطلوبة</strong></div><div class="rp-stat"><b>${d.highRisk.length}</b><strong>مخاطر مرتفعة</strong></div></div>`]);
+    projects.forEach(p=>slideContents.push(['ملف مشروع',reportProjectDossier(p)]));
+  }
+  if(selType==='meetings'||selType==='all'){
+    const list=state.meetings.filter(m=>ym(m.date)===month);
+    slideContents.push(['الاجتماعات والتنسيق',`<p>${list.length} اجتماع خلال ${esc(label)}</p>${list.length?list.map(m=>`<div class="rp-follow"><b>${esc(m.title||'اجتماع')} · ${esc(m.date||'—')}</b><span>${esc(m.deptLabel||'')} · ${esc(m.personNames||'')} · ${esc(m.purpose||'')}</span></div>`).join(''):'<p class="rp-empty">لا توجد اجتماعات مسجلة.</p>'}`]);
+  }
+  if(selType==='visits'||selType==='all'){
+    const list=state.visits.filter(v=>ym(v.date)===month);
+    slideContents.push(['الزيارات الميدانية',`<p>${list.length} زيارة خلال ${esc(label)}</p>${list.length?list.map(v=>`<div class="rp-follow"><b>${esc(v.location||'زيارة')} · ${esc(v.date||'—')}</b><span>${esc(v.deptLabel||'')} · ${esc(v.personNames||'')} · ${esc(v.purpose||'')}</span></div>`).join(''):'<p class="rp-empty">لا توجد زيارات مسجلة.</p>'}`]);
+  }
+  return slideContents.map(([title,content,cover],i)=>slideFrame(title,content,i+1,slideContents.length,cover));
+}
+function kpiSlides(){
+  const esc=reportEsc,d=reportProjectData(reportToday().slice(0,7));
+  const departments=DEPT_MAP.map(([key,label])=>({label,k:deptKpi(key)}));
+  const total=departments.reduce((n,x)=>n+x.k.total,0),done=departments.reduce((n,x)=>n+x.k.done,0);
+  const due=departments.reduce((n,x)=>n+x.k.onTime+x.k.late,0),onTime=departments.reduce((n,x)=>n+x.k.onTime,0);
+  const contents=[
+    ['لوحة مؤشرات الأداء',`<h1>مؤشرات الدائرة والمشاريع</h1><p class="slide-sub">${esc(kpiRange(kpiPeriod).label)} · تاريخ العرض ${esc(d.today)}</p><p>قياس الأداء · عبء الأقسام · محفظة المشاريع</p>`,true],
+    ['أداء الدائرة العام',`<div class="rp-stats"><div class="rp-stat"><b>${state.projects.length}</b><strong>مشاريع مسجلة</strong></div><div class="rp-stat"><b>${state.projects.filter(isEffectivelyDone).length}</b><strong>مشاريع مكتملة</strong></div><div class="rp-stat"><b>${total?Math.round(done/total*100):0}%</b><strong>إنجاز أعمال الأقسام</strong><small>${done} من ${total} ضمن الفترة</small></div><div class="rp-stat"><b>${due?Math.round(onTime/due*100)+'%':'—'}</b><strong>التزام بالمواعيد</strong><small>${onTime} من ${due} بتواريخ مكتملة</small></div></div><div class="rp-insight"><b>تفسير المؤشرات</b><p>مرشح الفترة يخص أداء الأقسام. إجمالي المشاريع ومكتملها يعكسان المحفظة الحالية؛ يعرض قسم المحفظة تفاصيلها دون تكرار المشروع.</p></div>`],
+    ['مؤشرات الأقسام',`<div class="rp-dept-grid">${departments.map(x=>`<div class="rp-dept"><b>${esc(x.label)}</b><div><strong>${x.k.completion}%</strong><small>إنجاز ${x.k.done} / ${x.k.total}</small></div><div><strong>${x.k.punctuality==null?'—':x.k.punctuality+'%'}</strong><small>الالتزام بالموعد</small></div><div class="rp-dept-alert">جارٍ: ${x.k.wip} · متوسط التأخير: ${x.k.avgDelay||'—'} يوم</div></div>`).join('')}</div><div class="slide-grid"><div class="rp-panel"><h3>الإنجاز</h3>${departments.map(x=>reportBars([[x.label,x.k.done]],x.k.total)).join('')}</div><div class="rp-panel"><h3>الجودة</h3>${departments.map(x=>`<div class="rp-follow"><b>${esc(x.label)}</b><span>التقييم: ${x.k.avgRating||'—'} من 5 · منتظر: ${x.k.waiting}</span></div>`).join('')}</div></div>`],
+    ['محفظة المشاريع',`<div class="rp-stats"><div class="rp-stat"><b>${d.activeProjects.length}</b><strong>مشاريع نشطة</strong></div><div class="rp-stat"><b>${d.done.length}</b><strong>تسليمات الشهر</strong></div><div class="rp-stat"><b>${d.overdue.length}</b><strong>أعمال متأخرة</strong></div><div class="rp-stat"><b>${d.decisions.length}</b><strong>قرارات مطلوبة</strong></div></div><div class="slide-grid"><div class="rp-panel"><h3>الأنواع</h3>${reportBars([...d.byType].sort((a,b)=>b[1]-a[1]).slice(0,6),d.activeProjects.length)}</div><div class="rp-panel"><h3>الجهات</h3>${reportBars([...d.byEntity].sort((a,b)=>b[1]-a[1]).slice(0,6),d.activeProjects.length)}</div></div>`]
+  ];
+  state.projects.slice().sort((a,b)=>d.overdue.filter(x=>x.p===b).length-d.overdue.filter(x=>x.p===a).length).forEach(p=>contents.push(['ملف مشروع',reportProjectDossier(p)]));
+  return contents.map(([title,html,cover],i)=>slideFrame(title,html,i+1,contents.length,cover));
+}
+function openSlideDeck(title,slides,printNow=false){
+  const win=window.open('','_blank');
+  if(!win){alert('تعذّر فتح عرض PDF. اسمح بالنوافذ المنبثقة لهذا الموقع ثم جرّب مجدداً.');return;}
+  win.document.write(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${reportEsc(title)}</title><style>${slideDeckStyles()}</style></head><body><nav class="deck-toolbar"><button id="deckPrev">السابق</button><span id="deckCount"></span><button id="deckNext">التالي</button><button id="deckPrint">طباعة / حفظ PDF</button><button id="deckClose">إغلاق</button></nav>${slides.join('')}</body></html>`);
+  win.document.close();
+  const pages=[...win.document.querySelectorAll('.lead-slide')];let index=0;
+  const show=()=>{pages.forEach((p,i)=>p.style.display=i===index?'block':'none');win.document.getElementById('deckCount').textContent=`${index+1} / ${pages.length}`;win.scrollTo(0,0);};
+  win.document.getElementById('deckPrev').onclick=()=>{index=Math.max(0,index-1);show();};
+  win.document.getElementById('deckNext').onclick=()=>{index=Math.min(pages.length-1,index+1);show();};
+  win.document.getElementById('deckPrint').onclick=()=>win.print();
+  win.document.getElementById('deckClose').onclick=()=>win.close();
+  win.addEventListener('keydown',e=>{if(e.key==='ArrowLeft'){index=Math.min(pages.length-1,index+1);show();}if(e.key==='ArrowRight'){index=Math.max(0,index-1);show();}});
+  show();win.focus();if(printNow)win.print();
+}
+
+/* تصدير التقرير PDF عبر نافذة طباعة فيها زرّا طباعة ورجوع */
+function exportReportPdf(selType,selMonth){openSlideDeck('التقرير الشهري',projectSlides(selType,selMonth),true);}
 /* تصدير التقرير Word (.doc) — Word يفتح HTML بامتداد doc مع دعم RTL */
 function exportReportWord(selType, selMonth){
   const content=buildReportHTML(selType, selMonth);
@@ -4135,7 +4099,8 @@ function openReportsModal(){
         <select class="inp" id="repMonth" style="width:auto;min-width:150px">${monthOpts}</select>
         ${canExport?`<span style="display:flex;gap:6px;margin-right:auto">
           <button class="btn btn-add" id="repExport" style="padding:8px 12px">${I.upload} Excel</button>
-          <button class="btn btn-ghost" id="repPdf" style="padding:8px 12px">${I.report} PDF</button>
+          <button class="btn btn-ghost" id="repSlides" style="padding:8px 12px">${I.chart} عرض شرائح</button>
+           <button class="btn btn-ghost" id="repPdf" style="padding:8px 12px">${I.report} PDF</button>
           <button class="btn btn-ghost" id="repWord" style="padding:8px 12px">${I.report} Word</button>
         </span>`:''}
       </div>`;
@@ -4150,6 +4115,8 @@ function openReportsModal(){
     if(ts) ts.onchange=()=>{ selType=ts.value; fill(); };
     const exp=body.querySelector('#repExport');
     if(exp) exp.onclick=()=>{ if(overlay._exportExcel) overlay._exportExcel(); };
+    const slidesB=body.querySelector('#repSlides');
+    if(slidesB) slidesB.onclick=()=>openSlideDeck('التقرير الشهري',projectSlides(selType,selMonth));
     const pdfB=body.querySelector('#repPdf');
     if(pdfB) pdfB.onclick=()=>exportReportPdf(selType, selMonth);
     const wordB=body.querySelector('#repWord');
@@ -4237,16 +4204,14 @@ function openReportsModal(){
       ]);
     }
     function projectsSheet(){
-      const d=reportProjectData(selMonth);
-      const headers=['القسم','المشروع','رقم المشروع','النوع','الجهة الطالبة','المهندسون','الحالة','الاستلام','التسليم المتوقع','التسليم الفعلي','المساحة','التكلفة (ر.ع)','ملاحظات القسم','مستوى المخاطر','ملخص القيادة','العوائق','الخطوة التالية','القرار المطلوب'];
-      const row=({p,sec,label})=>[label,p.name||'',p.projectNo||'',p.customType||p.type||'',p.requestingEntity||'',Array.isArray(sec.engineers)&&sec.engineers.length?sec.engineers.map(e=>e.name||e.username).join('، '):sec.engineer||'',sec.status||'',sec.startDate||'',sec.endDate||'',sec.actualDate||'',p.area||'',p.cost||'',sec.notes||'',p.riskLevel||'',p.executiveSummary||'',p.blocker||'',p.nextAction||'',p.decisionRequired||''];
-      return buildSheet('تفاصيل المشاريع',headers.length,[
-        {title:`المسلّم فعلياً — ${monthName}`,headers,rows:d.done.map(row)},
-        {title:'مكتمل بلا تاريخ تسليم فعلي (موعده المخطط في الشهر)',headers,rows:d.undated.map(row)},
-        {title:'تجاوز الموعد — الحالة الحالية',headers,rows:d.overdue.map(row)},
-        {title:'يستحق خلال 30 يوماً — الحالة الحالية',headers,rows:d.soon.map(row)},
-        {title:'جميع الأعمال الجارية حالياً',headers,rows:d.active.map(row)}
+      const deptHeaders=DEPT_MAP.flatMap(([,label])=>[`${label} · الحالة`,`${label} · المهندسون`,`${label} · المتوقع`,`${label} · الفعلي`,`${label} · سبب التأخير`]);
+      const headers=['اسم المشروع','رقم المشروع','الوضع العام','نوع المشروع','الجهة الطالبة','المساحة','التكلفة (ر.ع)',...deptHeaders,'ملخص القيادة','مستوى المخاطر','العوائق العامة','الخطوة التالية','القرار المطلوب'];
+      const rows=state.projects.map(p=>[
+        p.name||'',p.projectNo||'',isEffectivelyDone(p)?'مكتمل':p.overallStatus||'',p.customType||p.type||'',p.requestingEntity||'',p.area||'',p.cost||'',
+        ...DEPT_MAP.flatMap(([key])=>{const sec=p[key]||{};const engineers=Array.isArray(sec.engineers)&&sec.engineers.length?sec.engineers.map(e=>e.name||e.username).join('، '):sec.engineer||'';return [sec.status||'قيد الانتظار',engineers,sec.endDate||'',sec.actualDate||'',sec.delayReason||''];}),
+        p.executiveSummary||'',p.riskLevel||'',p.blocker||'',p.nextAction||'',p.decisionRequired||''
       ]);
+      return buildSheet('ملف المشاريع — مشروع واحد في كل صف',headers.length,[{title:'جميع المشاريع المسجلة (بما فيها المكتملة والمتوقفة)',headers,rows}]);
     }
     function meetingsSheet(){
       const headers=['اسم الاجتماع','القسم','الأشخاص','التاريخ','الموقع','الغرض','ملاحظات'];

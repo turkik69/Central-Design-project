@@ -3645,6 +3645,13 @@ function leadershipKpiHTML(){
     <div class="rp-split"><div class="rp-panel"><h3>الأعمال المتأخرة حسب الأولوية الزمنية</h3>${d.overdue.length?d.overdue.slice(0,8).map(x=>`<div class="rp-follow"><b>${esc(x.p.name||'مشروع بلا اسم')}</b><span>${esc(x.label)} · متوقع ${esc(x.sec.endDate)} · ${daysBetween(x.sec.endDate,d.today)} يوم</span></div>`).join(''):'<p class="rp-empty">لا توجد أعمال جارية متأخرة.</p>'}</div><div class="rp-panel"><h3>جودة البيانات والمواعيد القادمة</h3><div class="rp-follow"><b>${d.soon.length} أعمال تستحق خلال 30 يوماً</b><span>تُراجع مع الأقسام قبل موعدها</span></div><div class="rp-follow"><b>${d.decisions.length} مشاريع ذات قرار مطلوب</b><span>من الحقل المسجل في بطاقة المشروع</span></div><div class="rp-follow"><b>${d.highRisk.length} مشاريع عالية المخاطر</b><span>وفق تصنيف المخاطر المسجل</span></div><div class="rp-follow"><b>${d.missing.length} أعمال جارية بلا تاريخ متوقع</b><span>تحتاج استكمال حقل الموعد</span></div><div class="rp-follow"><b>${d.undated.length} أعمال مكتملة بلا تاريخ فعلي</b><span>موعدها المخطط في الشهر الحالي</span></div></div></div>
     <p class="rp-caption">الملخص أعلاه لقطة حالية، بينما مرشح الفترة أدناه يخص مؤشرات أداء الأقسام والمهندسين. المشروع الواحد قد يتضمن أعمالاً في أكثر من قسم.</p></section>`;
 }
+function exportEngineerKpiExcel(){
+  if(!window.XLSX){alert('تعذّر تحميل أداة Excel، حاول لاحقاً.');return;}
+  const X=window.XLSX,engs=engineerKpiList();
+  const rows=[['مؤشرات المهندسين — دائرة التصميم المركزي'],['الفترة',kpiRange(kpiPeriod).label],[],['المهندس','القسم','الأعمال','المنجز','الآراء الفنية','الإنجاز %','الالتزام %','التقييم'],...engs.map(e=>[e.name,DEPT_MAP.find(([k])=>k===e.dept)?.[1]||'',e.total,e.done,e.opinionCount||0,e.completion,e.punctuality==null?'—':e.punctuality,e.avgRating||'—'])];
+  const ws=X.utils.aoa_to_sheet(rows);ws['!views']=[{RTL:true}];ws['!cols']=[{wch:30},{wch:24},{wch:14},{wch:14},{wch:16},{wch:16},{wch:16},{wch:16}];
+  const wb=X.utils.book_new();X.utils.book_append_sheet(wb,ws,'المهندسون');X.writeFile(wb,'مؤشرات_المهندسين_'+reportToday()+'.xlsx');
+}
 function engineerKpiTable(engs){
   const esc=reportEsc;
   return engs.length?`<div class="rp-table-wrap"><table class="slide-table"><thead><tr><th>المهندس</th><th>القسم</th><th>الأعمال</th><th>المنجز</th><th>الآراء الفنية</th><th>الإنجاز</th><th>الالتزام</th><th>التقييم</th></tr></thead><tbody>${engs.map(e=>`<tr><td>${esc(e.name||'—')}</td><td>${esc(DEPT_MAP.find(([k])=>k===e.dept)?.[1]||'—')}</td><td>${e.total}</td><td>${e.done}</td><td>${e.opinionCount||0}</td><td>${e.completion}%</td><td>${e.punctuality==null?'—':e.punctuality+'%'}</td><td>${e.avgRating||'—'}</td></tr>`).join('')}</tbody></table></div>`:'<p class="rp-empty">لا توجد بيانات مهندسين للفترة المختارة.</p>';
@@ -3657,7 +3664,7 @@ function engineerSlides(){
 function openEngineerKpiModal(){
   if(document.getElementById('engineerKpiOverlay'))return;
   const overlay=$(`<div class="overlay" id="engineerKpiOverlay"></div>`);
-  const modal=$(`<div class="modal" style="max-width:1050px"><div class="modal-head"><h2>مؤشرات المهندسين</h2><div style="display:flex;gap:8px"><button class="btn btn-ghost" id="engKpiPdf">${I.report} PDF / شرائح</button><button class="icon-btn" id="x">${I.close}</button></div></div></div>`);
+  const modal=$(`<div class="modal" style="max-width:1050px"><div class="modal-head"><h2>مؤشرات المهندسين</h2><div style="display:flex;gap:8px"><button class="btn btn-ghost" id="engKpiXls">${I.upload} Excel</button><button class="btn btn-ghost" id="engKpiPdf">${I.report} PDF / شرائح</button><button class="icon-btn" id="x">${I.close}</button></div></div></div>`);
   const body=document.createElement('div');body.className='modal-body';modal.appendChild(body);overlay.appendChild(modal);
   function fill(){
     const engs=engineerKpiList(),label=kpiRange(kpiPeriod).label;
@@ -3670,7 +3677,7 @@ function openEngineerKpiModal(){
     const cert=body.querySelector('#engCertPeriod');if(cert)cert.onchange=e=>{certPeriod=e.target.value;};
     const certBtn=body.querySelector('#engCert');if(certBtn)certBtn.onclick=()=>openCertificate();
   }
-  fill();modal.querySelector('#engKpiPdf').onclick=()=>openSlideDeck('مؤشرات المهندسين',engineerSlides());
+  fill();modal.querySelector('#engKpiXls').onclick=exportEngineerKpiExcel;modal.querySelector('#engKpiPdf').onclick=()=>openSlideDeck('مؤشرات المهندسين',engineerSlides());
   modal.querySelector('#x').onclick=()=>overlay.remove();overlay.onclick=e=>{if(e.target===overlay)overlay.remove();};root.appendChild(overlay);
 }
 function openKpiModal(){
@@ -3754,7 +3761,6 @@ function exportKpiExcel(){
   const dStr=`${String(today.getDate()).padStart(2,'0')}/${String(today.getMonth()+1).padStart(2,'0')}/${today.getFullYear()}`;
   const OASIS='1F5D4C', SAND='F3EEE3';
   const deptData=DEPT_MAP.map(([key,label])=>({label,k:deptKpi(key)}));
-  const engs=engineerKpiList();
   const allDone=deptData.reduce((s,d)=>s+d.k.done,0), allTotal=deptData.reduce((s,d)=>s+d.k.total,0);
   const onTimeAll=deptData.reduce((s,d)=>s+d.k.onTime,0), lateAll=deptData.reduce((s,d)=>s+d.k.late,0);
   const orgCompletion=allTotal?Math.round(allDone/allTotal*100):0;
@@ -3771,11 +3777,7 @@ function exportKpiExcel(){
     [],
     ['مؤشرات الأقسام'],
     ['القسم','الإجمالي','المنجز','قيد العمل','نسبة الإنجاز %','الالتزام بالوقت %','متوسط التأخير (يوم)','متوسط التقييم'],
-    ...deptData.map(d=>[d.label,d.k.total,d.k.done,d.k.wip,d.k.completion,(d.k.punctuality==null?'—':d.k.punctuality),(d.k.avgDelay||'—'),(d.k.avgRating||'—')]),
-    [],
-    ['مؤشرات المهندسين'],
-    ['المهندس','الرقم الوظيفي','الأعمال','المنجز','منها آراء فنية','نسبة الإنجاز %','الالتزام بالوقت %','متوسط التقييم'],
-    ...engs.map(e=>[e.name,e.username,e.total,e.done,(e.opinionCount||0),e.completion,(e.punctuality==null?'—':e.punctuality),(e.avgRating||'—')])
+    ...deptData.map(d=>[d.label,d.k.total,d.k.done,d.k.wip,d.k.completion,(d.k.punctuality==null?'—':d.k.punctuality),(d.k.avgDelay||'—'),(d.k.avgRating||'—')])
   ];
   const ws=X.utils.aoa_to_sheet(aoa);
   ws['!cols']=[{wch:26},{wch:16},{wch:12},{wch:14},{wch:16},{wch:18},{wch:16},{wch:14}];
@@ -3800,7 +3802,7 @@ function exportKpiExcel(){
   setS('A5',{font:{bold:true,sz:11,color:{rgb:OASIS}},alignment:{horizontal:'center'}});
   setS('A6',{font:{sz:10,color:{rgb:'8A8170'}},alignment:{horizontal:'center'}});
   // رؤوس الجداول الثلاثة (بعد إضافة صف الفترة)
-  [8,12,17].forEach(hr=>{ for(let c=0;c<8;c++){ const a=enc(hr,c); if(ws[a]) setS(a,{font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:OASIS}},alignment:{horizontal:'center'}});} });
+  [8,12].forEach(hr=>{ for(let c=0;c<8;c++){ const a=enc(hr,c); if(ws[a]) setS(a,{font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:OASIS}},alignment:{horizontal:'center'}});} });
   const wb=X.utils.book_new();
   X.utils.book_append_sheet(wb,ws,'مؤشرات الأداء');
   const portfolio=reportProjectData(reportToday().slice(0,7));
@@ -3965,13 +3967,14 @@ function projectSlides(selType,month){
     slideContents.push(['توزيع المحفظة وأولويات المتابعة',`<div class="slide-grid"><div class="rp-panel"><h3>حسب نوع المشروع</h3>${reportBars([...d.byType].sort((a,b)=>b[1]-a[1]).slice(0,7),d.activeProjects.length)}</div><div class="rp-panel"><h3>حسب الجهة الطالبة</h3>${reportBars([...d.byEntity].sort((a,b)=>b[1]-a[1]).slice(0,7),d.activeProjects.length)}</div></div><div class="rp-stats" style="margin-top:18px"><div class="rp-stat"><b>${d.missing.length}</b><strong>بلا موعد متوقع</strong></div><div class="rp-stat"><b>${d.undated.length}</b><strong>مكتمل بلا تاريخ فعلي</strong></div><div class="rp-stat"><b>${d.decisions.length}</b><strong>قرارات مطلوبة</strong></div><div class="rp-stat"><b>${d.highRisk.length}</b><strong>مخاطر مرتفعة</strong></div></div>`]);
     projects.forEach(p=>slideContents.push(['ملف مشروع',reportProjectDossier(p)]));
   }
+const chunks=(arr,size)=>arr.length?Array.from({length:Math.ceil(arr.length/size)},(_,i)=>arr.slice(i*size,(i+1)*size)):[[]];
   if(selType==='meetings'||selType==='all'){
-    const list=state.meetings.filter(m=>ym(m.date)===month);
-    slideContents.push(['الاجتماعات والتنسيق',`<p>${list.length} اجتماع خلال ${esc(label)}</p>${list.length?list.map(m=>`<div class="rp-follow"><b>${esc(m.title||'اجتماع')} · ${esc(m.date||'—')}</b><span>${esc(m.deptLabel||'')} · ${esc(m.personNames||'')} · ${esc(m.purpose||'')}</span></div>`).join(''):'<p class="rp-empty">لا توجد اجتماعات مسجلة.</p>'}`]);
+    const list=state.meetings.filter(m=>ym(m.date)===month).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+    chunks(list,6).forEach((part,i)=>slideContents.push([`الاجتماعات والتنسيق${list.length>6?' · '+(i+1):''}`,`<p>${list.length} اجتماع خلال ${esc(label)}</p>${part.length?part.map(m=>`<div class="rp-follow"><b>${esc(m.title||'اجتماع')} · ${esc(m.date||'—')}</b><span>${esc(m.deptLabel||'')} · ${esc(m.personNames||'')} · ${esc(m.location||'')}</span><span>${esc(m.purpose||'')}${m.minutes?' · المحضر: '+esc(m.minutes):''}</span></div>`).join(''):'<p class="rp-empty">لا توجد اجتماعات مسجلة.</p>'}`]));
   }
   if(selType==='visits'||selType==='all'){
-    const list=state.visits.filter(v=>ym(v.date)===month);
-    slideContents.push(['الزيارات الميدانية',`<p>${list.length} زيارة خلال ${esc(label)}</p>${list.length?list.map(v=>`<div class="rp-follow"><b>${esc(v.location||'زيارة')} · ${esc(v.date||'—')}</b><span>${esc(v.deptLabel||'')} · ${esc(v.personNames||'')} · ${esc(v.purpose||'')}</span></div>`).join(''):'<p class="rp-empty">لا توجد زيارات مسجلة.</p>'}`]);
+    const list=state.visits.filter(v=>ym(v.date)===month).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+    chunks(list,6).forEach((part,i)=>slideContents.push([`الزيارات الميدانية${list.length>6?' · '+(i+1):''}`,`<p>${list.length} زيارة خلال ${esc(label)}</p>${part.length?part.map(v=>`<div class="rp-follow"><b>${esc(v.location||'زيارة')} · ${esc(v.date||'—')}</b><span>${esc(v.deptLabel||'')} · ${esc(v.personNames||'')} · ${esc(v.purpose||'')}</span>${v.notes?`<span>ملاحظات: ${esc(v.notes)}</span>`:''}</div>`).join(''):'<p class="rp-empty">لا توجد زيارات مسجلة.</p>'}`]));
   }
   return slideContents.map(([title,content,cover],i)=>slideFrame(title,content,i+1,slideContents.length,cover));
 }

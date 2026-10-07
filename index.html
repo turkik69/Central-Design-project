@@ -4124,16 +4124,15 @@ function openSlideDeck(title,slides,printNow=false){
   const posterMode=slides.length===1&&slides[0].includes('kpi-poster-page');
   const win=window.open('','_blank');
   if(!win){alert('تعذّر فتح عرض PDF. اسمح بالنوافذ المنبثقة لهذا الموقع ثم جرّب مجدداً.');return;}
-  win.document.write(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${reportEsc(title)}</title><style>${slideDeckStyles()}${posterMode?kpiPosterStyles():''}</style></head><body><nav class="deck-toolbar"><button id="deckPrev">السابق</button><span id="deckCount"></span><button id="deckNext">التالي</button><button id="deckPrint">طباعة / حفظ PDF</button><button id="deckClose">إغلاق</button></nav>${slides.join('')}</body></html>`);
+  win.document.write(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${reportEsc(title)}</title><style>${slideDeckStyles()}${posterMode?kpiPosterStyles():''}</style></head><body><nav class="deck-toolbar"><button id="deckPrev">السابق</button><span id="deckCount"></span><button id="deckNext">التالي</button><button type="button" id="deckPrint" onclick="window.focus(); window.print()">طباعة / حفظ PDF</button><button id="deckClose">إغلاق</button></nav>${slides.join('')}</body></html>`);
   win.document.close();
   const pages=[...win.document.querySelectorAll('.lead-slide')];let index=0;
   const show=()=>{pages.forEach((p,i)=>p.style.display=i===index?'block':'none');win.document.getElementById('deckCount').textContent=posterMode?'بوستر واحد':`${index+1} / ${pages.length}`;win.scrollTo(0,0);};
   win.document.getElementById('deckPrev').onclick=()=>{index=Math.max(0,index-1);show();};
   win.document.getElementById('deckNext').onclick=()=>{index=Math.min(pages.length-1,index+1);show();};
-  win.document.getElementById('deckPrint').onclick=()=>win.print();
   win.document.getElementById('deckClose').onclick=()=>win.close();
   win.addEventListener('keydown',e=>{if(e.key==='ArrowLeft'){index=Math.min(pages.length-1,index+1);show();}if(e.key==='ArrowRight'){index=Math.max(0,index-1);show();}});
-  show();win.focus();if(printNow)setTimeout(()=>{if(!win.closed)win.print();},450);
+  show();win.focus();if(printNow)win.document.getElementById('deckPrint').click();
 }
 
 /* تصدير التقرير PDF عبر نافذة طباعة فيها زرّا طباعة ورجوع */

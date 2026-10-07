@@ -3618,6 +3618,22 @@ function statCard(num,label,color){
     <div style="font-size:26px;font-weight:800;color:${color||'var(--oasis-700)'}">${num}</div>
     <div style="font-size:12px;color:var(--muted);margin-top:2px">${label}</div></div>`;
 }
+function leadershipKpiHTML(){
+  const esc=reportEsc, today=new Date().toISOString().slice(0,10);
+  const active=state.projects.filter(p=>!isEffectivelyDone(p)&&p.overallStatus!=='الغي المشروع'&&p.overallStatus!=='متوقف الى اشعار اخر'&&DEPT_MAP.some(([k])=>p[k]?.status==='قيد العمل'));
+  const tasks=active.flatMap(p=>DEPT_MAP.map(([k,label])=>({p,label,sec:p[k]})).filter(x=>x.sec?.status==='قيد العمل'));
+  const late=tasks.filter(x=>x.sec.endDate&&x.sec.endDate<today).sort((a,b)=>a.sec.endDate.localeCompare(b.sec.endDate));
+  const soon=tasks.filter(x=>x.sec.endDate&&x.sec.endDate>=today&&daysBetween(today,x.sec.endDate)<=30).sort((a,b)=>a.sec.endDate.localeCompare(b.sec.endDate));
+  const missing=tasks.filter(x=>!x.sec.endDate);
+  const types=new Map();active.forEach(p=>{const t=p.customType||p.type||'غير محدد';types.set(t,(types.get(t)||0)+1);});
+  const top=[...types].sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const attention=(rows,empty)=>rows.length?rows.slice(0,8).map(({p,label,sec})=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:12px"><span><b>${esc(p.name||'مشروع بلا اسم')}</b><small style="display:block;color:var(--muted)">${esc(label)} · ${esc(p.requestingEntity||'جهة غير محددة')}</small></span><b style="white-space:nowrap;color:#a54032">${esc(sec.endDate||'—')}</b></div>`).join(''):`<p style="color:var(--muted);font-size:12px">${empty}</p>`;
+  return `<section style="margin:0 0 24px"><div style="background:linear-gradient(120deg,#16443a,#286c58);color:white;border-radius:16px;padding:19px;margin-bottom:12px"><div style="color:#d5b96e;font-size:12px;font-weight:800">ملخص القيادة · الحالة الحالية</div><h3 style="margin:5px 0;color:white;font-size:20px">محفظة المشاريع وأولويات المتابعة</h3><span style="font-size:12px;color:#d6eee5">مستخرج من الحالات والتواريخ المسجلة حتى اليوم</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:9px;margin-bottom:15px">${[[active.length,'مشاريع نشطة'],[late.length,'أعمال متأخرة'],[soon.length,'تستحق خلال 30 يوماً'],[missing.length,'بلا موعد تسليم']].map(([n,l])=>`<div style="border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--sand-50)"><b style="display:block;color:var(--oasis-700);font-size:23px">${n}</b><small>${l}</small></div>`).join('')}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px"><div style="border:1px solid var(--line);border-radius:12px;padding:14px"><b style="color:var(--oasis-700)">أولوية: تجاوز الموعد</b>${attention(late,'لا توجد أعمال متأخرة.')}</div><div style="border:1px solid var(--line);border-radius:12px;padding:14px"><b style="color:var(--oasis-700)">توزيع المشاريع النشطة حسب النوع</b>${top.length?top.map(([type,n])=>`<div style="font-size:12px;margin-top:9px"><div style="display:flex;justify-content:space-between"><span>${esc(type)}</span><b>${n}</b></div><div style="height:5px;background:#e9efea;border-radius:5px"><div style="width:${Math.round(n/active.length*100)}%;height:100%;border-radius:5px;background:#c9a24b"></div></div></div>`).join(''):'<p style="font-size:12px;color:var(--muted)">لا توجد مشاريع نشطة.</p>'}</div></div>
+    <p style="font-size:11px;color:var(--muted);line-height:1.7">هذه لقطة للحالة الحالية مستقلة عن فترة قياس أداء الأقسام أدناه. التأخير = عمل قسم قيد التنفيذ تجاوز موعده المتوقع؛ المشروع الواحد قد يضم أكثر من عمل. غياب الموعد يُعرض منفصلاً.</p></section>`;
+}
+
 function openKpiModal(){
   if(document.getElementById('kpiOverlay')) return;
   kpiModalOpen=true;
@@ -3660,6 +3676,7 @@ function openKpiModal(){
         </select>
         <span style="font-size:13px;color:var(--oasis-700);font-weight:700;margin-right:auto">${rangeLabel}</span>
       </div>
+      ${leadershipKpiHTML()}
       ${(()=>{
         const periodTxt = kpiPeriod==='all' ? 'الأداء العام' : rangeLabel;
         const DEPT_ICON={architectural:'🏛️',structural:'🏗️',services:'🛠️'};
@@ -3890,41 +3907,52 @@ function monthLabelStd(m){
   if(!m) return ''; const [y,mo]=m.split('-'); return `${MONTH_NAMES[Number(mo)-1]||''} ${y}`;
 }
 /* يبني محتوى HTML للتقرير حسب النوع والشهر (يُستخدم لـ PDF و Word) */
-function buildReportHTML(selType, selMonth){
-  const label=monthLabelStd(selMonth);
-  const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+/* بيانات التقرير: الإنجاز الشهري يعتمد على التسليم الفعلي المسجل فقط. */
+function reportProjectData(month){
+  const today=new Date().toISOString().slice(0,10);
+  const sections=state.projects.flatMap(p=>DEPT_MAP.map(([key,label])=>({p,key,label,sec:p[key]})).filter(x=>x.sec && (x.sec.status==='مكتمل'||x.sec.status==='قيد العمل')));
+  const done=sections.filter(x=>x.sec.status==='مكتمل' && ym(x.sec.actualDate)===month);
+  const undated=sections.filter(x=>x.sec.status==='مكتمل' && !x.sec.actualDate && ym(x.sec.endDate)===month);
+  const active=sections.filter(x=>x.sec.status==='قيد العمل');
+  const overdue=active.filter(x=>x.sec.endDate && x.sec.endDate<today).sort((a,b)=>a.sec.endDate.localeCompare(b.sec.endDate));
+  const soon=active.filter(x=>x.sec.endDate && x.sec.endDate>=today && daysBetween(today,x.sec.endDate)<=30).sort((a,b)=>a.sec.endDate.localeCompare(b.sec.endDate));
+  return {done,undated,active,overdue,soon,sections,today};
+}
+function reportEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function reportProjectSection(title,items,empty){
+  const esc=reportEsc;
+  return `<section class="rp-section"><h3>${esc(title)} <span class="rp-count">${items.length}</span></h3>${items.length?items.map(({p,sec,label})=>{
+    const names=Array.isArray(sec.engineers)&&sec.engineers.length?sec.engineers.map(e=>e.name||e.username).filter(Boolean).join('، '):sec.engineer||'—';
+    const delay=sec.status==='قيد العمل'&&sec.endDate&&sec.endDate<new Date().toISOString().slice(0,10)?`<span class="rp-alert">تجاوز الموعد ${daysBetween(sec.endDate,new Date().toISOString().slice(0,10))} يوم</span>`:'';
+    return `<article class="rp-item"><div class="rp-item-head"><strong>${esc(p.name||'مشروع بلا اسم')}</strong><span class="rp-badge">${esc(label)}</span></div><div class="rp-meta">${esc(p.projectNo||'بلا رقم')} · ${esc(p.customType||p.type||'نوع غير محدد')} · ${esc(p.requestingEntity||'جهة غير محددة')}</div><div class="rp-grid"><span>المهندس: <b>${esc(names)}</b></span><span>الاستلام: <b>${esc(sec.startDate||'—')}</b></span><span>الموعد: <b>${esc(sec.endDate||'—')}</b></span><span>التسليم الفعلي: <b>${esc(sec.actualDate||'—')}</b></span>${p.area?`<span>المساحة: <b>${esc(p.area)}</b></span>`:''}${p.cost?`<span>التكلفة: <b>${esc(p.cost)} ر.ع</b></span>`:''}</div>${sec.notes?`<div class="rp-note">ملاحظات القسم: ${esc(sec.notes)}</div>`:''}${delay}</article>`;
+  }).join(''):`<p class="rp-empty">${esc(empty||'لا توجد بيانات مسجلة.')}</p>`}</section>`;
+}
+function buildReportHTML(selType,selMonth){
+  const esc=reportEsc,label=monthLabelStd(selMonth),d=reportProjectData(selMonth);
   let out='';
-  // جدول المشاريع
-  if(selType==='projects' || selType==='all'){
-    const doneRows=[], wipRows=[];
-    DEPT_MAP.forEach(([key,label])=>{
-      state.projects.filter(p=>ym(p[key]?.endDate)===selMonth && p[key]?.status==='مكتمل')
-        .forEach(p=>doneRows.push([label,p.name||'',p.projectNo||'',p[key]?.engineer||'',p.requestingEntity||'',p[key]?.startDate||'',p[key]?.endDate||'',p[key]?.actualDate||'']));
-      state.projects.filter(p=>p[key]?.status==='قيد العمل')
-        .forEach(p=>wipRows.push([label,p.name||'',p.projectNo||'',p[key]?.engineer||'',p.requestingEntity||'',p[key]?.startDate||'',p[key]?.endDate||'','—']));
-    });
-    const head=['القسم','المشروع','الرقم','المهندس','الجهة','الاستلام','المتوقع','الفعلي'];
-    const tbl=(rows)=> rows.length? `<table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<p class="empty">لا توجد بيانات.</p>';
-    out+=`<h2>تقرير المشاريع — ${esc(label)}</h2>
-      <h3>الأعمال المنجزة هذا الشهر (${doneRows.length})</h3>${tbl(doneRows)}
-      <h3>المشاريع قيد العمل حالياً (${wipRows.length})</h3>${tbl(wipRows)}`;
+  if(selType==='projects'||selType==='all'){
+    const uniqueActive=new Set(d.active.map(x=>x.p.id||x.p.projectNo||x.p.name)).size;
+    out+=`<div class="rp-report"><div class="rp-intro"><div class="rp-eyebrow">ملخص تنفيذي · ${esc(label)}</div><h2>حالة مشاريع التصميم</h2><p>إنجازات الشهر المسجلة وتفاصيل الأعمال الجارية حتى تاريخ استخراج التقرير.</p></div>
+      <div class="rp-stats"><div><b>${d.done.length}</b><span>أعمال سُلّمت فعلياً هذا الشهر</span></div><div><b>${uniqueActive}</b><span>مشاريع نشطة حالياً</span></div><div><b>${d.overdue.length}</b><span>أعمال تجاوزت موعدها</span></div><div><b>${d.soon.length}</b><span>أعمال موعدها خلال 30 يوماً</span></div></div>
+      ${reportProjectSection('أولويات المتابعة · تجاوزت الموعد',d.overdue,'لا توجد أعمال جارية متأخرة.')}
+      ${reportProjectSection('تسليمات قريبة · خلال 30 يوماً',d.soon,'لا توجد أعمال جارية مستحقة خلال 30 يوماً.')}
+      ${reportProjectSection('الأعمال المسلّمة في الشهر',d.done,'لا توجد تواريخ تسليم فعلية مسجلة لهذا الشهر.')}
+      ${reportProjectSection('مكتملة وموعدها المخطط هذا الشهر بلا تاريخ فعلي',d.undated,'لا توجد سجلات تحتاج استكمال تاريخ التسليم.')}
+      ${reportProjectSection('جميع الأعمال الجارية حالياً',d.active,'لا توجد أعمال قيد العمل.')}
+      <p class="rp-method">وحدة العد هي عمل القسم في المشروع؛ قد يظهر المشروع في أكثر من قسم. الإنجاز الشهري يعتمد على تاريخ التسليم الفعلي. النشط والمتأخر لقطة للحالة الحالية، وليسا أرشيفاً تاريخياً للشهر المختار.</p></div>`;
   }
-  // الاجتماعات
-  if(selType==='meetings' || selType==='all'){
-    const list=state.meetings.filter(m=>ym(m.date)===selMonth).sort((a,b)=>new Date(a.date)-new Date(b.date));
-    const head=['الاسم','القسم','الأشخاص','التاريخ','الموقع','الغرض','المحضر'];
-    const tbl=list.length? `<table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${list.map(m=>`<tr>${[m.title,m.deptLabel,m.personNames,m.date,m.location,m.purpose,m.minutes].map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`:'<p class="empty">لا توجد اجتماعات.</p>';
-    out+=`<h2>تقرير الاجتماعات — ${esc(label)}</h2>${tbl}`;
+  const table=(heads,rows,empty)=>rows.length?`<table><thead><tr>${heads.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`:`<p class="rp-empty">${empty}</p>`;
+  if(selType==='meetings'||selType==='all'){
+    const list=state.meetings.filter(m=>ym(m.date)===selMonth).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+    out+=`<section class="rp-section"><h2>الاجتماعات · ${esc(label)} <span class="rp-count">${list.length}</span></h2>${table(['الاسم','القسم','الأشخاص','التاريخ','الموقع','الغرض','المحضر'],list.map(m=>[m.title,m.deptLabel,m.personNames,m.date,m.location,m.purpose,m.minutes]),'لا توجد اجتماعات مسجلة.')}</section>`;
   }
-  // الزيارات
-  if(selType==='visits' || selType==='all'){
-    const list=state.visits.filter(v=>ym(v.date)===selMonth).sort((a,b)=>new Date(a.date)-new Date(b.date));
-    const head=['الموقع/الولاية','القسم','الأشخاص','التاريخ','الغرض','ملاحظات'];
-    const tbl=list.length? `<table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${list.map(v=>`<tr>${[v.location,v.deptLabel,v.personNames,v.date,v.purpose,v.notes].map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`:'<p class="empty">لا توجد زيارات.</p>';
-    out+=`<h2>تقرير الزيارات الميدانية — ${esc(label)}</h2>${tbl}`;
+  if(selType==='visits'||selType==='all'){
+    const list=state.visits.filter(v=>ym(v.date)===selMonth).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+    out+=`<section class="rp-section"><h2>الزيارات الميدانية · ${esc(label)} <span class="rp-count">${list.length}</span></h2>${table(['الموقع/الولاية','القسم','الأشخاص','التاريخ','الغرض','ملاحظات'],list.map(v=>[v.location,v.deptLabel,v.personNames,v.date,v.purpose,v.notes]),'لا توجد زيارات مسجلة.')}</section>`;
   }
   return out;
 }
+
 /* أنماط مشتركة لمستندات التقارير */
 function reportDocStyles(){
   return `body{font-family:'Tajawal',Arial,sans-serif;color:#16201e;margin:0;padding:0 0 80px}
@@ -3938,6 +3966,7 @@ function reportDocStyles(){
     tr:nth-child(even) td{background:#f5f7f5}
     .empty{color:#888;font-size:12.5px;padding:6px 0}`;
 }
+function reportViewStyles(){ return ".rp-report{color:#162d28}.rp-intro{background:linear-gradient(120deg,#16443a,#286c58);color:#fff;border-radius:16px;padding:24px;margin:4px 0 14px}.rp-intro h2{color:#fff;border:0;margin:5px 0;font-size:23px}.rp-intro p{margin:0;color:#d6eee5;font-size:13px}.rp-eyebrow{color:#d5b96e;font-size:12px;font-weight:800;letter-spacing:.04em}.rp-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 22px}.rp-stats>div{background:#f5f4ef;border:1px solid #dce6df;border-radius:13px;padding:13px;min-height:75px}.rp-stats b{display:block;color:#1f5d4c;font-size:25px}.rp-stats span{font-size:11px;color:#566d65;line-height:1.4}.rp-section{margin:20px 0}.rp-section h2,.rp-section h3{color:#16443a;border-bottom:2px solid #c9a24b;padding-bottom:7px;margin:0 0 12px;font-size:17px}.rp-count{font-size:12px;border-radius:99px;background:#e5f2eb;color:#1f5d4c;padding:3px 9px;margin-inline-start:7px}.rp-item{background:#fff;border:1px solid #d9e2de;border-inline-start:4px solid #c9a24b;border-radius:12px;margin:9px 0;padding:13px;break-inside:avoid;page-break-inside:avoid}.rp-item-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.rp-item-head strong{font-size:15px}.rp-badge{background:#e8f2ed;color:#1f5d4c;padding:4px 8px;border-radius:7px;font-size:11px;white-space:nowrap}.rp-meta{color:#67796f;font-size:12px;margin:6px 0 10px}.rp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 12px;color:#596b63;font-size:12px}.rp-grid b{color:#1b3d33}.rp-note{background:#faf7ee;border-radius:7px;padding:8px;margin-top:9px;font-size:12px;white-space:pre-wrap}.rp-alert{display:inline-block;color:#a54032;background:#fff1ed;border-radius:7px;padding:5px 8px;margin-top:8px;font-size:11px;font-weight:700}.rp-empty{background:#f6f7f4;color:#67796f;border-radius:10px;padding:15px;font-size:12px}.rp-method{font-size:11px;color:#61776e;line-height:1.8;border-top:1px solid #d9e2de;padding-top:12px}.rp-section table{width:100%;border-collapse:collapse;font-size:12px}.rp-section th{background:#1f5d4c;color:#fff;padding:7px}.rp-section td{padding:7px;border:1px solid #dae3de}.rp-section tr:nth-child(even) td{background:#f5f7f5}@media(max-width:650px){.rp-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-grid{grid-template-columns:1fr}}@media print{.rp-intro{-webkit-print-color-adjust:exact;print-color-adjust:exact}.rp-stats{grid-template-columns:repeat(4,1fr)}.rp-section{break-inside:auto}.rp-section h3{break-after:avoid}}"; }
 /* تصدير التقرير PDF عبر نافذة طباعة فيها زرّا طباعة ورجوع */
 function exportReportPdf(selType, selMonth){
   const content=buildReportHTML(selType, selMonth);
@@ -3969,7 +3998,7 @@ function exportReportWord(selType, selMonth){
   const dStr=`${String(today.getDate()).padStart(2,'0')}/${String(today.getMonth()+1).padStart(2,'0')}/${today.getFullYear()}`;
   const label=monthLabelStd(selMonth);
   const html=`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
-    <style>${reportDocStyles()}</style></head><body>
+    <style>${reportDocStyles()}${reportViewStyles()}</style></head><body>
     <div class="hd"><div><h1>التقرير الشهري — ${label}</h1>
       <div class="sub">نظام مشاريع التصميم المركزي — بلدية مسقط</div></div>
       <div class="sub">تاريخ التصدير: ${dStr}</div></div>${content}</body></html>`;
@@ -4022,7 +4051,7 @@ function openReportsModal(){
   let selType='projects';   // نوع التقرير: projects | meetings | visits | all
 
   const overlay=$(`<div class="overlay" id="reportsOverlay"></div>`);
-  const modal=$(`<div class="modal"><div class="modal-head"><h2>التقارير الشهرية</h2>
+  const modal=$(`<div class="modal" style="max-width:1050px"><div class="modal-head"><h2>التقارير الشهرية</h2>
     <button class="icon-btn" id="x">${I.close}</button></div></div>`);
   const body=document.createElement('div');body.className='modal-body';
   modal.appendChild(body);overlay.appendChild(modal);
@@ -4032,12 +4061,12 @@ function openReportsModal(){
     const [y,mo]=m.split('-'); return `${MONTH_NAMES[Number(mo)-1]} ${y}`;
   }
   function fill(){
-    // اجمع كل الأشهر المتاحة من تواريخ تسليم الأقسام
-    const monthsSet=new Set();
-    state.projects.forEach(p=>DEPT_MAP.forEach(([k])=>{ const m=ym(p[k]?.endDate); if(m) monthsSet.add(m); }));
+    // تشمل الأشهر الحالية وتواريخ التسليم الفعلي والمتوقع والأنشطة.
+    const monthsSet=new Set([new Date().toISOString().slice(0,7)]);
+    state.projects.forEach(p=>DEPT_MAP.forEach(([k])=>['actualDate','endDate','startDate'].forEach(field=>{ const m=ym(p[k]?.[field]); if(m) monthsSet.add(m); })));
+    state.meetings.forEach(m=>{if(ym(m.date))monthsSet.add(ym(m.date));});
+    state.visits.forEach(v=>{if(ym(v.date))monthsSet.add(ym(v.date));});
     const months=[...monthsSet].sort().reverse();
-    if(!months.includes(selMonth) && months.length) selMonth=months[0];
-
     const monthOpts = months.length
       ? months.map(m=>`<option value="${m}" ${m===selMonth?'selected':''}>${monthLabel(m)}</option>`).join('')
       : `<option value="">لا توجد بيانات</option>`;
@@ -4061,92 +4090,7 @@ function openReportsModal(){
         </span>`:''}
       </div>`;
 
-    if(!months.length && selType==='projects'){
-      html+=`<div style="text-align:center;padding:40px 20px;color:var(--muted)">
-        لا توجد مشاريع لها تاريخ تسليم بعد. عبّئ تواريخ التسليم في الأقسام لتظهر التقارير الشهرية.</div>`;
-      body.innerHTML=html; bindMonth(); return;
-    }
-
-    // أنشطة الشهر (زيارات/اجتماعات) حسب تاريخها
-    const visitsThisMonth=state.visits.filter(v=>ym(v.date)===selMonth);
-    const meetingsThisMonth=state.meetings.filter(m=>ym(m.date)===selMonth);
-
-    if(selType==='meetings'){ html+=renderMeetingsReport(meetingsThisMonth, monthLabel(selMonth)); body.innerHTML=html; bindMonth(); return; }
-    if(selType==='visits'){ html+=renderVisitsReport(visitsThisMonth, monthLabel(selMonth)); body.innerHTML=html; bindMonth(); return; }
-    // selType === 'all' يعرض المشاريع ثم الاجتماعات ثم الزيارات
-
-    // ── تقرير الإنجاز: المشاريع المنجزة هذا الشهر لكل قسم ──
-    html+=`<h3 style="font-size:16px;color:var(--oasis-700);margin-bottom:12px">تقرير الإنجاز — ${monthLabel(selMonth)}</h3>`;
-    let grandDone=0;
-    DEPT_MAP.forEach(([key,label])=>{
-      const items=state.projects.filter(p=>ym(p[key]?.endDate)===selMonth && (p[key]?.status==='مكتمل'));
-      grandDone+=items.length;
-      html+=`<div style="background:var(--sand-50);border:1px solid var(--line);border-radius:11px;padding:13px;margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${items.length?'9px':'0'}">
-          <span style="font-weight:700;color:var(--oasis-700)">${label}</span>
-          <span class="done-count">${items.length} مشروع</span>
-        </div>
-        ${items.map(p=>{
-          const av=canViewEval()?ratingAvg(p[key]?.eval):null;
-          return `<div style="font-size:13px;padding:7px 0;border-top:1px dashed var(--line);display:flex;justify-content:space-between;gap:8px">
-            <span><b>${p.name||'—'}</b> <span style="color:var(--muted)">· ${p[key]?.engineer||'—'}</span></span>
-            <span style="white-space:nowrap;color:var(--muted)">سُلّم: ${p[key].endDate}${av?` · ${av}★`:''}</span>
-          </div>`;
-        }).join('')}
-      </div>`;
-    });
-    html+=`<div style="text-align:left;font-size:13px;color:var(--muted);margin-bottom:22px">إجمالي المنجز هذا الشهر: <b style="color:var(--oasis-700)">${grandDone}</b></div>`;
-
-    // ── المشاريع قيد العمل حالياً (مستقلة عن الشهر — استُلمت ولم تكتمل) ──
-    html+=`<h3 style="font-size:16px;color:var(--oasis-700);margin-bottom:4px">المشاريع قيد العمل حالياً</h3>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px">جميع الأعمال الجارية التي لم تكتمل بعد، بصرف النظر عن تاريخها.</div>`;
-    let grandWip=0;
-    DEPT_MAP.forEach(([key,label])=>{
-      const items=state.projects.filter(p=>p[key]?.status==='قيد العمل');
-      grandWip+=items.length;
-      html+=`<div style="background:#fff;border:1px solid var(--line);border-radius:11px;padding:13px;margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${items.length?'9px':'0'}">
-          <span style="font-weight:700;color:var(--oasis-700)">${label}</span>
-          <span class="done-count" style="background:var(--clay-bg,#f3e9d7);color:var(--clay-dark,#8a6d2f)">${items.length} مشروع</span>
-        </div>
-        ${items.map(p=>`<div style="font-size:13px;padding:7px 0;border-top:1px dashed var(--line);display:flex;justify-content:space-between;gap:8px">
-            <span><b>${p.name||'—'}</b> <span style="color:var(--muted)">· ${p[key]?.engineer||'—'}</span></span>
-            <span style="white-space:nowrap;color:var(--muted)">استلام: ${p[key]?.startDate||'—'} · متوقع: ${p[key]?.endDate||'—'}</span>
-          </div>`).join('')}
-      </div>`;
-    });
-    html+=`<div style="text-align:left;font-size:13px;color:var(--muted);margin-bottom:22px">إجمالي قيد العمل: <b style="color:var(--oasis-700)">${grandWip}</b></div>`;
-
-    // ── تقرير الأداء: متوسط تقييمات كل قسم هذا الشهر (للمخوّلين بالتقييم فقط) ──
-    if(canViewEval()){
-      html+=`<h3 style="font-size:16px;color:var(--oasis-700);margin-bottom:12px">تقرير الأداء — ${monthLabel(selMonth)}</h3>`;
-      const critLabels={quality:'جودة التصميم',requirements:'الالتزام بالمتطلبات',communication:'التواصل والتعاون',challenges:'التعامل مع التحديات',delay:'الالتزام بالوقت'};
-      DEPT_MAP.forEach(([key,label])=>{
-        // المشاريع المسلّمة هذا الشهر ولها تقييم
-        const rated=state.projects.filter(p=>ym(p[key]?.endDate)===selMonth && p[key]?.eval && ratingAvg(p[key].eval));
-        const crit={quality:[],requirements:[],communication:[],challenges:[],delay:[]};
-        rated.forEach(p=>{ ['quality','requirements','communication','challenges','delay'].forEach(c=>{const v=Number(p[key].eval[c]); if(v>=1&&v<=5) crit[c].push(v);}); });
-        const avgOf=arr=>arr.length?(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(1):'—';
-        const overall=rated.length?(rated.reduce((s,p)=>s+Number(ratingAvg(p[key].eval)),0)/rated.length).toFixed(1):null;
-        html+=`<div style="background:var(--sand-50);border:1px solid var(--line);border-radius:11px;padding:13px;margin-bottom:12px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${rated.length?'9px':'0'}">
-            <span style="font-weight:700;color:var(--oasis-700)">${label}</span>
-            <span style="font-weight:800;color:var(--stop)">${overall?overall+' ★':'لا يوجد تقييم'}</span>
-          </div>
-          ${rated.length?`<div style="font-size:12px;color:var(--muted);display:grid;grid-template-columns:1fr 1fr;gap:5px">
-            ${Object.entries(critLabels).map(([c,l])=>`<span>${l}: <b style="color:var(--ink)">${avgOf(crit[c])}</b></span>`).join('')}
-          </div><div style="font-size:11px;color:var(--muted);margin-top:7px">عدد المشاريع المقيَّمة: ${rated.length}</div>`:''}
-        </div>`;
-      });
-    }
-    html+=`<p style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.7">
-      يعتمد التقرير على تاريخ تسليم كل قسم. المشاريع تظهر في شهر تسليمها.</p>`;
-
-    if(selType==='all'){
-      html+=`<div class="divider"></div>`+renderMeetingsReport(meetingsThisMonth, monthLabel(selMonth));
-      html+=`<div class="divider"></div>`+renderVisitsReport(visitsThisMonth, monthLabel(selMonth));
-    }
-
+    html+=`<style>${reportViewStyles()}</style>${buildReportHTML(selType,selMonth)}`;
     body.innerHTML=html; bindMonth();
   }
   function bindMonth(){
@@ -4231,7 +4175,8 @@ function openReportsModal(){
           .forEach(p=>wipRows.push([label,p.name||'',p[key]?.engineer||'',p.requestingEntity||'',p[key]?.startDate||'',p[key]?.endDate||'','',p[key]?.status||'']));
       });
       return buildSheet('تقرير المشاريع',8,[
-        {title:`الأعمال المنجزة — ${monthName}`,headers,rows:doneRows},
+        {title:`المسلّم فعلياً — ${monthName}`,headers,rows:doneRows},
+         {title:'مكتمل بلا تاريخ تسليم فعلي (موعده المخطط في الشهر)',headers,rows:undatedRows},
         {title:'المشاريع قيد العمل حالياً (استُلمت ولم تكتمل)',headers,rows:wipRows}
       ]);
     }
@@ -4583,4 +4528,9 @@ render();          // ارسمي الواجهة فوراً
 initFirebase();    // ثم حمّلي قاعدة البيانات في الخلفية
 </script>
 </body>
-</html>
+</html>       const data=reportProjectData(selMonth);
+       const row=({p,sec,label})=>[label,p.name||'',sec.engineer||'',p.requestingEntity||'',sec.startDate||'',sec.endDate||'',sec.actualDate||'',sec.status||''];
+       doneRows.push(...data.done.map(row));
+       wipRows.push(...data.active.map(row));
+       const undatedRows=data.undated.map(row);
+

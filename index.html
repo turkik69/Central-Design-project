@@ -3341,19 +3341,19 @@ function engineerReport(username){
 
 /* ════════════ لوحة مؤشرات الأداء (KPIs) ════════════ */
 let kpiModalOpen=false;
-let kpiPeriod='month';   // all | month | quarter | half | year — لوحة المؤشرات العامة (أداء الدائرة/الأقسام/المهندسين) — لا علاقة لها بالشهادات
+let kpiPeriod='month';   // all | month | quarter | q1..q4 | half | year
+let kpiYear=new Date().getFullYear(); // السنة المختارة للأرباع المحددة في لوحة المؤشرات
 /* حساب الفرق بالأيام بين تاريخين YYYY-MM-DD */
 function daysBetween(a,b){ if(!a||!b) return null; const d=(new Date(b)-new Date(a))/86400000; return isNaN(d)?null:Math.round(d); }
-/* يعيد {from,to} للفترة المختارة. يدعم فترات اللوحة العامة (all/month/quarter الحالي/half/year)
-   وأيضاً أرباع محدَّدة صراحةً (q1..q4) تُستخدم حصراً في شهادات التميّز. */
-function kpiRange(period){
+/* يعيد نطاق الفترة، مع سنة قابلة للاختيار لأرباع لوحة المؤشرات. */
+function kpiRange(period, selectedYear){
   const now=new Date(); const y=now.getFullYear(), m=now.getMonth();
   const mk=(yy,mm,dd)=>new Date(yy,mm,dd);
   const ordWords=['الأول','الثاني','الثالث','الرابع'];
   const qMap={q1:0,q2:1,q3:2,q4:3};
   if(period in qMap){
-    const q=qMap[period];
-    return {from:mk(y,q*3,1), to:mk(y,q*3+3,0), label:`الربع ${ordWords[q]} من عام ${y}`, quarterOrdinal:ordWords[q], quarterNum:q+1};
+    const q=qMap[period], quarterYear=Number.isInteger(Number(selectedYear)) && Number(selectedYear)>=1900 && Number(selectedYear)<=9999 ? Number(selectedYear) : y;
+    return {from:mk(quarterYear,q*3,1), to:mk(quarterYear,q*3+3,0), label:`الربع ${ordWords[q]} من عام ${quarterYear}`, quarterOrdinal:ordWords[q], quarterNum:q+1};
   }
   if(period==='month')   return {from:mk(y,m,1), to:mk(y,m+1,0), label:`شهر ${MONTH_NAMES?MONTH_NAMES[m]:m+1} ${y}`};
   if(period==='quarter'){ const q=Math.floor(m/3); return {from:mk(y,q*3,1), to:mk(y,q*3+3,0), label:`الربع ${ordWords[q]} من عام ${y}`, quarterOrdinal:ordWords[q], quarterNum:q+1}; }
@@ -3366,7 +3366,7 @@ function inKpiPeriod(dateStr){
   if(kpiPeriod==='all') return true;
   if(!dateStr) return false;
   const d=new Date(dateStr); if(isNaN(d)) return false;
-  const {from,to}=kpiRange(kpiPeriod);
+  const {from,to}=kpiRange(kpiPeriod,kpiYear);
   return d>=from && d<=to;
 }
 /* ── فترة شهادات التميّز — مستقلة تماماً عن فلتر لوحة المؤشرات (kpiPeriod) ──
@@ -3730,7 +3730,7 @@ function leadershipKpiHTML(){return kpiDashboardHTML();}
 function exportEngineerKpiExcel(){
   if(!window.XLSX){alert('تعذّر تحميل أداة Excel، حاول لاحقاً.');return;}
   const X=window.XLSX,engs=engineerKpiList();
-  const rows=[['مؤشرات المهندسين — دائرة التصميم المركزي'],['الفترة',kpiRange(kpiPeriod).label],[],['المهندس','القسم','الأعمال','المنجز','الآراء الفنية','الإنجاز %','الالتزام %','التقييم'],...engs.map(e=>[e.name,DEPT_MAP.find(([k])=>k===e.dept)?.[1]||'',e.total,e.done,e.opinionCount||0,e.completion,e.punctuality==null?'—':e.punctuality,e.avgRating||'—'])];
+  const rows=[['مؤشرات المهندسين — دائرة التصميم المركزي'],['الفترة',kpiRange(kpiPeriod,kpiYear).label],[],['المهندس','القسم','الأعمال','المنجز','الآراء الفنية','الإنجاز %','الالتزام %','التقييم'],...engs.map(e=>[e.name,DEPT_MAP.find(([k])=>k===e.dept)?.[1]||'',e.total,e.done,e.opinionCount||0,e.completion,e.punctuality==null?'—':e.punctuality,e.avgRating||'—'])];
   const ws=X.utils.aoa_to_sheet(rows);ws['!views']=[{RTL:true}];ws['!cols']=[{wch:30},{wch:24},{wch:14},{wch:14},{wch:16},{wch:16},{wch:16},{wch:16}];
   const wb=X.utils.book_new();X.utils.book_append_sheet(wb,ws,'المهندسون');X.writeFile(wb,'مؤشرات_المهندسين_'+reportToday()+'.xlsx');
 }
@@ -3739,7 +3739,7 @@ function engineerKpiTable(engs){
   return engs.length?`<div class="rp-table-wrap"><table class="slide-table"><thead><tr><th>المهندس</th><th>القسم</th><th>الأعمال</th><th>المنجز</th><th>الآراء الفنية</th><th>الإنجاز</th><th>الالتزام</th><th>التقييم</th></tr></thead><tbody>${engs.map(e=>`<tr><td>${esc(e.name||'—')}</td><td>${esc(DEPT_MAP.find(([k])=>k===e.dept)?.[1]||'—')}</td><td>${e.total}</td><td>${e.done}</td><td>${e.opinionCount||0}</td><td>${e.completion}%</td><td>${e.punctuality==null?'—':e.punctuality+'%'}</td><td>${e.avgRating||'—'}</td></tr>`).join('')}</tbody></table></div>`:'<p class="rp-empty">لا توجد بيانات مهندسين للفترة المختارة.</p>';
 }
 function engineerSlides(){
-  const engs=engineerKpiList(),title=kpiRange(kpiPeriod).label;
+  const engs=engineerKpiList(),title=kpiRange(kpiPeriod,kpiYear).label;
   const contents=[['مؤشرات المهندسين',`<h1>أداء المهندسين</h1><p class="slide-sub">${reportEsc(title)}</p><div class="rp-stats"><div class="rp-stat"><b>${engs.length}</b><strong>مهندسون لديهم أعمال</strong></div><div class="rp-stat"><b>${engs.reduce((n,e)=>n+e.done,0)}</b><strong>أعمال منجزة وآراء فنية</strong></div></div>`,true],['جدول مؤشرات المهندسين',engineerKpiTable(engs)]];
   return contents.map(([name,html,cover],i)=>slideFrame(name,html,i+1,contents.length,cover));
 }
@@ -3749,7 +3749,7 @@ function openEngineerKpiModal(){
   const modal=$(`<div class="modal" style="max-width:1050px"><div class="modal-head"><h2>مؤشرات المهندسين</h2><div style="display:flex;gap:8px"><button class="btn btn-ghost" id="engKpiXls">${I.upload} Excel</button><button class="btn btn-ghost" id="engKpiPdf">${I.report} PDF / شرائح</button><button class="icon-btn" id="x">${I.close}</button></div></div></div>`);
   const body=document.createElement('div');body.className='modal-body';modal.appendChild(body);overlay.appendChild(modal);
   function fill(){
-    const engs=engineerKpiList(),label=kpiRange(kpiPeriod).label;
+    const engs=engineerKpiList(),label=kpiRange(kpiPeriod,kpiYear).label;
     const awards=DEPT_MAP.map(([key,dept])=>{
       const winner=employeeOfMonthInDept(key);
       return `<div class="rp-dept"><b>${reportEsc(dept)}</b><div><strong style="font-size:16px">${winner?reportEsc(winner.name):'—'}</strong><small>${winner?'أعمال: '+winner.doneCount+' · التزام: '+(winner.punctuality==null?'—':winner.punctuality+'%'):'لا يوجد فائز مؤهل'}</small></div></div>`;
@@ -3778,11 +3778,15 @@ function openKpiModal(){
   modal.appendChild(body);overlay.appendChild(modal);
 
   function fill(){
-    const rangeLabel=kpiRange(kpiPeriod).label;
-    let html=`<div class="pr-controls"><label>فترة القياس<select class="inp" id="kpiPeriodSel"><option value="all" ${kpiPeriod==='all'?'selected':''}>كل الفترات</option><option value="month" ${kpiPeriod==='month'?'selected':''}>الشهر الحالي</option><option value="quarter" ${kpiPeriod==='quarter'?'selected':''}>الربع الحالي</option><option value="half" ${kpiPeriod==='half'?'selected':''}>النصف الحالي</option><option value="year" ${kpiPeriod==='year'?'selected':''}>العام الحالي</option></select></label><span style="color:var(--oasis-700);font-weight:700">${reportEsc(rangeLabel)}</span></div>${leadershipKpiHTML()}`;
+    const rangeLabel=kpiRange(kpiPeriod,kpiYear).label;
+    const isSelectedQuarter=/^q[1-4]$/.test(kpiPeriod);
+    const yearOptions=[...new Set([kpiYear,...reportPeriodOptions('year').map(Number)])].sort((a,b)=>b-a).map(y=>`<option value="${y}" ${y===kpiYear?'selected':''}>${y}</option>`).join('');
+    let html=`<div class="pr-controls"><label>فترة القياس<select class="inp" id="kpiPeriodSel"><option value="all" ${kpiPeriod==='all'?'selected':''}>كل الفترات</option><option value="month" ${kpiPeriod==='month'?'selected':''}>الشهر الحالي</option><option value="quarter" ${kpiPeriod==='quarter'?'selected':''}>الربع الحالي</option><option value="q1" ${kpiPeriod==='q1'?'selected':''}>الربع الأول</option><option value="q2" ${kpiPeriod==='q2'?'selected':''}>الربع الثاني</option><option value="q3" ${kpiPeriod==='q3'?'selected':''}>الربع الثالث</option><option value="q4" ${kpiPeriod==='q4'?'selected':''}>الربع الرابع</option><option value="half" ${kpiPeriod==='half'?'selected':''}>النصف الحالي</option><option value="year" ${kpiPeriod==='year'?'selected':''}>العام الحالي</option></select></label>${isSelectedQuarter?`<label>العام<select class="inp" id="kpiYearSel">${yearOptions}</select></label>`:''}<span style="color:var(--oasis-700);font-weight:700">${reportEsc(rangeLabel)}</span></div>${leadershipKpiHTML()}`;
     body.innerHTML=html;
     const ps=body.querySelector('#kpiPeriodSel');
     if(ps) ps.onchange=()=>{ kpiPeriod=ps.value; fill(); };
+    const ys=body.querySelector('#kpiYearSel');
+    if(ys) ys.onchange=()=>{ kpiYear=Number(ys.value); fill(); };
   }
   fill(); overlay._refresh=fill;
   // تصدير PDF عبر الطباعة (المستخدم يحفظ كـ PDF من حوار الطباعة)
@@ -3822,7 +3826,7 @@ function exportKpiExcel(){
 
   const aoa=[
     ['سلطنة عُمان — بلدية مسقط'],['المديرية العامة للشؤون الفنية'],['نظام مشاريع التصميم المركزي'],
-    ['لوحة مؤشرات الأداء (KPIs)'],[`الفترة: ${kpiRange(kpiPeriod).label}`],[`تاريخ التصدير: ${dStr}`],[],
+    ['لوحة مؤشرات الأداء (KPIs)'],[`الفترة: ${kpiRange(kpiPeriod,kpiYear).label}`],[`تاريخ التصدير: ${dStr}`],[],
     ['مؤشرات الدائرة العامة'],
     ['إجمالي المشاريع','المكتملة','نسبة الإنجاز %','الالتزام بالوقت %','متوسط التقييم'],
     [kpiScopeData().projects.length, kpiScopeData().projects.filter(p=>isEffectivelyDone(p)).length, orgCompletion, orgPunctual, orgRating],
@@ -3978,7 +3982,7 @@ function reportPeriodData(kind,key){
   const byType=new Map();projects.forEach(p=>{const type=p.customType||p.type||'غير محدد';byType.set(type,(byType.get(type)||0)+1);});
   return {...spec,done,planned,projects,meetings,visits,onTime,dated,byDept,byType};
 }
-function kpiScopeData(){const kind=/^q[1-4]$/.test(kpiPeriod)?'quarter':({month:'month',quarter:'quarter',half:'half',year:'year',all:'all'}[kpiPeriod]||'all');const key=/^q[1-4]$/.test(kpiPeriod)?`${reportToday().slice(0,4)}-Q${kpiPeriod.slice(1)}`:reportPeriodKey(kind,reportToday().slice(0,7));return reportPeriodData(kind,key);}
+function kpiScopeData(){const kind=/^q[1-4]$/.test(kpiPeriod)?'quarter':({month:'month',quarter:'quarter',half:'half',year:'year',all:'all'}[kpiPeriod]||'all');const key=/^q[1-4]$/.test(kpiPeriod)?`${kpiYear}-Q${kpiPeriod.slice(1)}`:reportPeriodKey(kind,reportToday().slice(0,7));return reportPeriodData(kind,key);}
 function reportPeriodOptions(kind){
   const months=new Set([reportToday().slice(0,7)]);
   state.projects.forEach(p=>{[p.startDate,p.endDate,...DEPT_MAP.flatMap(([k])=>[p[k]?.startDate,p[k]?.endDate,p[k]?.actualDate]),...(p.ideaStages||[]).map(x=>x.date),...(p.opinionStages||[]).map(x=>x.date)].forEach(x=>{if(ym(x))months.add(ym(x));});});

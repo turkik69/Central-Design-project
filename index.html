@@ -4020,7 +4020,7 @@ function periodProjectCard(p,d){
   const depts=DEPT_MAP.map(([key,label])=>({label,sec:p[key]})).filter(x=>x.sec&&x.sec.status&&x.sec.status!=='قيد الانتظار');
   return `<article class="pr-project" role="button" tabindex="0" data-report-project="${esc(p.id||'')}"><div class="pr-project-head"><div><strong>${esc(p.name||'مشروع بلا اسم')}</strong><small>${esc(p.projectNo||'بلا رقم')} · ${esc(p.requestingEntity||'جهة غير محددة')} · ${esc(p.customType||p.type||'نوع غير محدد')}</small></div><span class="pr-pill">${esc(status)}</span></div><div class="pr-project-facts"><span>تسليمات الفترة <b>${deliveries.length}</b></span><span>مواعيد الفترة <b>${deadlines.length}</b></span><span>الأقسام <b>${depts.length}</b></span></div><div class="pr-project-depts">${depts.map(x=>`<span>${esc(x.label)} <em>· ${esc(x.sec.status)}</em></span>`).join('')}</div>${p.executiveSummary?`<p class="pr-project-context"><b>الوصف:</b> ${esc(p.executiveSummary)}</p>`:''}${p.blocker?`<p class="pr-project-context"><b>العائق:</b> ${esc(p.blocker)}</p>`:''}${p.nextAction?`<p class="pr-project-context"><b>الخطوة التالية:</b> ${esc(p.nextAction)}</p>`:''}<div class="pr-project-foot">تفاصيل المشروع وأقسامه ←</div></article>`;
 }
-function reportBrandLogo(){const src=new URL('assets/muscat-governorate-logos.svg',document.baseURI).href;return `<span class="report-brand-mark" role="img" aria-label="شعار بلدية مسقط ومحافظة مسقط"><img class="logo-white" src="${src}" alt=""><img class="logo-red" src="${src}" alt=""></span>`;}
+function reportBrandLogo(){const src=new URL('assets/muscat-governorate-logos.png',document.baseURI).href;return `<span class="report-brand-mark" role="img" aria-label="شعار بلدية مسقط ومحافظة مسقط"><img class="logo-white" src="${src}" alt=""><img class="logo-red" src="${src}" alt=""></span>`;}
 function reportExecutiveSummary(d,selType){
   const esc=reportEsc,projects=selType==='projects'||selType==='all',meetings=selType==='meetings'||selType==='all',visits=selType==='visits'||selType==='all';
   const decisions=d.projects.filter(p=>p.decisionRequired),risks=d.projects.filter(p=>p.riskLevel==='مرتفع');
@@ -4193,10 +4193,41 @@ function openSlideDeck(title,slides,downloadNow=false,exports={}){
     script.onerror=()=>reject(new Error('PDF library failed to load'));
     win.document.head.appendChild(script);
   });
+  // The preview layers use filters and clipping; flatten the exact transparent PNG for PDF capture.
+  const flattenPdfLogos=async()=>{
+    const marks=[...win.document.querySelectorAll('.report-brand-mark')];
+    if(!marks.length)return ()=>{};
+    const src=new URL('assets/muscat-governorate-logos.png',win.document.baseURI).href;
+    const source=await new Promise((resolve,reject)=>{
+      const img=new win.Image();
+      img.onload=()=>resolve(img);
+      img.onerror=()=>reject(new Error('تعذّر تحميل الشعار'));
+      img.src=src;
+    });
+    const raster=win.document.createElement('canvas');
+    raster.width=source.naturalWidth;raster.height=source.naturalHeight;
+    const ctx=raster.getContext('2d',{willReadFrequently:true});
+    ctx.drawImage(source,0,0);
+    const pixels=ctx.getImageData(0,0,raster.width,raster.height);
+    for(let i=0;i<pixels.data.length;i+=4){
+      if(pixels.data[i+3]===0)continue;
+      const red=pixels.data[i]>95&&pixels.data[i]>pixels.data[i+1]*1.35&&pixels.data[i]>pixels.data[i+2]*1.2;
+      if(red){pixels.data[i]=226;pixels.data[i+1]=45;pixels.data[i+2]=45;}
+      else{pixels.data[i]=255;pixels.data[i+1]=255;pixels.data[i+2]=255;}
+    }
+    ctx.putImageData(pixels,0,0);
+    const png=raster.toDataURL('image/png');
+    raster.width=0;raster.height=0;
+    const previous=marks.map(mark=>mark.innerHTML);
+    marks.forEach(mark=>{mark.innerHTML='<img class="logo-export" alt="" src="'+png+'">';});
+    await Promise.all(marks.map(mark=>mark.querySelector('img').decode?.().catch(()=>{})||Promise.resolve()));
+    return ()=>marks.forEach((mark,i)=>{mark.innerHTML=previous[i];});
+  };
   pdfButton.onclick=async()=>{
     if(pdfButton.disabled)return;
     pdfButton.disabled=true;status.textContent='جارٍ تجهيز ملف PDF…';
     const original=pages.map(page=>page.getAttribute('style'));
+    let restoreLogos=()=>{};
     try{
       await Promise.all([
         loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',()=>win.html2canvas),
@@ -4204,6 +4235,7 @@ function openSlideDeck(title,slides,downloadNow=false,exports={}){
       ]);
       if(win.closed)return;
       if(win.document.fonts?.ready)await win.document.fonts.ready;
+      restoreLogos=await flattenPdfLogos();
       const format=hasPoster?'a3':'a4';
       const pdf=new win.jspdf.jsPDF({orientation:'landscape',unit:'mm',format,compress:true});
       const width=pdf.internal.pageSize.getWidth(),height=pdf.internal.pageSize.getHeight();
@@ -4233,7 +4265,7 @@ function openSlideDeck(title,slides,downloadNow=false,exports={}){
     }catch(err){
       if(!win.closed){status.textContent='تعذّر تنزيل PDF. استخدم زر الطباعة أو Ctrl+P ثم اختر حفظ كملف PDF.';console.error('PDF export failed:',err);}
     }finally{
-      if(!win.closed){pages.forEach((page,i)=>{if(original[i]===null)page.removeAttribute('style');else page.setAttribute('style',original[i]);});pdfButton.disabled=false;}
+      if(!win.closed){restoreLogos();pages.forEach((page,i)=>{if(original[i]===null)page.removeAttribute('style');else page.setAttribute('style',original[i]);});pdfButton.disabled=false;}
     }
   };
   show();win.focus();if(downloadNow)pdfButton.click();

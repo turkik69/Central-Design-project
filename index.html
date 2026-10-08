@@ -126,8 +126,9 @@
   .topbar-inner{max-width:1200px;margin:0 auto;padding:12px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
   @media(max-width:640px){ .eom-badge{order:5;width:100%;justify-content:center} }
   .brand{display:flex;align-items:center;gap:11px}
-  .brand-crest{height:40px;width:auto;display:flex;align-items:center;justify-content:center}
-  .brand-crest img{height:100%;width:auto;object-fit:contain}
+  .brand-crest{height:54px;width:132px;padding:4px 6px;border-radius:9px;background:#f7f3e8;display:flex;align-items:center;justify-content:center;flex:none}
+  .brand-crest img{height:100%;width:100%;object-fit:contain}
+  @media(max-width:640px){.brand-crest{width:104px;height:44px;padding:3px 4px}}
   .brand h1{font-size:17px;line-height:1.2}
   .brand .crumb{font-size:11px;color:rgba(255,255,255,.7)}
   .search{flex:1;min-width:180px;position:relative}
@@ -1183,7 +1184,7 @@ function renderApp(){
 
   /* الشريط العلوي */
   const header=$(`<header class="topbar"><div class="topbar-inner">
-    <div class="brand"><div class="brand-crest"><img src="${LOGO_WHITE}" alt="بلدية مسقط"></div>
+    <div class="brand"><div class="brand-crest"><img src="assets/muscat-governorate-logos.svg" alt="شعار بلدية مسقط ومحافظة مسقط"></div>
       <div><h1>التصميم المركزي</h1><div class="crumb">بلدية مسقط · الشؤون الفنية</div></div></div>
     <div class="search">${I.search}<input type="text" placeholder="ابحث باسم المشروع أو رقمه أو الجهة…" value="${state.search}"></div>
     ${(()=>{ const a=announcedEmployee(); if(!a||!a.winner) return '';

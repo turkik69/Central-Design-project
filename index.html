@@ -2167,7 +2167,7 @@ function isEffectivelyDone(p){
   const assigned = consider.filter(k=>isAssigned(p[k]));
   return assigned.length>0 && assigned.every(k=>isDone(p[k]));
 }
-/* الأقسام غير المسندة في المشاريع المنتهية خارج نطاق العمل والتقارير.
+/* الأقسام غير المسندة في المشاريع المنتهية والآراء الفنية خارج نطاق العمل والتقارير.
    لا نغيّر أي قسم له مهندس، حتى لو كانت حالته قيد الانتظار أو قيد العمل. */
 function hasAssignedEngineer(sec){
   if(!sec) return false;
@@ -2176,7 +2176,7 @@ function hasAssignedEngineer(sec){
     || named(sec.engineerUsername) || named(sec.engineer);
 }
 function finishedUnassignedSectionPatch(p){
-  if(!p || !isEffectivelyDone(p)) return null;
+  if(!p || (p.overallStatus!=='رأي فني' && !isEffectivelyDone(p))) return null;
   const patch={};
   for(const [key] of DEPT_MAP){
     if(!hasAssignedEngineer(p[key]) && p[key]?.status!=='لا يوجد'){

@@ -190,7 +190,7 @@
   .mw-badge.done{background:#e3f3ec;color:#1f7a54}.mw-badge.wip{background:#fdf1dc;color:#a9761b}
   .mw-logdesc{font-size:13px;color:var(--ink);line-height:1.7}
   .mw-lognotes{font-size:12px;color:var(--muted);margin-top:4px}
-  .mw-logacts{position:absolute;top:10px;inset-inline-start:10px}
+  .mw-logacts{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin:4px 0 7px}.mw-edit{background:none;border:none;color:var(--oasis-700);cursor:pointer;padding:4px;font-family:inherit;font-weight:700;font-size:12px}.mw-edit:hover{text-decoration:underline}
   .mw-empty{text-align:center;color:var(--muted);font-size:13px;padding:26px 10px}
   .act-card:hover{border-color:var(--oasis)!important}
   .act-month{margin-bottom:10px}
@@ -2896,6 +2896,7 @@ function openMyWorksModal(){
   let selDate=todayISO();     // لليوم المختار في تبويب المهام اليومية
   let fCat='';                // فلتر التصنيف في الأرشيف
   let fFrom='', fTo='';       // فلتر التاريخ في الأرشيف
+  let editingLogId=null;
 
   function tasks(){ return state.myworks.filter(w=>w.type==='task'); }
   function logs(){ return state.myworks.filter(w=>w.type==='log'); }
@@ -2934,21 +2935,26 @@ function openMyWorksModal(){
   /* ── تبويب توثيق عمل (نموذج إضافة سجلّ) ── */
   function renderLogForm(){
     if(!canEdit) return '<div class="mw-empty">التوثيق من صلاحية موظفة التنسيق فقط. يمكنك الاطلاع على السجلّ من تبويب «سجلّي».</div>';
+    const editing=editingLogId?logs().find(w=>w.id===editingLogId):null;
+    const esc=reportEsc;
     return `
       <div class="mw-form">
         <label class="lbl-sm">عنوان العمل</label>
-        <input type="text" id="lgTitle" placeholder="مثال: إعداد مخاطبة إلى دائرة المشاريع">
+        <input type="text" id="lgTitle" value="${esc(editing?.title||'')}" placeholder="مثال: إعداد مخاطبة إلى دائرة المشاريع">
         <label class="lbl-sm">التصنيف</label>
-        <select id="lgCat">${MYWORK_CATS.map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>
+        <select id="lgCat">${MYWORK_CATS.map(([k,v])=>`<option value="${k}" ${editing?.category===k?'selected':''}>${v}</option>`).join('')}</select>
         <label class="lbl-sm">التاريخ</label>
-        <input type="date" id="lgDate" value="${todayISO()}">
+        <input type="date" id="lgDate" value="${esc(editing?.date||todayISO())}">
         <label class="lbl-sm">الحالة</label>
-        <select id="lgStatus"><option value="done">منجَز</option><option value="wip">قيد التنفيذ</option></select>
+        <select id="lgStatus"><option value="done" ${!editing||editing.status==='done'?'selected':''}>مكتمل</option><option value="wip" ${editing?.status==='wip'?'selected':''}>قيد التنفيذ</option></select>
         <label class="lbl-sm">الوصف</label>
-        <textarea id="lgDesc" rows="3" placeholder="تفاصيل العمل..."></textarea>
+        <textarea id="lgDesc" rows="3" placeholder="تفاصيل العمل...">${esc(editing?.desc||'')}</textarea>
         <label class="lbl-sm">ملاحظات (اختياري)</label>
-        <textarea id="lgNotes" rows="2" placeholder="ملاحظات إضافية..."></textarea>
-        <button class="btn btn-add" id="lgSave" style="margin-top:10px">حفظ العمل</button>
+        <textarea id="lgNotes" rows="2" placeholder="ملاحظات إضافية...">${esc(editing?.notes||'')}</textarea>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn btn-add" id="lgSave">${editing?'حفظ التعديل':'حفظ العمل'}</button>
+          ${editing?'<button class="btn btn-ghost" id="lgCancel" type="button">إلغاء</button>':''}
+        </div>
       </div>`;
   }
 
@@ -2960,16 +2966,16 @@ function openMyWorksModal(){
     if(fTo) arr=arr.filter(w=>(w.date||'')<=fTo);
     arr.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
     const cards=arr.map(w=>{
-      const st = w.status==='done' ? '<span class="mw-badge done">منجَز</span>' : '<span class="mw-badge wip">قيد التنفيذ</span>';
+      const st = w.status==='done' ? '<span class="mw-badge done">مكتمل</span>' : '<span class="mw-badge wip">قيد التنفيذ</span>';
       return `<div class="mw-logcard">
         <div class="mw-logtop">
           <span class="mw-cat">${MYWORK_CAT_AR[w.category]||'—'}</span>
           <span class="mw-date">${dmy(w.date)||'—'}</span>
         </div>
-        <div class="mw-logtitle">${w.title||'—'} ${st}</div>
+        <div class="mw-logtitle">${reportEsc(w.title||'—')} ${st}</div>
+        ${canEdit?`<div class="mw-logacts"><button class="mw-edit" data-editlog="${w.id}" title="تعديل العمل">تعديل</button><button class="mw-del" data-dellog="${w.id}" title="حذف العمل">${I.trash}</button></div>`:''}
         ${w.desc?`<div class="mw-logdesc">${w.desc}</div>`:''}
         ${w.notes?`<div class="mw-lognotes">ملاحظات: ${w.notes}</div>`:''}
-        ${canEdit?`<div class="mw-logacts"><button class="mw-del" data-dellog="${w.id}" title="حذف">${I.trash}</button></div>`:''}
       </div>`;
     }).join('');
     return `
@@ -3000,22 +3006,34 @@ function openMyWorksModal(){
       inp.value='';
     };
     // حفظ عمل موثّق
+    const cancel=body.querySelector('#lgCancel'); if(cancel) cancel.onclick=()=>{ editingLogId=null; tab='archive'; fill(); };
     const save=body.querySelector('#lgSave'); if(save) save.onclick=async()=>{
       const g=id=>body.querySelector(id);
       const title=(g('#lgTitle').value||'').trim();
       if(!title){ g('#lgTitle').focus(); return; }
-      await FB.addDoc(myworksRef(),{type:'log',title,
-        category:g('#lgCat').value, date:g('#lgDate').value||todayISO(),
-        status:g('#lgStatus').value, desc:(g('#lgDesc').value||'').trim(),
-        notes:(g('#lgNotes').value||'').trim(),
-        createdAt:new Date().toISOString(), by:state.appUser?.name||'', byUsername:state.appUser?.username||''});
-      tab='archive'; fill();
+      const values={title,category:g('#lgCat').value,date:g('#lgDate').value||todayISO(),
+        status:g('#lgStatus').value,desc:(g('#lgDesc').value||'').trim(),
+        notes:(g('#lgNotes').value||'').trim()};
+      save.disabled=true;
+      try{
+        if(editingLogId){
+          await FB.updateDoc(FB.doc(db,'artifacts',APP_ID,'public','data','myworks',editingLogId),values);
+          editingLogId=null;
+        }else{
+          await FB.addDoc(myworksRef(),{type:'log',...values,createdAt:new Date().toISOString(),by:state.appUser?.name||'',byUsername:state.appUser?.username||''});
+        }
+        tab='archive'; fill();
+      }catch(e){console.error('حفظ عمل التنسيق:',e);alert('تعذّر حفظ العمل. حاول مرة أخرى.');save.disabled=false;}
     };
     // أرشيف: فلاتر + تصدير + حذف
     const afc=body.querySelector('#afCat'); if(afc) afc.onchange=()=>{ fCat=afc.value; fill(); };
     const aff=body.querySelector('#afFrom'); if(aff) aff.onchange=()=>{ fFrom=aff.value; fill(); };
     const aft=body.querySelector('#afTo'); if(aft) aft.onchange=()=>{ fTo=aft.value; fill(); };
     const afx=body.querySelector('#afExport'); if(afx) afx.onclick=()=>exportMyWorks(fCat,fFrom,fTo);
+    body.querySelectorAll('[data-editlog]').forEach(b=>b.onclick=()=>{
+      editingLogId=b.getAttribute('data-editlog'); tab='log'; fill();
+      body.querySelector('#lgTitle')?.focus();
+    });
     body.querySelectorAll('[data-dellog]').forEach(b=>b.onclick=async()=>{ if(confirm('حذف هذا العمل الموثّق؟')){ await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','myworks',b.getAttribute('data-dellog'))); } });
   }
   fill(); overlay._refresh=fill;
@@ -3039,7 +3057,7 @@ function exportMyWorks(fCat,fFrom,fTo){
     if(fTo) arr=arr.filter(w=>(w.date||'')<=fTo);
     arr.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
     const rows=[['التاريخ','التصنيف','العنوان','الحالة','الوصف','ملاحظات'],
-      ...arr.map(w=>[dmy(w.date), MYWORK_CAT_AR[w.category]||'', w.title||'', (w.status==='done'?'منجَز':'قيد التنفيذ'), w.desc||'', w.notes||''])];
+      ...arr.map(w=>[dmy(w.date), MYWORK_CAT_AR[w.category]||'', w.title||'', (w.status==='done'?'مكتمل':'قيد التنفيذ'), w.desc||'', w.notes||''])];
     const ws=XLSX.utils.aoa_to_sheet(rows);
     ws['!cols']=[{wch:12},{wch:22},{wch:34},{wch:12},{wch:40},{wch:28}];
     const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'أعمالي');

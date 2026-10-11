@@ -903,7 +903,7 @@ async function saveProject(data,editingId,prev){
   const endDateNotifTasks=[];
   try{
     for(const key of ['architectural','structural','services']){
-      if(!data[key]) continue;
+      if(!data[key] || data[key].status==='لا يوجد') continue;
       const prevSec = prev && prev[key] ? prev[key] : null;
       const newDate = (data[key].endDate||'').trim();
       const prevDate = (prevSec?.endDate||'').trim();
@@ -1517,11 +1517,11 @@ function renderCard(p){
         <div><span class="k">${I.cal} الاستلام:</span> <span class="v">${p.startDate||'—'}</span></div>
         <div><span class="k">${I.cal} التسليم:</span> <span class="v">${p.endDate||'—'}</span></div>
       </div>
-      ${secRow('المعماري',p.architectural)}
+      ${p.architectural?.status==='لا يوجد'?'':secRow('المعماري',p.architectural)}
       ${(p.overallStatus==='فكرة مبدئية' && Array.isArray(p.ideaStages) && p.ideaStages.length)?`<div style="font-size:12px;color:var(--oasis-700);background:var(--oasis-50);border-radius:8px;padding:6px 10px;margin-top:6px">مراحل الفكرة: <b>${p.ideaStages.length}</b> · آخر مرحلة: ${p.ideaStages[p.ideaStages.length-1].date||''}</div>`:''}
       ${(p.overallStatus==='رأي فني' && Array.isArray(p.opinionStages) && p.opinionStages.length)?`<div style="font-size:12px;color:#8a6d2f;background:#f3e9d7;border-radius:8px;padding:6px 10px;margin-top:6px">مراحل الرأي الفني: <b>${p.opinionStages.length}</b> · آخر مرحلة: ${p.opinionStages[p.opinionStages.length-1].date||''}</div>`:''}
-      ${p.overallStatus==='فكرة مبدئية' ? '' : secRow('الإنشائي',p.structural)}
-      ${p.overallStatus==='فكرة مبدئية' ? '' : secRow('الخدمات',p.services)}
+      ${p.overallStatus==='فكرة مبدئية'||p.structural?.status==='لا يوجد' ? '' : secRow('الإنشائي',p.structural)}
+      ${p.overallStatus==='فكرة مبدئية'||p.services?.status==='لا يوجد' ? '' : secRow('الخدمات',p.services)}
     </div>
     <div style="padding:0 16px 12px"><button type="button" class="btn btn-ghost act-template" style="width:100%;display:flex;justify-content:center;align-items:center;gap:8px;border:1px solid var(--oasis);color:var(--oasis-700);background:var(--oasis-50);border-radius:9px;padding:9px;font-weight:700">▣ إعداد العرض المرئي للمشروع</button></div>
     <div class="card-foot">
@@ -2061,7 +2061,7 @@ function openProjectModal(project, navCtx){
       const deptChecks=[['architectural','القسم المعماري'],['structural','القسم الإنشائي'],['services','قسم تصميم الخدمات']];
       deptChecks.forEach(([k,lbl])=>{
         const s=payload[k]; if(!s) return;
-        if(s.startDate && !s.endDate) missing.push(lbl);
+        if(s.status!=='لا يوجد' && s.startDate && !s.endDate) missing.push(lbl);
       });
       if(missing.length){
         const NL=String.fromCharCode(10);
@@ -2138,7 +2138,7 @@ function isEffectivelyDone(p){
   if(!p) return false;
   if(p.overallStatus==='مكتمل') return true;
   if(p.overallStatus==='متوقف الى اشعار اخر' || p.overallStatus==='الغي المشروع' || p.overallStatus==='رأي فني') return false;
-  const isAssigned=(sec)=> !!sec && Array.isArray(sec.engineers) && sec.engineers.length>0;
+  const isAssigned=(sec)=> !!sec && sec.status!=='لا يوجد' && ((Array.isArray(sec.engineers) && sec.engineers.length>0) || !!sec.engineerUsername || !!sec.engineer);
   const isDone=(sec)=> !!sec && sec.status==='مكتمل';
   const consider = (p.overallStatus==='فكرة مبدئية') ? ['architectural'] : ['architectural','structural','services'];
   const assigned = consider.filter(k=>isAssigned(p[k]));
@@ -2162,7 +2162,7 @@ function myDeadlineAlerts(thresholdDays){
   state.projects.forEach(p=>{
     DEPT_MAP.forEach(([key,label])=>{
       const sec=p[key]; if(!sec) return;
-      if(sec.status==='مكتمل') return;                 // المكتمل لا ينبَّه
+      if(sec.status==='مكتمل' || sec.status==='لا يوجد') return; // لا تنبيه للقسم المكتمل أو غير المطلوب
       if(!sec.endDate) return;                          // لا تاريخ متوقع
       // هل المهندس الحالي ضمن مهندسي هذا القسم؟
       let mine=false;
@@ -2200,7 +2200,7 @@ function deptCard(title,prefixKey,d){
   const pf={architectural:'arch',structural:'str',services:'srv'}[prefixKey];
   const canEdit=canEditDept(prefixKey);   // هل يعدّل هذا القسم؟
   const DIS = canEdit ? '' : 'disabled';  // تعطيل عناصر القسم لغير المخوّل
-  const sOpt=['قيد الانتظار','قيد العمل','مكتمل'].map(o=>`<option ${o===(d.status||'قيد الانتظار')?'selected':''}>${o}</option>`).join('');
+  const sOpt=['قيد الانتظار','قيد العمل','مكتمل','لا يوجد'].map(o=>`<option ${o===(d.status||'قيد الانتظار')?'selected':''}>${o}</option>`).join('');
   const ev=d.eval||{};
   const mayRate=canEvaluate(prefixKey);
   let rateBlock='';
@@ -3247,7 +3247,7 @@ function engineerReport(username){
   const critSum={quality:[],requirements:[],communication:[],challenges:[],delay:[]};
   state.projects.forEach(p=>{
     DEPT_MAP.forEach(([key,label])=>{
-      const sec=p[key]; if(!sec) return;
+      const sec=p[key]; if(!sec || sec.status==='لا يوجد') return;
       // المطابقة بالرقم الوظيفي ضمن قائمة مهندسي القسم (تدعم الجديد والقديم)
       let inSection=false;
       if(Array.isArray(sec.engineers)) inSection=sec.engineers.some(e=>e.username===username);
@@ -3273,7 +3273,7 @@ function engineerReport(username){
     if(p.overallStatus!=='رأي فني') return;
     let mine=false;
     DEPT_MAP.forEach(([key])=>{
-      const sec=p[key]; if(!sec) return;
+      const sec=p[key]; if(!sec || sec.status==='لا يوجد') return;
       if(Array.isArray(sec.engineers)){ if(sec.engineers.some(e=>e.username===username)) mine=true; }
       else if(sec.engineerUsername===username) mine=true;
       else if(sec.engineer && u && sec.engineer===u.name) mine=true;
@@ -3386,7 +3386,7 @@ function deptKpi(key){
   let total=0, done=0, wip=0, waiting=0, onTime=0, late=0, delaySum=0, delayCount=0;
   const ratings=[];
   state.projects.forEach(p=>{
-    const sec=p[key]; if(!sec) return;
+    const sec=p[key]; if(!sec || sec.status==='لا يوجد') return;
     const used = (Array.isArray(sec.engineers)&&sec.engineers.length) || sec.engineer || sec.startDate || sec.endDate || (sec.status && sec.status!=='قيد الانتظار');
     if(!used) return;
     if(!inKpiPeriod(secRefDate(sec))) return;   // فلترة زمنية
@@ -3426,7 +3426,7 @@ function engineerKpiList(){
   return engs.map(u=>{
     let total=0,done=0,onTime=0,late=0; const ratings=[];
     state.projects.forEach(p=>DEPT_MAP.forEach(([key])=>{
-      const sec=p[key]; if(!sec) return;
+      const sec=p[key]; if(!sec || sec.status==='لا يوجد') return;
       let mine=false;
       if(Array.isArray(sec.engineers)) mine=sec.engineers.some(e=>e.username===u.username);
       else if(sec.engineerUsername) mine=(sec.engineerUsername===u.username);
@@ -3460,7 +3460,7 @@ function employeeOfMonthFor(from, to){
   const list=engs.map(u=>{
     let done=0,onTime=0,late=0; const ratings=[];
     state.projects.forEach(p=>DEPT_MAP.forEach(([key])=>{
-      const sec=p[key]; if(!sec) return;
+      const sec=p[key]; if(!sec || sec.status==='لا يوجد') return;
       let mine=false;
       if(Array.isArray(sec.engineers)) mine=sec.engineers.some(e=>e.username===u.username);
       else if(sec.engineerUsername) mine=(sec.engineerUsername===u.username);
@@ -3943,7 +3943,7 @@ function reportProjectSection(title,items,empty){
 }
 function reportProjectDossier(p){
   const esc=reportEsc, today=reportToday();
-  const stages=DEPT_MAP.map(([key,label])=>{
+  const stages=DEPT_MAP.filter(([key])=>p[key]?.status!=='لا يوجد').map(([key,label])=>{
     const sec=p[key]||{},st=sec.status||'قيد الانتظار';
     const engineer=Array.isArray(sec.engineers)&&sec.engineers.length?sec.engineers.map(e=>e.name||e.username).filter(Boolean).join('، '):sec.engineer||'—';
     const late=st==='قيد العمل'&&sec.endDate&&sec.endDate<today;
@@ -3979,7 +3979,7 @@ function reportPeriodSpec(kind,key){
 }
 function reportPeriodData(kind,key){
   const spec=reportPeriodSpec(kind,key),inRange=date=>!!date&&date>=spec.from&&date<=spec.to;
-  const entries=state.projects.flatMap(p=>DEPT_MAP.map(([dept,label])=>({p,dept,label,sec:p[dept]||{}})));
+  const entries=state.projects.flatMap(p=>DEPT_MAP.filter(([dept])=>p[dept]?.status!=='لا يوجد').map(([dept,label])=>({p,dept,label,sec:p[dept]||{}})));
   const done=entries.filter(x=>x.sec.status==='مكتمل'&&inRange(x.sec.actualDate));
   const planned=entries.filter(x=>inRange(x.sec.endDate));
   const projects=kind==='all'?state.projects.slice():state.projects.filter(p=>done.some(x=>x.p===p)||planned.some(x=>x.p===p)||inRange(p.startDate)||inRange(p.endDate)||(p.startDate&&p.endDate&&p.startDate<=spec.to&&p.endDate>=spec.from)||p.ideaStages?.some(s=>inRange(s.date))||p.opinionStages?.some(s=>inRange(s.date)));
@@ -3994,7 +3994,7 @@ function reportPeriodData(kind,key){
 function kpiScopeData(){if(combinedKpiRange)return reportPeriodData(combinedKpiRange.kind,combinedKpiRange.key);const kind=/^q[1-4]$/.test(kpiPeriod)?'quarter':({month:'month',quarter:'quarter',half:'half',year:'year',all:'all'}[kpiPeriod]||'all');const key=/^q[1-4]$/.test(kpiPeriod)?`${kpiYear}-Q${kpiPeriod.slice(1)}`:reportPeriodKey(kind,reportToday().slice(0,7));return reportPeriodData(kind,key);}
 function reportPeriodOptions(kind){
   const months=new Set([reportToday().slice(0,7)]);
-  state.projects.forEach(p=>{[p.startDate,p.endDate,...DEPT_MAP.flatMap(([k])=>[p[k]?.startDate,p[k]?.endDate,p[k]?.actualDate]),...(p.ideaStages||[]).map(x=>x.date),...(p.opinionStages||[]).map(x=>x.date)].forEach(x=>{if(ym(x))months.add(ym(x));});});
+  state.projects.forEach(p=>{[p.startDate,p.endDate,...DEPT_MAP.filter(([k])=>p[k]?.status!=='لا يوجد').flatMap(([k])=>[p[k]?.startDate,p[k]?.endDate,p[k]?.actualDate]),...(p.ideaStages||[]).map(x=>x.date),...(p.opinionStages||[]).map(x=>x.date)].forEach(x=>{if(ym(x))months.add(ym(x));});});
   state.meetings.forEach(m=>{if(ym(m.date))months.add(ym(m.date));});state.visits.forEach(v=>{if(ym(v.date))months.add(ym(v.date));});
   return [...new Set([...months].map(m=>reportPeriodKey(kind,m)))].sort().reverse();
 }
@@ -4017,7 +4017,7 @@ function reportVisualSummary(d,mode){
 
 function periodProjectCard(p,d){
   const esc=reportEsc,deliveries=d.done.filter(x=>x.p===p),deadlines=d.planned.filter(x=>x.p===p),status=isEffectivelyDone(p)?'مكتمل':p.overallStatus||'قيد المتابعة';
-  const depts=DEPT_MAP.map(([key,label])=>({label,sec:p[key]})).filter(x=>x.sec&&x.sec.status&&x.sec.status!=='قيد الانتظار');
+  const depts=DEPT_MAP.map(([key,label])=>({label,sec:p[key]})).filter(x=>x.sec&&x.sec.status&&x.sec.status!=='قيد الانتظار'&&x.sec.status!=='لا يوجد');
   return `<article class="pr-project" role="button" tabindex="0" data-report-project="${esc(p.id||'')}"><div class="pr-project-head"><div><strong>${esc(p.name||'مشروع بلا اسم')}</strong><small>${esc(p.projectNo||'بلا رقم')} · ${esc(p.requestingEntity||'جهة غير محددة')} · ${esc(p.customType||p.type||'نوع غير محدد')}</small></div><span class="pr-pill">${esc(status)}</span></div><div class="pr-project-facts"><span>تسليمات الفترة <b>${deliveries.length}</b></span><span>مواعيد الفترة <b>${deadlines.length}</b></span><span>الأقسام <b>${depts.length}</b></span></div><div class="pr-project-depts">${depts.map(x=>`<span>${esc(x.label)} <em>· ${esc(x.sec.status)}</em></span>`).join('')}</div>${p.executiveSummary?`<p class="pr-project-context"><b>الوصف:</b> ${esc(p.executiveSummary)}</p>`:''}${p.blocker?`<p class="pr-project-context"><b>العائق:</b> ${esc(p.blocker)}</p>`:''}${p.nextAction?`<p class="pr-project-context"><b>الخطوة التالية:</b> ${esc(p.nextAction)}</p>`:''}<div class="pr-project-foot">تفاصيل المشروع وأقسامه ←</div></article>`;
 }
 function reportBrandLogo(){const src=new URL('assets/muscat-governorate-logos.png',document.baseURI).href;return `<span class="report-brand-mark" role="img" aria-label="شعار بلدية مسقط ومحافظة مسقط"><img class="logo-white" src="${src}" alt=""><img class="logo-red" src="${src}" alt=""></span>`;}
@@ -4044,7 +4044,7 @@ function reportProjectGroups(d){
   const groups=[{title:'مشاريع تتطلب إجراء',tone:'attention',projects:[]},{title:'جارية أو قيد التصميم',tone:'active',projects:[]},{title:'مكتملة',tone:'complete',projects:[]},{title:'حالات أخرى',tone:'other',projects:[]}];
   d.projects.forEach(p=>{
     const overdue=d.planned.some(x=>x.p===p&&x.sec.status!=='مكتمل'&&x.sec.endDate<reportToday());
-    const group=p.riskLevel==='مرتفع'||p.blocker||p.decisionRequired||overdue||DEPT_MAP.some(([key])=>p[key]?.delayReason)?groups[0]:isEffectivelyDone(p)?groups[2]:['متوقف الى اشعار اخر','الغي المشروع'].includes(p.overallStatus)?groups[3]:groups[1];
+    const group=p.riskLevel==='مرتفع'||p.blocker||p.decisionRequired||overdue||DEPT_MAP.some(([key])=>p[key]?.status!=='لا يوجد'&&p[key]?.delayReason)?groups[0]:isEffectivelyDone(p)?groups[2]:['متوقف الى اشعار اخر','الغي المشروع'].includes(p.overallStatus)?groups[3]:groups[1];
     group.projects.push(p);
   });
   groups.forEach(g=>g.projects.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ar')));
@@ -4054,7 +4054,7 @@ function reportBriefText(value,max=95){const s=String(value||'').replace(/\s+/g,
 function reportProjectMatrix(projects,d){
   const esc=reportEsc;
   return `<div class="pr-matrix-wrap"><table class="pr-matrix"><thead><tr><th>المشروع والجهة</th><th>الحالة والأقسام</th><th>الموعد</th><th>حالة التسليم خلال الفترة</th><th>ملاحظات المشروع</th></tr></thead><tbody>${projects.map(p=>{
-    const sections=DEPT_MAP.map(([key,label])=>({label,sec:p[key]})).filter(x=>x.sec&&x.sec.status&&x.sec.status!=='قيد الانتظار');
+    const sections=DEPT_MAP.map(([key,label])=>({label,sec:p[key]})).filter(x=>x.sec&&x.sec.status&&x.sec.status!=='قيد الانتظار'&&x.sec.status!=='لا يوجد');
     const rawStatus=isEffectivelyDone(p)?'مكتمل':p.overallStatus||'قيد العمل';const status=rawStatus==='قيد المتابعة'?'قيد العمل':rawStatus;
     const done=d.done.filter(x=>x.p===p).length,planned=d.planned.filter(x=>x.p===p).length;
     const delays=sections.filter(x=>x.sec.delayReason).map(x=>x.sec.delayReason).join('؛ ');const follow=[p.decisionRequired&&`قرار: ${p.decisionRequired}`,p.blocker&&`عائق: ${p.blocker}`,delays&&`تأخير: ${delays}`,p.nextAction&&`التالي: ${p.nextAction}`].filter(Boolean).join(' · ')||'—';

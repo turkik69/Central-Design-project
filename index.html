@@ -435,9 +435,31 @@ async function initFirebase(){
     render();
   }
 }
+let latestRawProjects=[];
+let finishedSectionSyncRunning=false;
+async function syncFinishedUnassignedProjects(){
+  if(finishedSectionSyncRunning || state.appUser?.role!=='admin' || !db || !FB || !latestRawProjects.length) return;
+  finishedSectionSyncRunning=true;
+  try{
+    for(const project of latestRawProjects){
+      if(!finishedUnassignedSectionPatch(project)) continue;
+      const ref=FB.doc(db,'artifacts',APP_ID,'public','data','projects',project.id);
+      try{
+        await FB.runTransaction(db,async tx=>{
+          const current=await tx.get(ref);
+          if(!current.exists()) return;
+          const patch=finishedUnassignedSectionPatch(current.data());
+          if(patch) tx.update(ref,patch);
+        });
+      }catch(err){ console.error('تعذّر تحديث الأقسام غير المسندة للمشروع:',project.id,err); }
+    }
+  }finally{ finishedSectionSyncRunning=false; }
+}
 function subscribeProjects(){
   FB.onSnapshot(colRef(),(snap)=>{
-    const data = snap.docs.map(d=>({id:d.id,...d.data()}));
+    latestRawProjects=snap.docs.map(d=>({id:d.id,...d.data()}));
+    const data = latestRawProjects.map(normalizeFinishedUnassignedSections);
+    syncFinishedUnassignedProjects();
     data.sort((a,b)=> new Date(b.updatedAtTS||b.createdAt||0) - new Date(a.updatedAtTS||a.createdAt||0));
     state.projects=data; applyFilter(); state.loading=false;
     // لا تُعِد رسم الصفحة إذا كان المستخدم يعبّئ نموذجاً مفتوحاً (نموذج مشروع/زيارة/اجتماع/أعمالي)
@@ -687,6 +709,7 @@ async function handleAuth(form){
 
   if(username===ADMIN.user && password.toLowerCase()===ADMIN.pass){
     state.appUser={role:'admin',name:'تركي (المشرف العام)',username,profilePic:''};
+    syncFinishedUnassignedProjects();
     saveSession(state.appUser);
     state.loading=false;render();return;
   }
@@ -2138,11 +2161,39 @@ function isEffectivelyDone(p){
   if(!p) return false;
   if(p.overallStatus==='مكتمل') return true;
   if(p.overallStatus==='متوقف الى اشعار اخر' || p.overallStatus==='الغي المشروع' || p.overallStatus==='رأي فني') return false;
-  const isAssigned=(sec)=> !!sec && sec.status!=='لا يوجد' && ((Array.isArray(sec.engineers) && sec.engineers.length>0) || !!sec.engineerUsername || !!sec.engineer);
+  const isAssigned=(sec)=> !!sec && sec.status!=='لا يوجد' && hasAssignedEngineer(sec);
   const isDone=(sec)=> !!sec && sec.status==='مكتمل';
   const consider = (p.overallStatus==='فكرة مبدئية') ? ['architectural'] : ['architectural','structural','services'];
   const assigned = consider.filter(k=>isAssigned(p[k]));
   return assigned.length>0 && assigned.every(k=>isDone(p[k]));
+}
+/* الأقسام غير المسندة في المشاريع المنتهية خارج نطاق العمل والتقارير.
+   لا نغيّر أي قسم له مهندس، حتى لو كانت حالته قيد الانتظار أو قيد العمل. */
+function hasAssignedEngineer(sec){
+  if(!sec) return false;
+  const named=v=>typeof v==='string' && !!v.trim() && !['—','-','لم يُسنَد','غير مسند'].includes(v.trim());
+  return (Array.isArray(sec.engineers) && sec.engineers.some(e=>named(e?.username)||named(e?.name)))
+    || named(sec.engineerUsername) || named(sec.engineer);
+}
+function finishedUnassignedSectionPatch(p){
+  if(!p || !isEffectivelyDone(p)) return null;
+  const patch={};
+  for(const [key] of DEPT_MAP){
+    if(!hasAssignedEngineer(p[key]) && p[key]?.status!=='لا يوجد'){
+      patch[key+'.status']='لا يوجد';
+    }
+  }
+  return Object.keys(patch).length?patch:null;
+}
+function normalizeFinishedUnassignedSections(p){
+  const patch=finishedUnassignedSectionPatch(p);
+  if(!patch) return p;
+  const copy={...p};
+  for(const [path,status] of Object.entries(patch)){
+    const key=path.split('.')[0];
+    copy[key]={...(p[key]||{}),status};
+  }
+  return copy;
 }
 /* من يحقّ له حذف المشروع: المشرف، مدير الدائرة، أو مهندس مسنَد إليه */
 function canDeleteProject(p){

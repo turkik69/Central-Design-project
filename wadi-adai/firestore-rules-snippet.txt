@@ -1,0 +1,18 @@
+// ألحق هذه القواعد بقواعد قاعدة البيانات الحالية بعد مراجعتها.
+// لا تستبدل ملف القواعد الحالي بها، حتى لا تتأثر المنصة المنشورة الأخرى.
+function isWadiAdaiEditor() {
+  return request.auth != null
+    && exists(/databases/$(database)/documents/wadi_adai_v2_members/$(request.auth.uid))
+    && get(/databases/$(database)/documents/wadi_adai_v2_members/$(request.auth.uid)).data.active == true
+    && get(/databases/$(database)/documents/wadi_adai_v2_members/$(request.auth.uid)).data.role == 'editor';
+}
+
+match /wadi_adai_v2/{group}/{subcollection}/{record} {
+  allow read: if true;
+  allow create, update, delete: if isWadiAdaiEditor();
+}
+
+match /wadi_adai_v2_members/{uid} {
+  allow read: if request.auth != null && request.auth.uid == uid;
+  allow write: if false; // أضف الأعضاء من Firebase Console بصلاحية الإدارة.
+}

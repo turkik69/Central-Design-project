@@ -10,6 +10,7 @@ let editor = null;
 let stopListeners = [];
 let activeFilter = "all";
 let pendingCollection = "proposals";
+let pendingRecordId = null;
 let toastTimer;
 
 function readLocal() {
@@ -32,12 +33,17 @@ function render() {
   $("#metrics").innerHTML = records.metrics.map((m, i) => `<article class="metric-card"><span class="eyebrow">مؤشر 0${i + 1}</span><div class="metric-value">${escapeHTML(m.value)}</div><h3>${escapeHTML(m.title)}</h3><p>${escapeHTML(m.detail)}</p></article>`).join("");
   $("#objectives").innerHTML = records.objectives.map(item => `<li>${escapeHTML(item)}</li>`).join("");
   $("#stages").innerHTML = records.stages.map((s, i) => `<article class="stage-card"><span class="stage-no">0${i + 1}</span><h3>${escapeHTML(s.title)}</h3><p>${escapeHTML(s.text)}</p><time>${escapeHTML(s.date)}</time></article>`).join("");
-  $("#stations").innerHTML = records.stations.map(s => `<article class="station-card"><div class="station-head"><span class="station-index">محطة رصد ${String(s.id).padStart(2, "0")}</span><span class="live-dot"></span></div><h3>${escapeHTML(s.title)}</h3><p>${escapeHTML(s.finding)}</p><div class="station-counts"><span>${escapeHTML(s.notes)} ملاحظات رصد</span><span>${escapeHTML(s.issues)} مشكلات حرجة</span></div></article>`).join("");
+  $("#stations").innerHTML = records.stations.map(s => {
+    const observations = (records.observations || []).filter(o => String(o.stationId) === String(s.id));
+    return `<article class="station-card"><div class="station-head"><span class="station-index">محطة رصد ${String(s.id).padStart(2, "0")}</span><span class="live-dot"></span></div><h3>${escapeHTML(s.title)}</h3><p>${escapeHTML(s.finding)}</p><div class="station-counts"><span>${escapeHTML(s.notes)} ملاحظات رصد</span><span>${escapeHTML(s.issues)} مشكلات حرجة</span></div>${observations.map(o => `<div class="observation"><strong>${escapeHTML(o.title)}</strong><p>${escapeHTML(o.description)}</p>${attachmentLinks(o)}${editor ? `<button class="icon-button" data-delete="observations:${escapeHTML(o.id)}">حذف الملاحظة</button>` : ""}</div>`).join("")}</article>`;
+  }).join("");
   $("#analyses").innerHTML = records.analyses.map(a => `<article class="analysis-card"><span class="chapter">${escapeHTML(a.chapter)} · فصل تحليلي</span><h3>${escapeHTML(a.title)}</h3><p>${escapeHTML(a.detail)}</p></article>`).join("");
-  $("#proposals").innerHTML = records.proposals.map(p => `<article class="proposal-card"><span class="category">${escapeHTML(p.category || "مقترح تطويري")}</span><span class="station-index"> · البند ${escapeHTML(p.id)}</span><h3>${escapeHTML(p.title)}</h3><div class="location">${escapeHTML(p.location || "نطاق الدراسة")}</div><p>${escapeHTML(p.description || "")}</p>${p.challenge ? `<details><summary>التحدي والأثر المتوقع</summary><p><b>التحدي:</b> ${escapeHTML(p.challenge)}</p><p><b>الأثر:</b> ${escapeHTML(p.impact || "")}</p></details>` : ""}${attachmentLinks(p)}${editor ? `<div class="editor-actions"><button class="icon-button" data-delete="proposals:${escapeHTML(p.id)}">حذف المقترح</button></div>` : ""}</article>`).join("");
+  $("#proposals").innerHTML = records.proposals.map(p => `<article class="proposal-card"><span class="category">${escapeHTML(p.category || "مقترح تطويري")}</span><span class="station-index"> · البند ${escapeHTML(p.id)}</span><h3>${escapeHTML(p.title)}</h3><div class="location">${escapeHTML(p.location || "نطاق الدراسة")}</div><p>${escapeHTML(p.description || "")}</p>${p.challenge ? `<details><summary>التحدي والأثر المتوقع</summary><p><b>التحدي:</b> ${escapeHTML(p.challenge)}</p><p><b>الأثر:</b> ${escapeHTML(p.impact || "")}</p></details>` : ""}${attachmentLinks(p)}${editor ? `<div class="editor-actions"><button class="icon-button" data-edit="proposals:${escapeHTML(p.id)}">تعديل</button><button class="icon-button" data-delete="proposals:${escapeHTML(p.id)}">حذف</button></div>` : ""}</article>`).join("");
   $("#roadmap").innerHTML = records.roadmap.map(r => `<article class="roadmap-card"><span class="period">${escapeHTML(r.period)}</span><h3>${escapeHTML(r.title)}</h3><ul>${r.items.map(item => `<li>${escapeHTML(item)}</li>`).join("")}</ul></article>`).join("");
   const recs = records.recommendations.filter(r => activeFilter === "all" || r.priority === activeFilter);
-  $("#recommendations").innerHTML = recs.map(r => `<article class="recommendation-card"><div><span class="priority" data-level="${escapeHTML(r.priority)}">${escapeHTML(r.priority)}</span><div class="station-index">البند ${escapeHTML(r.id)}</div></div><div><h3>${escapeHTML(r.title)}</h3><p>${escapeHTML(r.text)}</p>${attachmentLinks(r)}${editor ? `<button class="icon-button" data-delete="recommendations:${escapeHTML(r.id)}">حذف التوصية</button>` : ""}</div></article>`).join("");
+  $("#recommendations").innerHTML = recs.map(r => `<article class="recommendation-card"><div><span class="priority" data-level="${escapeHTML(r.priority)}">${escapeHTML(r.priority)}</span><div class="station-index">البند ${escapeHTML(r.id)}</div></div><div><h3>${escapeHTML(r.title)}</h3><p>${escapeHTML(r.text || r.description || "")}</p>${attachmentLinks(r)}${editor ? `<button class="icon-button" data-edit="recommendations:${escapeHTML(r.id)}">تعديل</button> <button class="icon-button" data-delete="recommendations:${escapeHTML(r.id)}">حذف</button>` : ""}</div></article>`).join("");
+  const stationSelect = $("#record-form [name=stationId]");
+  stationSelect.innerHTML = `<option value="">اختر المحطة عند إضافة ملاحظة</option>${records.stations.map(s => `<option value="${escapeHTML(s.id)}">محطة ${String(s.id).padStart(2, "0")} · ${escapeHTML(s.title)}</option>`).join("")}`;
   $$(".editor-only").forEach(el => el.classList.toggle("hidden", !editor));
   $("#login-open").classList.toggle("hidden", Boolean(editor)); $("#logout").classList.toggle("hidden", !editor);
   $("#role-label").textContent = editor ? `فريق العمل · ${editor.displayName || editor.email}` : "زائر · اطلاع فقط";
@@ -80,7 +86,7 @@ async function initCloud() {
     cloud = { auth, db, authMod, storeMod, storage, storageMod };
     $("#sync-status").classList.add("connected");
     $("#sync-status").innerHTML = "<i></i> متصل · مزامنة مباشرة";
-    const collectionKeys = ["proposals", "recommendations", "stations", "analyses", "roadmap"];
+    const collectionKeys = ["proposals", "recommendations", "stations", "analyses", "roadmap", "observations"];
     collectionKeys.forEach(key => {
       const ref = storeMod.collection(db, "wadi_adai_v2", key, "items");
       const stop = storeMod.onSnapshot(ref, snap => {
@@ -99,12 +105,29 @@ async function initCloud() {
           else await authMod.signOut(auth);
         } catch { await authMod.signOut(auth); }
       }
+      if (editor) await seedEmptyCollections();
       render();
     });
   } catch (error) {
     console.error(error); cloud = null;
     $("#sync-status").innerHTML = "<i></i> تعذر الاتصال السحابي";
     notify("تعذر تهيئة Firebase. راجع إعدادات Web App وقواعد Firestore.");
+  }
+}
+
+async function seedEmptyCollections() {
+  const seedKeys = ["proposals", "recommendations", "stations", "analyses", "roadmap"];
+  const { db, storeMod } = cloud;
+  for (const key of seedKeys) {
+    const ref = storeMod.collection(db, "wadi_adai_v2", key, "items");
+    const snapshot = await storeMod.getDocs(ref);
+    if (!snapshot.empty) continue;
+    const batch = storeMod.writeBatch(db);
+    for (const item of seed[key]) {
+      const id = recordId(item, key);
+      batch.set(storeMod.doc(db, "wadi_adai_v2", key, "items", id), { ...item, id, seededFromPublicOverview: true });
+    }
+    await batch.commit();
   }
 }
 
@@ -147,9 +170,17 @@ function bind() {
   }));
   $("#add-proposal").addEventListener("click", () => openRecord("proposals", "مقترح معماري"));
   $("#add-recommendation").addEventListener("click", () => openRecord("recommendations", "توصية قطاعية"));
+  $("#add-observation").addEventListener("click", () => openRecord("observations", "ملاحظة ميدانية"));
   $("#record-close").addEventListener("click", () => $("#record-dialog").close());
   $("#record-form").addEventListener("submit", submitRecord);
   document.addEventListener("click", async event => {
+    const edit = event.target.closest("[data-edit]");
+    if (edit) {
+      const [key, id] = edit.dataset.edit.split(":");
+      const item = records[key].find(entry => String(entry.id) === id);
+      if (item) openRecord(key, key === "proposals" ? "مقترح معماري" : "توصية قطاعية", item);
+      return;
+    }
     const button = event.target.closest("[data-delete]"); if (!button) return;
     const [key, id] = button.dataset.delete.split(":");
     if (confirm("هل تريد حذف هذا السجل من مساحة وادي عدي؟")) {
@@ -160,22 +191,39 @@ function bind() {
   const initial = location.hash.slice(1); if (viewNames.includes(initial)) setView(initial);
 }
 
-function openRecord(key, label) {
+function openRecord(key, label, item = null) {
   if (!editor) return notify("تسجيل الدخول كعضو مفعل مطلوب لإضافة السجلات.");
   if (!cloud) return notify("المزامنة السحابية غير مهيأة بعد.");
-  pendingCollection = key; $("#record-kicker").textContent = label; $("#record-title").textContent = `إضافة ${label}`; $("#record-dialog").showModal();
+  pendingCollection = key; pendingRecordId = item?.id ?? null;
+  $("#record-kicker").textContent = label;
+  $("#record-title").textContent = `${item ? "تعديل" : "إضافة"} ${label}`;
+  const form = $("#record-form"); form.reset();
+  if (item) {
+    form.elements.title.value = item.title || "";
+    form.elements.category.value = item.category || "";
+    form.elements.location.value = item.location || "";
+    form.elements.priority.value = item.priority || "";
+    form.elements.stationId.value = item.stationId || "";
+    form.elements.description.value = item.description || item.text || "";
+    form.elements.challenge.value = item.challenge || "";
+    form.elements.impact.value = item.impact || "";
+  }
+  $("#record-dialog").showModal();
 }
 
 async function submitRecord(event) {
   event.preventDefault(); if (!editor) return;
   const data = new FormData(event.currentTarget);
   const item = {
-    id: `${pendingCollection}-${Date.now()}`,
+    id: pendingRecordId || `${pendingCollection}-${Date.now()}`,
     title: String(data.get("title")).trim(),
     category: String(data.get("category") || "").trim(),
     location: String(data.get("location") || "").trim(),
     description: String(data.get("description") || "").trim(),
-    priority: String(data.get("location") || "متوسط المدى").trim(),
+    priority: String(data.get("priority") || "متوسط المدى").trim(),
+    challenge: String(data.get("challenge") || "").trim(),
+    impact: String(data.get("impact") || "").trim(),
+    stationId: String(data.get("stationId") || "").trim(),
     createdAt: new Date().toISOString()
   };
   try {
@@ -188,9 +236,13 @@ async function submitRecord(event) {
         return { name: file.name, url: await storageMod.getDownloadURL(uploaded.ref), type: file.type };
       }));
     }
+    const existing = records[pendingCollection].find(entry => String(entry.id) === String(item.id));
+    if (existing?.attachments?.length && !item.attachments) item.attachments = existing.attachments;
+    if (pendingCollection === "recommendations") item.text = item.description;
     await writeRecord(pendingCollection, item);
-    records[pendingCollection] = [...records[pendingCollection], item]; render();
-    $("#record-dialog").close(); event.currentTarget.reset(); notify("حُفظ السجل سحابياً، وسيظهر مباشرة للمستخدمين المتصلين.");
+    records[pendingCollection] = existing ? records[pendingCollection].map(entry => String(entry.id) === String(item.id) ? item : entry) : [...records[pendingCollection], item];
+    render(); $("#record-dialog").close(); event.currentTarget.reset(); pendingRecordId = null;
+    notify("حُفظ السجل سحابياً، وسيظهر مباشرة للمستخدمين المتصلين.");
   } catch (error) { console.error(error); notify("لم يُحفظ السجل. تحقق من اتصال Firebase وقواعد الوصول."); }
 }
 

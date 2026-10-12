@@ -39,6 +39,11 @@ function render() {
   }).join("");
   $("#analyses").innerHTML = records.analyses.map(a => `<article class="analysis-card"><span class="chapter">${escapeHTML(a.chapter)} · فصل تحليلي</span><h3>${escapeHTML(a.title)}</h3><p>${escapeHTML(a.detail)}</p></article>`).join("");
   $("#proposals").innerHTML = records.proposals.map(p => `<article class="proposal-card"><span class="category">${escapeHTML(p.category || "مقترح تطويري")}</span><span class="station-index"> · البند ${escapeHTML(p.id)}</span><h3>${escapeHTML(p.title)}</h3><div class="location">${escapeHTML(p.location || "نطاق الدراسة")}</div><p>${escapeHTML(p.description || "")}</p>${p.challenge ? `<details><summary>التحدي والأثر المتوقع</summary><p><b>التحدي:</b> ${escapeHTML(p.challenge)}</p><p><b>الأثر:</b> ${escapeHTML(p.impact || "")}</p></details>` : ""}${attachmentLinks(p)}${editor ? `<div class="editor-actions"><button class="icon-button" data-edit="proposals:${escapeHTML(p.id)}">تعديل</button><button class="icon-button" data-delete="proposals:${escapeHTML(p.id)}">حذف</button></div>` : ""}</article>`).join("");
+  $("#gallery").innerHTML = (records.gallery || []).map(item => {
+    const image = item.attachments?.find(file => file.type?.startsWith("image/"));
+    const imageMarkup = image ? `<img src="${escapeHTML(image.url)}" alt="${escapeHTML(item.title)}" loading="lazy">` : `<div class="gallery-visual ${escapeHTML(item.style || "visual-grid")}" role="img" aria-label="تصور توضيحي: ${escapeHTML(item.title)}"></div>`;
+    return `<article class="gallery-card">${imageMarkup}<div class="gallery-caption"><h3>${escapeHTML(item.title)}</h3><p>${escapeHTML(item.caption || item.location || "توثيق ميداني · وادي عدي")}</p>${editor ? `<div class="editor-actions"><button class="icon-button" data-edit="gallery:${escapeHTML(item.id)}">تعديل</button><button class="icon-button" data-delete="gallery:${escapeHTML(item.id)}">حذف</button></div>` : ""}</div></article>`;
+  }).join("");
   $("#roadmap").innerHTML = records.roadmap.map(r => `<article class="roadmap-card"><span class="period">${escapeHTML(r.period)}</span><h3>${escapeHTML(r.title)}</h3><ul>${r.items.map(item => `<li>${escapeHTML(item)}</li>`).join("")}</ul></article>`).join("");
   const recs = records.recommendations.filter(r => activeFilter === "all" || r.priority === activeFilter);
   $("#recommendations").innerHTML = recs.map(r => `<article class="recommendation-card"><div><span class="priority" data-level="${escapeHTML(r.priority)}">${escapeHTML(r.priority)}</span><div class="station-index">البند ${escapeHTML(r.id)}</div></div><div><h3>${escapeHTML(r.title)}</h3><p>${escapeHTML(r.text || r.description || "")}</p>${attachmentLinks(r)}${editor ? `<button class="icon-button" data-edit="recommendations:${escapeHTML(r.id)}">تعديل</button> <button class="icon-button" data-delete="recommendations:${escapeHTML(r.id)}">حذف</button>` : ""}</div></article>`).join("");
@@ -86,7 +91,7 @@ async function initCloud() {
     cloud = { auth, db, authMod, storeMod, storage, storageMod };
     $("#sync-status").classList.add("connected");
     $("#sync-status").innerHTML = "<i></i> متصل · مزامنة مباشرة";
-    const collectionKeys = ["proposals", "recommendations", "stations", "analyses", "roadmap", "observations"];
+    const collectionKeys = ["proposals", "recommendations", "stations", "analyses", "roadmap", "observations", "gallery"];
     collectionKeys.forEach(key => {
       const ref = storeMod.collection(db, "wadi_adai_v2", key, "items");
       const stop = storeMod.onSnapshot(ref, snap => {
@@ -116,7 +121,7 @@ async function initCloud() {
 }
 
 async function seedEmptyCollections() {
-  const seedKeys = ["proposals", "recommendations", "stations", "analyses", "roadmap"];
+  const seedKeys = ["proposals", "recommendations", "stations", "analyses", "roadmap", "gallery"];
   const { db, storeMod } = cloud;
   for (const key of seedKeys) {
     const ref = storeMod.collection(db, "wadi_adai_v2", key, "items");
@@ -171,6 +176,9 @@ function bind() {
   $("#add-proposal").addEventListener("click", () => openRecord("proposals", "مقترح معماري"));
   $("#add-recommendation").addEventListener("click", () => openRecord("recommendations", "توصية قطاعية"));
   $("#add-observation").addEventListener("click", () => openRecord("observations", "ملاحظة ميدانية"));
+  $("#add-gallery").addEventListener("click", () => openRecord("gallery", "صورة أو مخطط"));
+  $("#backup").addEventListener("click", exportBackup);
+  $("#compare-slider").addEventListener("input", event => $(".compare-box").style.setProperty("--split", `${event.target.value}%`));
   $("#record-close").addEventListener("click", () => $("#record-dialog").close());
   $("#record-form").addEventListener("submit", submitRecord);
   document.addEventListener("click", async event => {
@@ -178,7 +186,7 @@ function bind() {
     if (edit) {
       const [key, id] = edit.dataset.edit.split(":");
       const item = records[key].find(entry => String(entry.id) === id);
-      if (item) openRecord(key, key === "proposals" ? "مقترح معماري" : "توصية قطاعية", item);
+      if (item) openRecord(key, ({ proposals: "مقترح معماري", recommendations: "توصية قطاعية", gallery: "صورة أو مخطط" })[key] || "ملاحظة ميدانية", item);
       return;
     }
     const button = event.target.closest("[data-delete]"); if (!button) return;
@@ -189,6 +197,14 @@ function bind() {
   });
   window.addEventListener("hashchange", () => setView(location.hash.slice(1) || "home"));
   const initial = location.hash.slice(1); if (viewNames.includes(initial)) setView(initial);
+}
+
+function exportBackup() {
+  const payload = { exportedAt: new Date().toISOString(), project: "wadi-adai-standalone", database: "wadi-adai-db", data: records };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+  const link = document.createElement("a"); link.href = url; link.download = `wadi-adai-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+  notify("تم تنزيل نسخة احتياطية من البيانات المعروضة.");
 }
 
 function openRecord(key, label, item = null) {
@@ -207,6 +223,7 @@ function openRecord(key, label, item = null) {
     form.elements.description.value = item.description || item.text || "";
     form.elements.challenge.value = item.challenge || "";
     form.elements.impact.value = item.impact || "";
+    form.elements.location.value = item.caption || item.location || "";
   }
   $("#record-dialog").showModal();
 }
@@ -224,6 +241,7 @@ async function submitRecord(event) {
     challenge: String(data.get("challenge") || "").trim(),
     impact: String(data.get("impact") || "").trim(),
     stationId: String(data.get("stationId") || "").trim(),
+    caption: pendingCollection === "gallery" ? String(data.get("location") || "").trim() : "",
     createdAt: new Date().toISOString()
   };
   try {

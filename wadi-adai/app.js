@@ -2,7 +2,6 @@ import { seed } from "./content.js";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const storeKey = "wadi-adai-v2-preview";
 const viewNames = ["home", "existing", "analysis", "proposals", "recommendations"];
 const records = structuredClone(seed);
 let cloud = null;
@@ -13,13 +12,6 @@ let pendingCollection = "proposals";
 let pendingRecordId = null;
 let toastTimer;
 
-function readLocal() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(storeKey) || "null");
-    if (saved && typeof saved === "object") Object.assign(records, saved);
-  } catch { /* ignore invalid preview cache */ }
-}
-function saveLocal() { localStorage.setItem(storeKey, JSON.stringify(records)); }
 function escapeHTML(value = "") {
   return String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 }
@@ -264,4 +256,4 @@ async function submitRecord(event) {
   } catch (error) { console.error(error); notify("لم يُحفظ السجل. تحقق من اتصال Firebase وقواعد الوصول."); }
 }
 
-readLocal(); bind(); render(); initCloud();
+bind(); render(); initCloud();

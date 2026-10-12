@@ -2939,14 +2939,12 @@ function openChallengesModal(){
       body.innerHTML=`<div class="ch-form">
         <div class="ch-form-grid">
           <label>عنوان التحدي<input id="chTitle" maxlength="180" value="${esc(ch?.title||'')}" placeholder="وصف مختصر وواضح"></label>
-          <label>تاريخ الرصد<input id="chDate" type="date" value="${esc(ch?.reportedDate||reportToday())}"></label>
           <label>التصنيف<select id="chCategory">${CHALLENGE_CATEGORIES.map(([key,label])=>`<option value="${key}" ${ch?.category===key?'selected':''}>${label}</option>`).join('')}</select></label>
           <label>نوع التحدي<select id="chNature">${Object.entries(CHALLENGE_NATURE_AR).map(([key,label])=>`<option value="${key}" ${ch?.nature===key?'selected':''}>${label}</option>`).join('')}</select></label>
           <label>القسم المعني<select id="chDept" ${headDept?'disabled':''}>${deptOptions.map(([key,label])=>`<option value="${key}" ${(ch?.dept??headDept)===key?'selected':''}>${label}</option>`).join('')}</select></label>
           <label>درجة التأثير<select id="chImpact">${['مرتفع','متوسط','منخفض'].map(label=>`<option value="${label}" ${ch?.impact===label?'selected':''}>${label}</option>`).join('')}</select></label>
           <label>الحالة<select id="chStatus">${Object.entries(CHALLENGE_STATUS_AR).map(([key,label])=>`<option value="${key}" ${ch?.status===key?'selected':''}>${label}</option>`).join('')}</select></label>
           <label>المسؤول عن المتابعة<input id="chOwner" maxlength="120" value="${esc(ch?.owner||'')}" placeholder="اختياري"></label>
-          <label>الموعد المستهدف للمعالجة<input id="chDue" type="date" value="${esc(ch?.dueDate||'')}"></label>
         </div>
         <label>تفاصيل التحدي<textarea id="chDescription" rows="3" placeholder="ما الذي يعوق العمل وما أثره؟">${esc(ch?.description||'')}</textarea></label>
         <label>خطة المعالجة أو الإجراء المتخذ<textarea id="chTreatment" rows="3" placeholder="الإجراء المقترح، وما تم اتخاذه لمعالجة التحدي">${esc(ch?.treatment||'')}</textarea></label>
@@ -2956,17 +2954,15 @@ function openChallengesModal(){
       body.querySelector('#chSave').onclick=async e=>{
         if(!canManageChallenges()||(ch&&!canEditChallenge(ch)))return;
         const get=id=>body.querySelector(id);
-        const title=get('#chTitle').value.trim(),description=get('#chDescription').value.trim(),treatment=get('#chTreatment').value.trim(),reportedDate=get('#chDate').value;
+        const title=get('#chTitle').value.trim(),description=get('#chDescription').value.trim(),treatment=get('#chTreatment').value.trim();
         if(!title){get('#chTitle').focus();return;}
-        if(!reportedDate){get('#chDate').focus();return;}
         if(!description){get('#chDescription').focus();return;}
         if(!treatment){get('#chTreatment').focus();return;}
         const status=get('#chStatus').value;
-        const values={title,description,treatment,reportedDate,status,
+        const values={title,description,treatment,status,
           category:get('#chCategory').value,nature:get('#chNature').value,
           dept:headDept||get('#chDept').value,impact:get('#chImpact').value,
-          owner:get('#chOwner').value.trim(),dueDate:get('#chDue').value,
-          resolvedDate:status==='resolved'?(ch?.resolvedDate||reportToday()):'',
+          owner:get('#chOwner').value.trim(),
           updatedAt:new Date().toISOString(),updatedBy:state.appUser?.name||''};
         const saveBtn=e.currentTarget;saveBtn.disabled=true;
         try{
@@ -2977,13 +2973,13 @@ function openChallengesModal(){
       };
       return;
     }
-    const all=state.challenges.slice().sort((a,b)=>String(b.reportedDate||'').localeCompare(String(a.reportedDate||'')));
+    const all=state.challenges.slice().sort((a,b)=>String(a.title||'').localeCompare(String(b.title||''),'ar'));
     const list=filterStatus==='all'?all:all.filter(ch=>ch.status===filterStatus);
     body.innerHTML=`<div class="ch-toolbar"><div><b>${all.length}</b> تحديات مسجلة · <b>${all.filter(x=>x.status!=='resolved').length}</b> قيد المعالجة أو قائمة</div><label>الحالة <select id="chFilter"><option value="all">كل الحالات</option>${Object.entries(CHALLENGE_STATUS_AR).map(([key,label])=>`<option value="${key}" ${filterStatus===key?'selected':''}>${label}</option>`).join('')}</select></label>${canManageChallenges()?'<button class="btn btn-add" id="chAdd">+ إضافة تحدٍ</button>':''}</div>
       <div class="ch-list">${list.map(ch=>`<article class="ch-card"><div class="ch-card-head"><strong>${esc(ch.title||'تحدٍ بلا عنوان')}</strong><span class="ch-status ch-status-${esc(ch.status||'open')}">${esc(CHALLENGE_STATUS_AR[ch.status]||'قائم')}</span></div>
-        <div class="ch-meta">${esc(CHALLENGE_CATEGORY_AR[ch.category]||'أخرى')} · ${esc(CHALLENGE_NATURE_AR[ch.nature]||'—')} · ${esc(DEPT_MAP.find(([key])=>key===ch.dept)?.[1]||'الدائرة عامة')} · تأثير ${esc(ch.impact||'—')} · رُصد ${esc(ch.reportedDate||'—')}</div>
+        <div class="ch-meta">${esc(CHALLENGE_CATEGORY_AR[ch.category]||'أخرى')} · ${esc(CHALLENGE_NATURE_AR[ch.nature]||'—')} · ${esc(DEPT_MAP.find(([key])=>key===ch.dept)?.[1]||'الدائرة عامة')} · تأثير ${esc(ch.impact||'—')}</div>
         <p><b>التحدي:</b> ${esc(ch.description||'—')}</p><p><b>المعالجة:</b> ${esc(ch.treatment||'—')}</p>
-        ${ch.owner||ch.dueDate?`<div class="ch-meta">المسؤول: ${esc(ch.owner||'—')} · الموعد المستهدف: ${esc(ch.dueDate||'—')}</div>`:''}
+        ${ch.owner?`<div class="ch-meta">المسؤول عن المتابعة: ${esc(ch.owner)}</div>`:''}
         ${canEditChallenge(ch)?`<button class="btn btn-ghost ch-edit" data-ch-edit="${esc(ch.id)}">تعديل</button>`:''}</article>`).join('')||'<p class="ch-empty">لا توجد تحديات في هذه القائمة.</p>'}</div>`;
     body.querySelector('#chFilter').onchange=e=>{filterStatus=e.target.value;fill();};
     const add=body.querySelector('#chAdd');if(add)add.onclick=()=>{editingId=null;showForm=true;fill();};
@@ -3922,7 +3918,7 @@ function kpiDashboardHTML(){
   const stat=(value,label,sub)=>`<div class="kd-stat"><b>${value}</b><strong>${label}</strong><small>${sub}</small></div>`;
   const donut=statuses.map(([label,n])=>n),sum=Math.max(1,d.projects.length),p1=Math.round(donut[0]/sum*100),p2=Math.round(donut[1]/sum*100);
   return `<style>${reportViewStyles()}</style><div class="kd-dashboard"><header class="kd-header"><div><span>بلدية مسقط · دائرة التصميم المركزي</span><h1>مؤشرات الأداء</h1><p>${esc(d.label)} · ${esc(d.from)} — ${esc(d.to)}</p></div><div class="kd-header-side"><b>${d.projects.length}</b><small>كل مشروع محسوب مرة واحدة</small></div>${reportBrandLogo()}</header>
-    <div class="kd-stats">${stat(d.projects.length,'مشاريع الفترة','كل مشروع مرة واحدة')}${stat(d.done.length,'تسليمات فعلية','أعمال الأقسام')}${stat(completion==null?'—':completion+'%','إنجاز الأقسام',`${completed} من ${total} عمل`)}${stat(punctuality==null?'—':punctuality+'%','الالتزام بالموعد',`${onTime} من ${due} تسليم موثق`)}${stat(challenges.open,'تحديات الدائرة','قائمة خلال الفترة')}${stat(decision,'قرارات مطلوبة','وفق بطاقة المشروع')}</div>
+    <div class="kd-stats">${stat(d.projects.length,'مشاريع الفترة','كل مشروع مرة واحدة')}${stat(d.done.length,'تسليمات فعلية','أعمال الأقسام')}${stat(completion==null?'—':completion+'%','إنجاز الأقسام',`${completed} من ${total} عمل`)}${stat(punctuality==null?'—':punctuality+'%','الالتزام بالموعد',`${onTime} من ${due} تسليم موثق`)}${stat(challenges.total,'تحديات الدائرة','جميع درجات التأثير')}${stat(decision,'قرارات مطلوبة','وفق بطاقة المشروع')}</div>
     <div class="kd-layout"><section class="kd-panel kd-wide"><div class="kd-panel-title"><div><small>01 / اتجاه الإنجاز</small><h2>التسليمات عبر الفترة</h2></div><div class="kd-legend"><span><i class="kd-dot kd-done"></i>فعلي</span><span><i class="kd-dot kd-plan"></i>مخطط</span></div></div>${kpiTrendChart(trend)}<p class="kd-hint">يقاس الفعلي بتاريخ التسليم، والمخطط بموعد القسم المسجل.</p></section>
     <section class="kd-panel"><div class="kd-panel-title"><div><small>02 / المحفظة</small><h2>حالة المشاريع</h2></div></div><div class="kd-donut-row"><div class="kd-donut" style="--kd-first:${p1}%;--kd-second:${p1+p2}%"><div><b>${d.projects.length}</b><small>مشروع</small></div></div><div class="kd-list">${statuses.map(([label,n],i)=>`<div><i class="kd-key kd-key-${i}"></i><span>${label}</span><b>${n}</b></div>`).join('')}</div></div></section>
     <section class="kd-panel kd-wide"><div class="kd-panel-title"><div><small>03 / الأقسام</small><h2>الإنجاز والعبء</h2></div></div><div class="kd-departments">${departments.map(x=>`<div class="kd-department"><div class="kd-department-name"><b>${esc(x.label)}</b><span>${x.k.done} من ${x.k.total} عمل</span></div><div class="kd-progress"><i style="width:${x.k.completion}%"></i></div><div class="kd-department-meta"><span>إنجاز ${x.k.completion}%</span><span>جارٍ ${x.k.wip}</span><span>انتظار ${x.k.waiting}</span><span>التزام ${x.k.punctuality==null?'—':x.k.punctuality+'%'}</span></div></div>`).join('')}</div></section>
@@ -3930,7 +3926,7 @@ function kpiDashboardHTML(){
     <section class="kd-panel kd-wide"><div class="kd-panel-title"><div><small>05 / المتابعة</small><h2>أولويات العمل</h2></div><b class="kd-count">${priorities.length} مشاريع</b></div><div class="kd-priority-list">${priorities.slice(0,6).map(p=>`<div><b>${esc(p.name||'مشروع بلا اسم')}</b><span>${p.riskLevel==='مرتفع'?'تحديات مرتفعة · ':''}${esc(p.blocker||p.decisionRequired||'قرار مطلوب')}</span></div>`).join('')||'<p class="rp-empty">لا توجد عوائق أو قرارات مسجلة لمشاريع الفترة.</p>'}</div></section>
     <section class="kd-panel"><div class="kd-panel-title"><div><small>06 / اكتمال البيانات</small><h2>سجلات المتابعة</h2></div></div><div class="kd-mini"><b>${d.meetings.length}</b><span>اجتماعات خلال الفترة</span></div><div class="kd-mini"><b>${d.visits.length}</b><span>زيارات ميدانية</span></div><div class="kd-mini"><b>${missingDates}</b><span>أعمال جارية بلا موعد متوقع</span></div></section>
     <section class="kd-panel kd-wide"><div class="kd-panel-title"><div><small>07 / التنسيق والمتابعة</small><h2>الأعمال الإدارية</h2></div><b class="kd-count">${admin.total} عمل</b></div><div class="kd-admin-stats"><div class="kd-mini"><b>${admin.done}</b><span>مكتمل</span></div><div class="kd-mini"><b>${admin.wip}</b><span>قيد التنفيذ</span></div><div class="kd-mini"><b>${admin.logs}</b><span>أعمال موثقة</span></div><div class="kd-mini"><b>${admin.tasks}</b><span>مهام يومية مسجلة</span></div></div><div class="kd-priority-list">${admin.items.slice(0,5).map(w=>`<div><b>${esc(w.title)}</b><span>${esc(w.date)} · ${w.status==='done'?'مكتمل':'قيد التنفيذ'}</span></div>`).join('')||'<p class="rp-empty">لا توجد أعمال إدارية في الفترة المختارة.</p>'}</div></section>
-    <section class="kd-panel kd-wide"><div class="kd-panel-title"><div><small>08 / تحديات الدائرة</small><h2>التصنيف وخطة المعالجة</h2></div><b class="kd-count">${challenges.open} قائم · ${challenges.resolved} تمت معالجته</b></div><div class="kd-priority-list">${challenges.items.slice(0,6).map(ch=>`<div><b>${esc(ch.title||'تحدٍ بلا عنوان')}</b><span>${esc(CHALLENGE_CATEGORY_AR[ch.category]||'أخرى')} · ${esc(CHALLENGE_STATUS_AR[ch.periodStatus]||'قائم')} · ${esc(reportBriefText(ch.treatment||'لا توجد معالجة مسجلة',110))}</span></div>`).join('')||'<p class="rp-empty">لا توجد تحديات مرتبطة بالفترة المختارة.</p>'}</div></section></div>
+    <section class="kd-panel kd-wide"><div class="kd-panel-title"><div><small>08 / تحديات الدائرة</small><h2>التصنيف ودرجة التأثير</h2></div><b class="kd-count">${challenges.total} تحدٍ · مرتفع ${challenges.byImpact['مرتفع']} · متوسط ${challenges.byImpact['متوسط']} · منخفض ${challenges.byImpact['منخفض']}</b></div><div class="kd-priority-list">${challenges.byCategory.map(group=>`<div><b>${esc(group.label)} · ${group.items.length}</b><span>مرتفع ${group.high} · متوسط ${group.medium} · منخفض ${group.low}</span></div>`).join('')||'<p class="rp-empty">لا توجد تحديات مسجلة.</p>'}${challenges.items.map(ch=>`<div><b>${esc(ch.title||'تحدٍ بلا عنوان')}</b><span>${esc(CHALLENGE_CATEGORY_AR[ch.category]||'أخرى')} · ${esc(CHALLENGE_NATURE_AR[ch.nature]||'—')} · ${esc(ch.impact||'—')}</span></div>`).join('')}</div></section></div>
     <p class="kd-footnote">المؤشرات مشتقة من البيانات المسجلة فقط. إنجاز الأقسام والالتزام يُحسبان على مستوى الأعمال، بينما يُحسب كل مشروع مرة واحدة ضمن الفترة المحددة.</p></div>`;
 }
 
@@ -4051,11 +4047,11 @@ function exportKpiExcel(){
     ['التاريخ','العمل','النوع','الحالة','المسؤول','الوصف','ملاحظات'],
     ...kpiScopeData().administrative.items.map(w=>[w.date,w.title,w.source==='task'?'مهمة يومية':w.category,w.status==='done'?'مكتمل':'قيد التنفيذ',w.by,w.desc,w.notes]),
     [],['تحديات الدائرة'],
-    ['المرتبطة بالفترة','القائمة','تمت المعالجة','مرتفعة التأثير'],
-    [kpiScopeData().challenges.total,kpiScopeData().challenges.open,kpiScopeData().challenges.resolved,kpiScopeData().challenges.high],
+    ['الإجمالي','مرتفع','متوسط','منخفض'],
+    [kpiScopeData().challenges.total,kpiScopeData().challenges.byImpact['مرتفع'],kpiScopeData().challenges.byImpact['متوسط'],kpiScopeData().challenges.byImpact['منخفض']],
     [],['تفاصيل تحديات الدائرة'],
-    ['تاريخ الرصد','العنوان','التصنيف','النوع','الحالة','القسم','التأثير','المعالجة'],
-    ...kpiScopeData().challenges.items.map(ch=>[ch.reportedDate,ch.title,CHALLENGE_CATEGORY_AR[ch.category]||'أخرى',CHALLENGE_NATURE_AR[ch.nature]||'',CHALLENGE_STATUS_AR[ch.periodStatus]||'قائم',DEPT_MAP.find(([key])=>key===ch.dept)?.[1]||'الدائرة عامة',ch.impact||'',ch.treatment||''])
+    ['العنوان','النوع','التصنيف','درجة التأثير','العدد'],
+    ...kpiScopeData().challenges.items.map(ch=>[ch.title,CHALLENGE_NATURE_AR[ch.nature]||'',CHALLENGE_CATEGORY_AR[ch.category]||'أخرى',ch.impact||'',1])
   ];
   const ws=X.utils.aoa_to_sheet(aoa);
   ws['!cols']=[{wch:26},{wch:16},{wch:12},{wch:14},{wch:16},{wch:18},{wch:16},{wch:14}];
@@ -4214,17 +4210,20 @@ function administrativeWorkForPeriod(spec){
     wip:items.filter(x=>x.status==='wip').length,
     logs:items.filter(x=>x.source==='log').length,tasks:items.filter(x=>x.source==='task').length};
 }
-function challengeDataForPeriod(spec){
-  const items=state.challenges.filter(ch=>{
-    const start=ch.reportedDate||String(ch.createdAt||'').slice(0,10);
-    if(!start||start>spec.to)return false;
-    const end=ch.resolvedDate||'';
-    return !end||end>=spec.from;
-  }).map(ch=>({...ch,periodStatus:ch.resolvedDate&&ch.resolvedDate<=spec.to?'resolved':ch.status==='resolved'?'open':ch.status||'open'}))
-    .sort((a,b)=>(a.periodStatus==='resolved')-(b.periodStatus==='resolved')||String(b.reportedDate||'').localeCompare(String(a.reportedDate||'')));
-  return {items,total:items.length,open:items.filter(x=>x.periodStatus!=='resolved').length,
-    resolved:items.filter(x=>x.periodStatus==='resolved').length,
-    high:items.filter(x=>x.periodStatus!=='resolved'&&x.impact==='مرتفع').length};
+function challengeDataForPeriod(){
+  const items=state.challenges.map(ch=>({...ch,periodStatus:ch.status||'open'}))
+    .sort((a,b)=>String(a.title||'').localeCompare(String(b.title||''),'ar'));
+  const byImpact=Object.fromEntries(['مرتفع','متوسط','منخفض'].map(level=>[level,items.filter(ch=>ch.impact===level).length]));
+  const categoryOf=ch=>CHALLENGE_CATEGORY_AR[ch.category]?ch.category:'other';
+  const byCategory=CHALLENGE_CATEGORIES.map(([key,label])=>({
+    key,label,items:items.filter(ch=>categoryOf(ch)===key),
+    high:items.filter(ch=>categoryOf(ch)===key&&ch.impact==='مرتفع').length,
+    medium:items.filter(ch=>categoryOf(ch)===key&&ch.impact==='متوسط').length,
+    low:items.filter(ch=>categoryOf(ch)===key&&ch.impact==='منخفض').length
+  })).filter(group=>group.items.length);
+  return {items,total:items.length,open:items.filter(ch=>ch.periodStatus!=='resolved').length,
+    resolved:items.filter(ch=>ch.periodStatus==='resolved').length,high:byImpact['مرتفع'],
+    byImpact,byCategory};
 }
 function reportPeriodData(kind,key){
   const spec=reportPeriodSpec(kind,key),inRange=date=>!!date&&date>=spec.from&&date<=spec.to;
@@ -4238,7 +4237,7 @@ function reportPeriodData(kind,key){
   const dated=done.filter(x=>x.sec.endDate).length;
   const byDept=DEPT_MAP.map(([dept,label])=>({label,done:done.filter(x=>x.dept===dept).length,planned:planned.filter(x=>x.dept===dept).length}));
   const byType=new Map();projects.forEach(p=>{const type=p.customType||p.type||'غير محدد';byType.set(type,(byType.get(type)||0)+1);});
-  return {...spec,done,planned,projects,meetings,visits,administrative:administrativeWorkForPeriod(spec),challenges:challengeDataForPeriod(spec),onTime,dated,byDept,byType};
+  return {...spec,done,planned,projects,meetings,visits,administrative:administrativeWorkForPeriod(spec),challenges:challengeDataForPeriod(),onTime,dated,byDept,byType};
 }
 function kpiScopeData(){if(combinedKpiRange)return reportPeriodData(combinedKpiRange.kind,combinedKpiRange.key);const kind=/^q[1-4]$/.test(kpiPeriod)?'quarter':({month:'month',quarter:'quarter',half:'half',year:'year',all:'all'}[kpiPeriod]||'all');const key=/^q[1-4]$/.test(kpiPeriod)?`${kpiYear}-Q${kpiPeriod.slice(1)}`:reportPeriodKey(kind,reportToday().slice(0,7));return reportPeriodData(kind,key);}
 function reportPeriodOptions(kind){
@@ -4246,7 +4245,6 @@ function reportPeriodOptions(kind){
   state.projects.forEach(p=>{[p.startDate,p.endDate,...DEPT_MAP.filter(([k])=>p[k]?.status!=='لا يوجد').flatMap(([k])=>[p[k]?.startDate,p[k]?.endDate,p[k]?.actualDate]),...(p.ideaStages||[]).map(x=>x.date),...(p.opinionStages||[]).map(x=>x.date)].forEach(x=>{if(ym(x))months.add(ym(x));});});
   state.meetings.forEach(m=>{if(ym(m.date))months.add(ym(m.date));});state.visits.forEach(v=>{if(ym(v.date))months.add(ym(v.date));});
   state.myworks.forEach(w=>{if(w.type==='log'&&ym(w.date))months.add(ym(w.date));if(w.type==='task')Object.keys(w.doneDates||{}).forEach(date=>{if(ym(date))months.add(ym(date));});});
-  state.challenges.forEach(ch=>{[ch.reportedDate,ch.resolvedDate].forEach(date=>{if(ym(date))months.add(ym(date));});});
   return [...new Set([...months].map(m=>reportPeriodKey(kind,m)))].sort().reverse();
 }
 function reportVisualSummary(d,mode){
@@ -4277,9 +4275,9 @@ function reportExecutiveSummary(d,selType){
   const decisions=d.projects.filter(p=>p.decisionRequired),risks=d.projects.filter(p=>p.riskLevel==='مرتفع');
   const title=selType==='meetings'?'تقرير الاجتماعات':selType==='visits'?'تقرير الزيارات الميدانية':selType==='administrative'?'تقرير الأعمال الإدارية':selType==='challenges'?'تقرير تحديات الدائرة':selType==='all'?'التقرير الشامل':'تقرير المشاريع';
   const a=d.administrative;
-  const facts=selType==='challenges'?[[d.challenges.total,'تحديات مرتبطة بالفترة'],[d.challenges.open,'قائمة'],[d.challenges.resolved,'تمت معالجتها']]:selType==='administrative'?[[a.total,'أعمال إدارية'],[a.done,'مكتملة'],[a.wip,'قيد التنفيذ']]:projects?[[d.projects.length,'مشاريع مرتبطة بالفترة'],[d.done.length,'تسليمات فعلية'],[d.planned.length,'مواعيد مخططة']]:meetings?[[d.meetings.length,'اجتماعات موثقة'],[new Set(d.meetings.map(x=>x.deptLabel).filter(Boolean)).size,'أقسام مشاركة']]:[[d.visits.length,'زيارات موثقة'],[new Set(d.visits.map(x=>x.deptLabel).filter(Boolean)).size,'أقسام مشاركة']];
+  const facts=selType==='challenges'?[[d.challenges.total,'تحديات الدائرة'],[d.challenges.byImpact['مرتفع'],'مرتفعة التأثير'],[d.challenges.byImpact['متوسط'],'متوسطة التأثير'],[d.challenges.byImpact['منخفض'],'منخفضة التأثير']]:selType==='administrative'?[[a.total,'أعمال إدارية'],[a.done,'مكتملة'],[a.wip,'قيد التنفيذ']]:projects?[[d.projects.length,'مشاريع مرتبطة بالفترة'],[d.done.length,'تسليمات فعلية'],[d.planned.length,'مواعيد مخططة']]:meetings?[[d.meetings.length,'اجتماعات موثقة'],[new Set(d.meetings.map(x=>x.deptLabel).filter(Boolean)).size,'أقسام مشاركة']]:[[d.visits.length,'زيارات موثقة'],[new Set(d.visits.map(x=>x.deptLabel).filter(Boolean)).size,'أقسام مشاركة']];
   const note=projects?`<div><b>أولويات المتابعة</b><p>${d.challenges.open} تحديات دائرة قائمة · ${risks.length} مشاريع ذات تحديات مرتفعة · ${decisions.length} مشاريع لها قرار مطلوب.</p></div>`:'';
-  return `<header class="pr-exec-head"><div class="pr-exec-copy"><div class="pr-exec-eyebrow">بلدية مسقط · دائرة التصميم المركزي / تقرير دوري</div><h1>${title}</h1><p>${esc(d.label)} <span>·</span> ${esc(d.from)} — ${esc(d.to)}</p></div>${reportBrandLogo()}</header><section class="pr-exec"><div class="pr-exec-facts">${facts.map(([n,label],i)=>`<div><small>0${i+1}</small><strong>${n}</strong><span>${label}</span></div>`).join('')}${selType==='all'?`<div><small>04</small><strong>${a.total}</strong><span>أعمال إدارية · ${a.done} مكتمل</span></div>`:''}</div><div class="pr-exec-story"><div><b>نطاق التقرير</b><p>${projects?`يعرض المشاريع التي لها بداية أو نهاية أو موعد عمل خلال الفترة، مع تسليمات الأقسام المسجلة بتاريخها الفعلي.`:meetings?'يعرض الاجتماعات المسجلة خلال الفترة مرتبة زمنياً مع الغرض والمحضر والمشاركين.':selType==='administrative'?'يعرض أعمال التنسيق الموثقة والمهام اليومية المسجلة خلال الفترة مع حالتها.':selType==='challenges'?'يعرض التحديات القائمة أو التي عولجت خلال الفترة، مع تصنيفها وإجراءات المعالجة.':'يعرض الزيارات الميدانية المسجلة خلال الفترة، بمواقعها وأغراضها وملاحظاتها.'}</p></div>${note}</div></section>`;
+  return `<header class="pr-exec-head"><div class="pr-exec-copy"><div class="pr-exec-eyebrow">بلدية مسقط · دائرة التصميم المركزي / تقرير دوري</div><h1>${title}</h1><p>${selType==='challenges'?'سجل تحديات الدائرة العام':`${esc(d.label)} <span>·</span> ${esc(d.from)} — ${esc(d.to)}`}</p></div>${reportBrandLogo()}</header><section class="pr-exec"><div class="pr-exec-facts">${facts.map(([n,label],i)=>`<div><small>0${i+1}</small><strong>${n}</strong><span>${label}</span></div>`).join('')}${selType==='all'?`<div><small>04</small><strong>${a.total}</strong><span>أعمال إدارية · ${a.done} مكتمل</span></div>`:''}</div><div class="pr-exec-story"><div><b>نطاق التقرير</b><p>${projects?`يعرض المشاريع التي لها بداية أو نهاية أو موعد عمل خلال الفترة، مع تسليمات الأقسام المسجلة بتاريخها الفعلي.`:meetings?'يعرض الاجتماعات المسجلة خلال الفترة مرتبة زمنياً مع الغرض والمحضر والمشاركين.':selType==='administrative'?'يعرض أعمال التنسيق الموثقة والمهام اليومية المسجلة خلال الفترة مع حالتها.':selType==='challenges'?'يعرض جميع تحديات الدائرة بعناوينها وأنواعها وأعدادها وتصنيفات تأثيرها.':'يعرض الزيارات الميدانية المسجلة خلال الفترة، بمواقعها وأغراضها وملاحظاتها.'}</p></div>${note}</div></section>`;
 }
 function reportActivityCard(item,kind){
   const esc=reportEsc,meeting=kind==='meetings',title=meeting?item.title||'اجتماع':item.location||'زيارة ميدانية';
@@ -4322,7 +4320,8 @@ function reportProjectPortfolio(d){
 
 function reportChallengeSection(d,entries=d.challenges.items,page=0,pages=0){
   const esc=reportEsc,c=d.challenges;
-  return `<section class="pr-section"><div class="pr-title"><span>تحديات</span><h2>تحديات الدائرة</h2></div><p class="pr-caption">خلال ${esc(d.label)}: ${c.total} تحدٍ مرتبط بالفترة · ${c.open} قائم · ${c.resolved} تمت معالجته.${pages>1?' · صفحة '+page+' من '+pages:''}</p><div class="pr-challenge-list">${entries.map(ch=>`<article class="pr-challenge"><div class="pr-challenge-head"><strong>${esc(ch.title||'تحدٍ بلا عنوان')}</strong><span>${esc(CHALLENGE_STATUS_AR[ch.periodStatus]||'قائم')}</span></div><div class="pr-challenge-meta">${esc(CHALLENGE_CATEGORY_AR[ch.category]||'أخرى')} · ${esc(CHALLENGE_NATURE_AR[ch.nature]||'—')} · ${esc(DEPT_MAP.find(([key])=>key===ch.dept)?.[1]||'الدائرة عامة')} · تأثير ${esc(ch.impact||'—')}</div><p><b>وصف التحدي:</b> ${esc(ch.description||'—')}</p><p><b>خطة المعالجة أو الإجراء المتخذ:</b> ${esc(ch.treatment||'—')}</p><div class="pr-challenge-meta">رُصد: ${esc(ch.reportedDate||'—')} · المسؤول: ${esc(ch.owner||'—')} · الموعد المستهدف: ${esc(ch.dueDate||'—')}${ch.periodStatus==='resolved'?' · عولج: '+esc(ch.resolvedDate||'—'):''}</div></article>`).join('')||'<p class="rp-empty">لا توجد تحديات مرتبطة بهذه الفترة.</p>'}</div></section>`;
+  const summary=page<=1?'<div class="pr-challenge-list">'+c.byCategory.map(group=>`<div class="pr-challenge"><strong>${esc(group.label)}</strong><div class="pr-challenge-meta">العدد: ${group.items.length} · مرتفع: ${group.high} · متوسط: ${group.medium} · منخفض: ${group.low}</div></div>`).join('')+'</div>':'';
+  return `<section class="pr-section"><div class="pr-title"><span>تحديات</span><h2>تحديات الدائرة</h2></div><p class="pr-caption">إجمالي التحديات: ${c.total}${pages>1?' · صفحة '+page+' من '+pages:''}</p>${summary}<div class="pr-challenge-list">${entries.map(ch=>`<article class="pr-challenge"><div class="pr-challenge-head"><strong>${esc(ch.title||'تحدٍ بلا عنوان')}</strong><span>العدد: 1</span></div><div class="pr-challenge-meta">التصنيف: ${esc(CHALLENGE_CATEGORY_AR[ch.category]||'أخرى')} · النوع: ${esc(CHALLENGE_NATURE_AR[ch.nature]||'—')} · التأثير: ${esc(ch.impact||'—')}</div></article>`).join('')||'<p class="rp-empty">لا توجد تحديات مسجلة.</p>'}</div></section>`;
 }
 function reportAdministrativeSection(d,entries=d.administrative.items,page=0,pages=0){
   const a=d.administrative,esc=reportEsc;
@@ -4337,7 +4336,7 @@ function buildReportHTML(selType,periodKind,periodKey){
   if(selType==='visits'||selType==='all')out+=reportActivitySection(d.visits,'visits',selType==='all'?'03':'01');
   if(selType==='challenges'||selType==='all')out+=reportChallengeSection(d);
   if(selType==='administrative'||selType==='all')out+=reportAdministrativeSection(d);
-  return out+`<footer class="pr-foot">تاريخ استخراج التقرير: ${esc(reportToday())} · تفاصيل الفترة المختارة من السجلات المدخلة.</footer></div>`;
+  return out+`<footer class="pr-foot">تاريخ استخراج التقرير: ${esc(reportToday())} · ${selType==='challenges'?'تحديات الدائرة العامة':'تفاصيل الفترة المختارة من السجلات المدخلة.'}</footer></div>`;
 }
 
 /* أنماط مشتركة لمستندات التقارير */
@@ -4416,7 +4415,7 @@ function kpiPosterHTML(){
   const completion=total?Math.round(completed/total*100)+'%':'—',punctuality=due?Math.round(onTime/due*100)+'%':'—';
   const decision=d.projects.filter(p=>p.decisionRequired).length;
   const admin=d.administrative,challenges=d.challenges;
-  const indicators=[[d.projects.length,'مشاريع الفترة','دون تكرار'],[d.done.length,'تسليمات فعلية','أعمال الأقسام'],[d.planned.length,'مواعيد مخططة','خلال الفترة'],[completion,'إنجاز الأقسام',`${completed} من ${total} عمل`],[punctuality,'الالتزام',`${onTime} من ${due} تسليم`],[challenges.open,'تحديات الدائرة',`${challenges.high} مرتفعة التأثير`]];
+  const indicators=[[d.projects.length,'مشاريع الفترة','دون تكرار'],[d.done.length,'تسليمات فعلية','أعمال الأقسام'],[d.planned.length,'مواعيد مخططة','خلال الفترة'],[completion,'إنجاز الأقسام',`${completed} من ${total} عمل`],[punctuality,'الالتزام',`${onTime} من ${due} تسليم`],[challenges.total,'تحديات الدائرة',`مرتفع ${challenges.byImpact['مرتفع']} · متوسط ${challenges.byImpact['متوسط']} · منخفض ${challenges.byImpact['منخفض']}`]];
   const types=[...d.byType].sort((a,b)=>b[1]-a[1]),shown=types.slice(0,5),remaining=types.slice(5).reduce((n,[,v])=>n+v,0);
   const totalProjects=Math.max(1,d.projects.length);
   return `<section class="lead-slide kpi-poster-page"><div class="kpost"><header class="kpost-head"><div><small>بلدية مسقط · دائرة التصميم المركزي</small><h1>لوحة مؤشرات الأداء</h1><p>${esc(d.label)} · ${esc(d.from)} — ${esc(d.to)}</p></div>${reportBrandLogo()}</header>
@@ -4427,6 +4426,7 @@ function kpiPosterHTML(){
     <article class="kpost-panel"><div class="kpost-title"><span>04 / أنواع المشاريع</span><h2>توزيع المحفظة</h2></div>${shown.map(([label,n])=>`<div class="kpost-type"><span>${esc(label)}</span><i><em style="width:${Math.round(n/totalProjects*100)}%"></em></i><b>${n}</b></div>`).join('')||'<p class="rp-empty">لا توجد مشاريع لهذه الفترة.</p>'}${remaining?`<div class="kpost-type"><span>أنواع أخرى</span><i><em style="width:${Math.round(remaining/totalProjects*100)}%"></em></i><b>${remaining}</b></div>`:''}</article>
     <article class="kpost-panel"><div class="kpost-title"><span>05 / الأولويات</span><h2>المتابعة والقرارات</h2></div><div class="kpost-priority-count"><b>${priorities.length}</b> مشاريع ذات عائق أو قرار أو تحديات · <b>${decision}</b> قرارات مطلوبة</div><div class="kpost-priorities">${priorities.slice(0,4).map(p=>`<div><b>${esc(reportBriefText(p.name||'مشروع بلا اسم',36))}</b><span>${esc(reportBriefText(p.decisionRequired||p.blocker||p.riskLevel,64))}</span></div>`).join('')||'<p class="rp-empty">لا توجد أولويات مسجلة.</p>'}</div>${priorities.length>4?`<small>و${priorities.length-4} مشاريع أخرى تظهر تفاصيلها في المنصة.</small>`:''}</article>
     <article class="kpost-panel"><div class="kpost-title"><span>06 / التنسيق والمتابعة</span><h2>الأعمال الإدارية</h2></div><div class="kpost-activities"><div><b>${admin.total}</b><span>عمل ومهمة</span></div><div><b>${admin.done}</b><span>مكتمل</span></div><div><b>${admin.wip}</b><span>قيد التنفيذ</span></div></div><div class="kpost-admin-list">${admin.items.slice(0,4).map(w=>`<div><b>${esc(reportBriefText(w.title,38))}</b><span>${esc(w.date)} · ${w.status==='done'?'مكتمل':'قيد التنفيذ'}</span></div>`).join('')||'<p class="rp-empty">لا توجد أعمال إدارية لهذه الفترة.</p>'}</div><p>يشمل السجل الأعمال الموثقة والمهام اليومية المؤشرة بتاريخها. تفاصيلها في التقرير الشامل.</p></article></div>
+    <article class="kpost-panel"><div class="kpost-title"><span>07 / تحديات الدائرة</span><h2>التصنيفات ودرجات التأثير</h2></div>${challenges.byCategory.map(group=>`<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:1px solid #dce6dc;padding:7px 0;font-size:11px"><b>${esc(group.label)} (${group.items.length})</b><span>مرتفع ${group.high} · متوسط ${group.medium} · منخفض ${group.low}</span></div>`).join('')||'<p class="rp-empty">لا توجد تحديات مسجلة.</p>'}${challenges.items.map(ch=>`<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:1px solid #dce6dc;padding:7px 0;font-size:11px"><b>${esc(ch.title||'تحدٍ بلا عنوان')}</b><span>${esc(CHALLENGE_CATEGORY_AR[ch.category]||'أخرى')} · ${esc(CHALLENGE_NATURE_AR[ch.nature]||'—')} · ${esc(ch.impact||'—')}</span></div>`).join('')}</article>
     <footer class="kpost-foot"><span>نظام مشاريع التصميم المركزي · ملخص من البيانات المسجلة</span><span>استخراج: ${esc(reportToday())}</span></footer></div></section>`;
 }
 function kpiSlides(){return [kpiPosterHTML()];}
@@ -4562,7 +4562,7 @@ function exportReportWord(selType,periodKind,periodKey){
 function periodExcelVisualSheet(X,d){
   const rows=[['بلدية مسقط · دائرة التصميم المركزي'],['التقرير الدوري · '+d.label],['من '+d.from+' إلى '+d.to],[],['المشاريع','تسليمات الأقسام','الاجتماعات','الزيارات'],[d.projects.length,d.done.length,d.meetings.length,d.visits.length],[],['ملخص التقرير'],['عدد المشاريع دون تكرار',d.projects.length],['مواعيد الأعمال المخططة',d.planned.length],['مشاريع ذات قرار مطلوب',d.projects.filter(p=>p.decisionRequired).length],[],['المشاريع المرتبطة بالفترة'],['المشروع','رقم المشروع','الحالة','الجهة'],...d.projects.map(p=>[p.name||'مشروع بلا اسم',p.projectNo||'—',isEffectivelyDone(p)?'مكتمل':p.overallStatus||'—',p.requestingEntity||'—'])];
   rows.push([],['الأعمال الإدارية · التنسيق والمتابعة'],['الإجمالي','المكتمل','قيد التنفيذ'],[d.administrative.total,d.administrative.done,d.administrative.wip],['التاريخ','العمل','الحالة','المسؤول'],...d.administrative.items.map(w=>[w.date,w.title,w.status==='done'?'مكتمل':'قيد التنفيذ',w.by||'']));
-  rows.push([],['تحديات الدائرة'],['المرتبطة بالفترة','القائمة','تمت المعالجة'],[d.challenges.total,d.challenges.open,d.challenges.resolved],['العنوان','التصنيف','الحالة','المعالجة'],...d.challenges.items.map(ch=>[ch.title,CHALLENGE_CATEGORY_AR[ch.category]||'أخرى',CHALLENGE_STATUS_AR[ch.periodStatus]||'قائم',ch.treatment||'']));
+  rows.push([],['تحديات الدائرة'],['الإجمالي','مرتفع','متوسط','منخفض'],[d.challenges.total,d.challenges.byImpact['مرتفع'],d.challenges.byImpact['متوسط'],d.challenges.byImpact['منخفض']],['العنوان','النوع','التصنيف','التأثير','العدد'],...d.challenges.items.map(ch=>[ch.title,CHALLENGE_NATURE_AR[ch.nature]||'',CHALLENGE_CATEGORY_AR[ch.category]||'أخرى',ch.impact||'',1]));
   const sheet=X.utils.aoa_to_sheet(rows);sheet['!views']=[{RTL:true}];sheet['!cols']=[{wch:40},{wch:25},{wch:25},{wch:34}];sheet['!merges']=[0,1,2,7,12].map(r=>({s:{r,c:0},e:{r,c:3}}));sheet['!rows']=[{hpt:32},{hpt:30},{hpt:23},{},{hpt:27},{hpt:42}];
   const style=(r,c,opt)=>{const cell=sheet[X.utils.encode_cell({r,c})];if(cell)cell.s={alignment:{horizontal:'right',vertical:'center',wrapText:true},...opt};};
   [0,1,2].forEach(r=>style(r,0,{font:{bold:true,sz:r===1?18:12,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'16443A'}}}));
@@ -4576,7 +4576,7 @@ function exportPeriodExcel(selType,periodKind,periodKey){
   const X=window.XLSX,d=reportPeriodData(periodKind,periodKey),width=10,aoa=[],merges=[],titleRows=[],headRows=[];
   const addTitle=t=>{const row=aoa.length;aoa.push([t]);merges.push({s:{r:row,c:0},e:{r:row,c:width-1}});titleRows.push(row);};
   const addTable=(title,head,rows)=>{aoa.push([]);addTitle(title);headRows.push(aoa.length);aoa.push(head);rows.forEach(row=>aoa.push(row));if(!rows.length)aoa.push(['لا توجد بيانات لهذه الفترة']);};
-  addTitle('بلدية مسقط · دائرة التصميم المركزي');addTitle(`التقرير الدوري · ${d.label}`);addTitle(`الفترة: ${d.from} — ${d.to}`);aoa.push([]);
+  addTitle('بلدية مسقط · دائرة التصميم المركزي');addTitle(selType==='challenges'?'تحديات الدائرة العامة':`التقرير الدوري · ${d.label}`);addTitle(selType==='challenges'?'جميع التحديات المسجلة':`الفترة: ${d.from} — ${d.to}`);aoa.push([]);
   if(selType==='projects'||selType==='all'){
     addTable('الملخص التنفيذي',['المشاريع','التسليمات الفعلية','المواعيد المخططة','الالتزام %','اجتماعات','زيارات','','','',''],[[d.projects.length,d.done.length,d.planned.length,d.dated?Math.round(d.onTime/d.dated*100):'—',d.meetings.length,d.visits.length]]);
     addTable('أداء الأقسام',['القسم','التسليمات','المواعيد المخططة','','','','','','',''],d.byDept.map(x=>[x.label,x.done,x.planned]));
@@ -4585,8 +4585,9 @@ function exportPeriodExcel(selType,periodKind,periodKey){
   if(selType==='meetings'||selType==='all')addTable('الاجتماعات',['العنوان','التاريخ','القسم','المشاركون','الموقع','الغرض','المحضر','ملاحظات','سجّله',''],d.meetings.map(m=>[m.title||'',m.date||'',m.deptLabel||'',m.personNames||'',m.location||'',m.purpose||'',m.minutes||'',m.notes||'',m.createdBy||'']));
   if(selType==='visits'||selType==='all')addTable('الزيارات الميدانية',['الموقع','التاريخ','القسم','المشاركون','الغرض','الملاحظات','مسار التقرير والصور','سجّلها','',''],d.visits.map(v=>[v.location||'',v.date||'',v.deptLabel||'',v.personNames||'',v.purpose||'',v.notes||'',v.reportLink||'',v.createdBy||'']));
   if(selType==='challenges'||selType==='all'){
-    addTable('ملخص تحديات الدائرة',['المرتبطة بالفترة','القائمة','تمت المعالجة','مرتفعة التأثير','','','','','',''],[[d.challenges.total,d.challenges.open,d.challenges.resolved,d.challenges.high]]);
-    addTable('تفاصيل تحديات الدائرة',['تاريخ الرصد','العنوان','التصنيف','النوع','القسم','درجة التأثير','الحالة','وصف التحدي','خطة المعالجة','المسؤول'],d.challenges.items.map(ch=>[ch.reportedDate||'',ch.title||'',CHALLENGE_CATEGORY_AR[ch.category]||'أخرى',CHALLENGE_NATURE_AR[ch.nature]||'',DEPT_MAP.find(([key])=>key===ch.dept)?.[1]||'الدائرة عامة',ch.impact||'',CHALLENGE_STATUS_AR[ch.periodStatus]||'قائم',ch.description||'',ch.treatment||'',ch.owner||'']));
+    addTable('ملخص تحديات الدائرة',['الإجمالي','مرتفع','متوسط','منخفض','','','','','',''],[[d.challenges.total,d.challenges.byImpact['مرتفع'],d.challenges.byImpact['متوسط'],d.challenges.byImpact['منخفض']]]);
+    addTable('أعداد التحديات حسب التصنيف',['التصنيف','العدد','مرتفع','متوسط','منخفض','','','','',''],d.challenges.byCategory.map(group=>[group.label,group.items.length,group.high,group.medium,group.low]));
+    addTable('تفاصيل تحديات الدائرة',['عنوان التحدي','النوع','التصنيف','درجة التأثير','العدد','','','','',''],d.challenges.items.map(ch=>[ch.title||'',CHALLENGE_NATURE_AR[ch.nature]||'',CHALLENGE_CATEGORY_AR[ch.category]||'أخرى',ch.impact||'',1]));
   }
   if(selType==='administrative'||selType==='all'){
     addTable('ملخص الأعمال الإدارية',['الإجمالي','مكتمل','قيد التنفيذ','أعمال موثقة','مهام يومية','','','','',''],[[d.administrative.total,d.administrative.done,d.administrative.wip,d.administrative.logs,d.administrative.tasks]]);
@@ -4641,10 +4642,10 @@ function openReportsModal(){
     const options=reportPeriodOptions(selPeriodKind);
     if(!options.includes(selPeriodKey))selPeriodKey=reportPeriodKey(selPeriodKind,reportToday().slice(0,7));
     const periodOptions=options.map(k=>`<option value="${k}" ${k===selPeriodKey?'selected':''}>${reportEsc(reportPeriodSpec(selPeriodKind,k).label)}</option>`).join('');
-    body.innerHTML=`<style>${reportViewStyles()}</style><div class="pr-controls"><label>نوع التقرير<select class="inp" id="repType"><option value="projects" ${selType==='projects'?'selected':''}>أداء المشاريع</option><option value="meetings" ${selType==='meetings'?'selected':''}>الاجتماعات</option><option value="visits" ${selType==='visits'?'selected':''}>الزيارات الميدانية</option><option value="administrative" ${selType==='administrative'?'selected':''}>الأعمال الإدارية</option><option value="challenges" ${selType==='challenges'?'selected':''}>تحديات الدائرة</option><option value="all" ${selType==='all'?'selected':''}>تقرير شامل للفترة</option></select></label><label>دورية التقرير<select class="inp" id="repPeriodKind"><option value="month" ${selPeriodKind==='month'?'selected':''}>شهري</option><option value="quarter" ${selPeriodKind==='quarter'?'selected':''}>ربع سنوي</option><option value="half" ${selPeriodKind==='half'?'selected':''}>نصف سنوي</option><option value="year" ${selPeriodKind==='year'?'selected':''}>سنوي</option></select></label><label>الفترة<select class="inp" id="repPeriodKey">${periodOptions}</select></label>${canViewReports()?`<div class="pr-actions"><button class="btn btn-ghost" id="repSlides">${I.chart} شرائح</button><button class="btn btn-ghost" id="repPdf">${I.report} PDF</button><button class="btn btn-add" id="repCombined">${I.report} المؤشرات + التقرير PDF</button><button class="btn btn-ghost" id="repWord">${I.report} Word</button><button class="btn btn-add" id="repExport">${I.upload} Excel</button></div>`:''}</div>${buildReportHTML(selType,selPeriodKind,selPeriodKey)}`;
+    body.innerHTML=`<style>${reportViewStyles()}</style><div class="pr-controls"><label>نوع التقرير<select class="inp" id="repType"><option value="projects" ${selType==='projects'?'selected':''}>أداء المشاريع</option><option value="meetings" ${selType==='meetings'?'selected':''}>الاجتماعات</option><option value="visits" ${selType==='visits'?'selected':''}>الزيارات الميدانية</option><option value="administrative" ${selType==='administrative'?'selected':''}>الأعمال الإدارية</option><option value="challenges" ${selType==='challenges'?'selected':''}>تحديات الدائرة</option><option value="all" ${selType==='all'?'selected':''}>تقرير شامل للفترة</option></select></label>${selType==='challenges'?'':`<label>دورية التقرير<select class="inp" id="repPeriodKind"><option value="month" ${selPeriodKind==='month'?'selected':''}>شهري</option><option value="quarter" ${selPeriodKind==='quarter'?'selected':''}>ربع سنوي</option><option value="half" ${selPeriodKind==='half'?'selected':''}>نصف سنوي</option><option value="year" ${selPeriodKind==='year'?'selected':''}>سنوي</option></select></label><label>الفترة<select class="inp" id="repPeriodKey">${periodOptions}</select></label>`}${canViewReports()?`<div class="pr-actions"><button class="btn btn-ghost" id="repSlides">${I.chart} شرائح</button><button class="btn btn-ghost" id="repPdf">${I.report} PDF</button>${selType==='challenges'?'':`<button class="btn btn-add" id="repCombined">${I.report} المؤشرات + التقرير PDF</button>`}<button class="btn btn-ghost" id="repWord">${I.report} Word</button><button class="btn btn-add" id="repExport">${I.upload} Excel</button></div>`:''}</div>${buildReportHTML(selType,selPeriodKind,selPeriodKey)}`;
     body.querySelector('#repType').onchange=e=>{selType=e.target.value;fill();};
-    body.querySelector('#repPeriodKind').onchange=e=>{selPeriodKind=e.target.value;selPeriodKey=reportPeriodKey(selPeriodKind,reportToday().slice(0,7));fill();};
-    body.querySelector('#repPeriodKey').onchange=e=>{selPeriodKey=e.target.value;fill();};
+    const periodKindControl=body.querySelector('#repPeriodKind');if(periodKindControl)periodKindControl.onchange=e=>{selPeriodKind=e.target.value;selPeriodKey=reportPeriodKey(selPeriodKind,reportToday().slice(0,7));fill();};
+    const periodKeyControl=body.querySelector('#repPeriodKey');if(periodKeyControl)periodKeyControl.onchange=e=>{selPeriodKey=e.target.value;fill();};
     body.querySelectorAll('[data-report-project]').forEach(card=>{
       const open=()=>{const p=state.projects.find(x=>String(x.id||'')===card.dataset.reportProject);if(p)openProjectOverview(p);};
       card.onclick=open;card.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}};

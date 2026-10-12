@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#073a2c">
+  <meta name="description" content="منصة دراسة تطوير وإعادة تأهيل منطقة وادي عدي بولاية مطرح بمحافظة مسقط">
+  <title>تطوير وإعادة تأهيل وادي عدي</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="topline"><span>سلطنة عُمان · محافظة مسقط · ولاية مطرح</span><span>رؤية عُمان 2040</span></div>
+  <header class="site-header">
+    <a class="brand" href="#home" aria-label="الصفحة الرئيسية">
+      <span class="brand-mark">و</span><span><strong>وادي عدي</strong><small>دراسة التخطيط والتجديد الحضري</small></span>
+    </a>
+    <div class="header-actions">
+      <span class="sync-pill" id="sync-status"><i></i> وضع المعاينة</span>
+      <span class="role-pill" id="role-label">زائر · اطلاع فقط</span>
+      <button class="button button-quiet" id="login-open">دخول فريق العمل</button>
+      <button class="button button-quiet hidden" id="logout">خروج</button>
+    </div>
+  </header>
+  <nav class="main-nav" aria-label="أقسام الدراسة">
+    <div class="nav-inner">
+      <button class="nav-item active" data-view="home">الرئيسية</button>
+      <button class="nav-item" data-view="existing">01 · الوضع القائم</button>
+      <button class="nav-item" data-view="analysis">02 · التحليل</button>
+      <button class="nav-item" data-view="proposals">03 · المقترحات</button>
+      <button class="nav-item" data-view="recommendations">04 · التوصيات</button>
+    </div>
+  </nav>
+  <main id="app-main">
+    <section class="view active" id="view-home">
+      <section class="hero">
+        <div class="hero-copy">
+          <span class="eyebrow">دراسة تخطيطية · سبتمبر 2026</span>
+          <h1>نُحيي المكان<br><em>ليحيا الإنسان</em></h1>
+          <p>رؤية تخطيطية ومعمارية استراتيجية لتحويل وادي عدي إلى بيئة حضرية مستدامة، نابضة بالحياة، وآمنة من المخاطر.</p>
+          <div class="hero-meta"><span>ولاية مطرح · محافظة مسقط</span><span>315,000.37 م² · 31.5 هكتاراً</span></div>
+          <div class="hero-buttons"><button class="button button-gold" data-jump="proposals">استعرض المقترحات</button><a class="button button-outline" href="https://www.google.com/maps?q=23.5786,58.5372" target="_blank" rel="noreferrer">الموقع على الخريطة ↗</a></div>
+        </div>
+        <div class="hero-map">
+          <div class="map-label"><span class="live-dot"></span> موقع الدراسة · وادي عدي</div>
+          <iframe title="خريطة منطقة وادي عدي" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="https://maps.google.com/maps?q=23.5786,58.5372&z=15&output=embed"></iframe>
+          <div class="map-coords">23°34'43.0"N · 58°32'13.9"E</div>
+        </div>
+      </section>
+      <section class="content-wrap">
+        <div class="section-heading"><div><span class="eyebrow">موجز القيادة</span><h2>ملخص الأثر التنموي</h2></div><p>مؤشرات الدراسة المعتمدة لمنطقة وادي عدي</p></div>
+        <div class="metric-grid" id="metrics"></div>
+        <div class="split-section">
+          <div class="panel vision-panel"><span class="eyebrow">الوثيقة الحضرية</span><h2>ملخص المشروع التخطيطي</h2><p>تقع منطقة الدراسة في ولاية مطرح بمساحة إجمالية قدرها 315,000.37 م². يحدها شرقاً طريق العامرات، وتحيط بها سلاسل جبلية من الشمال والجنوب والجنوب الغربي، ويقطعها مجرى سيل وادي عدي.</p><p>تستجيب الدراسة لمحدودية التوسع الجبلي، ومخاطر السيول، وفجوات الخدمات، وتقادم أجزاء من النسيج العمراني؛ وتقترح حلولاً متكاملة تراعي السكان والمكان.</p><button class="text-button" data-jump="analysis">اقرأ المنهجية والأهداف ←</button></div>
+          <div class="panel objectives-panel"><span class="eyebrow">محاور الدراسة</span><h2>الأهداف الاستراتيجية</h2><ol id="objectives"></ol></div>
+        </div>
+        <div class="section-heading"><div><span class="eyebrow">من الرصد إلى التنفيذ</span><h2>مراحل الدراسة</h2></div><p>أربع مراحل مترابطة من المعاينة إلى خارطة الطريق</p></div>
+        <div class="stage-grid" id="stages"></div>
+        <div class="section-heading"><div><span class="eyebrow">نظرة مكانية</span><h2>مكونات المخطط التوجيهي</h2></div></div>
+        <div class="plan-card"><div class="plan-graphic"><div class="wadi-line"></div><span class="plan-node node-a">01 <small>الكورنيش البيئي</small></span><span class="plan-node node-b">02 <small>الشارع التجاري</small></span><span class="plan-node node-c">03 <small>تبادل النقل</small></span><span class="plan-node node-d">04 <small>حدائق جيبية</small></span><span class="north">N ↑</span></div><div class="plan-legend"><h3>مخطط مبدئي لإعادة تأهيل وادي عدي</h3><p>تصور توجيهي يربط بين مسار الوادي، والكتل العمرانية، ومسارات الحركة والمشاريع ذات الأولوية.</p><ul><li>متنزه بيئي أخضر</li><li>مجرى سيول محمي</li><li>كتل عمرانية مطورة</li><li>مسارات مشاة ودراجات مظللة</li></ul></div></div>
+      </section>
+    </section>
+    <section class="view content-wrap" id="view-existing">
+      <div class="page-title"><span class="eyebrow">البند 01</span><h1>رصد وتوثيق الوضع القائم</h1><p>تقرير الزيارة الميدانية ومحطات المعاينة الحقلية التسع.</p></div>
+      <div class="field-report panel"><div><span class="eyebrow">الوثيقة الميدانية · 29 يوليو 2026</span><h2>الزيارة الاستكشافية لمنطقة وادي عدي</h2><p>كشفت المعاينة عن نسيج عمراني كثيف ومحدودية في الفضاءات العامة والحدائق الجيبية. أصبحت السكك الضيقة مسارات رئيسية للحركة، مع تحديات تتعلق بالمواقف والسلامة وتصريف الأمطار وحالة بعض الواجهات.</p></div><div class="report-number"><strong>9</strong><span>محطات رصد ميداني</span></div></div>
+      <div class="section-heading"><div><span class="eyebrow">المعاينة الحقلية</span><h2>سجل المحطات</h2></div><span class="read-only-note">يمكن لفريق العمل إضافة الملاحظات والصور بعد الاتصال السحابي</span></div>
+      <div class="station-grid" id="stations"></div>
+    </section>
+    <section class="view content-wrap" id="view-analysis">
+      <div class="page-title"><span class="eyebrow">البند 02</span><h1>الدراسة التحليلية الشاملة</h1><p>منظومة التحليلات المكانية والبيئية والعمرانية والحركية.</p></div>
+      <div class="analysis-intro panel"><div><h2>نطاق ومنهجية الدراسة</h2><p>تحليل وصفي ومكاني متعدد المحاور لمساحة 315,000.37 م²، يستند إلى المعاينة الميدانية والمخططات والصور الجوية والجداول الإحصائية.</p></div><div class="analysis-chip">مقياس الدراسة<br><strong>1 : 2,500</strong></div></div>
+      <div class="analysis-grid" id="analyses"></div>
+      <div class="section-heading"><div><span class="eyebrow">التضاريس والبيئة</span><h2>القطاع الطبوغرافي</h2></div></div>
+      <div class="terrain panel"><div class="terrain-graphic"><div class="mountain mountain-left"></div><div class="terrace"></div><div class="wadi"></div><div class="terrace terrace-right"></div><div class="mountain mountain-right"></div><span>+180م</span><span>+130م</span><span>+95م</span></div><div><h3>الكورنيش البيئي وممشى الغاف المظلل</h3><p>ممر مشاة ودراجات عند ضفة الوادي الآمنة، محمي بجابيون حجري ومظلل بالأشجار المحلية، مع إنارة بالطاقة الشمسية ومقاعد مدمجة بالتشجير.</p></div></div>
+    </section>
+    <section class="view content-wrap" id="view-proposals">
+      <div class="page-title"><span class="eyebrow">البند 03 · التدخلات الحضرية</span><h1>المقترحات والتصاميم</h1><p>حلول متكاملة لتطوير المدخل، والطرق، والبيئة العمرانية، ومجرى الوادي.</p></div>
+      <div class="proposal-feature panel"><div><span class="eyebrow">مقارنة الوضع الراهن والتصور</span><h2>من المدخل القائم إلى مدخل آمن ومستدام</h2><p>توسعة مسار الدخول والخروج وإضافة عبارة صندوقية لتصريف مياه الأمطار بأمان.</p></div><div class="compare-box"><div class="compare-before"><span>الوضع القائم</span></div><div class="compare-after"><span>التصور المقترح</span></div></div></div>
+      <div class="section-heading"><div><span class="eyebrow">محفظة التدخلات</span><h2>المشاريع المقترحة</h2></div><button class="button button-dark editor-only hidden" id="add-proposal">+ إضافة مقترح</button></div>
+      <div class="proposal-grid" id="proposals"></div>
+    </section>
+    <section class="view content-wrap" id="view-recommendations">
+      <div class="page-title"><span class="eyebrow">البند 04 · خارطة صناعة القرار</span><h1>التوصيات والاستراتيجيات</h1><p>مصفوفة أولويات وخارطة طريق تكاملية للفترة 2026–2031.</p></div>
+      <div class="decision-banner"><span class="eyebrow">الرؤية التنفيذية</span><h2>من مجرى محاط بالتحديات إلى واحة حضرية مستدامة</h2><p>البدء بتثبيت حرم الوادي وإطلاق الكورنيش البيئي، بالتوازي مع تنظيم الواجهات والأرصفة والمواقف بالشراكة مع المجتمع المحلي.</p></div>
+      <div class="section-heading"><div><span class="eyebrow">مراحل التنفيذ</span><h2>خارطة الطريق</h2></div></div>
+      <div class="roadmap-grid" id="roadmap"></div>
+      <div class="section-heading"><div><span class="eyebrow">الأولويات القطاعية</span><h2>مصفوفة التوصيات</h2></div><button class="button button-dark editor-only hidden" id="add-recommendation">+ إضافة توصية</button></div>
+      <div class="filter-row"><button class="filter active" data-filter="all">كل الأولويات</button><button class="filter" data-filter="عاجل">عاجل</button><button class="filter" data-filter="متوسط المدى">متوسط المدى</button><button class="filter" data-filter="استراتيجي">استراتيجي</button></div>
+      <div class="recommendation-list" id="recommendations"></div>
+    </section>
+  </main>
+  <footer class="site-footer"><div><span class="brand-mark small">و</span><strong>منصة وادي عدي</strong></div><p>سلطنة عُمان · محافظة مسقط · ولاية مطرح</p><small>© 2026 · منصة مستقلة لدراسة التخطيط والتجديد الحضري</small></footer>
+  <dialog id="auth-dialog" class="dialog"><form id="login-form"><button type="button" class="dialog-close" id="login-close" aria-label="إغلاق">×</button><span class="eyebrow">فريق الدراسة</span><h2>دخول فريق العمل</h2><p>استخدم حساب الفريق المعتمد لإضافة البيانات وتحديثها.</p><label>البريد الإلكتروني<input name="email" type="email" autocomplete="username" required></label><label>كلمة المرور<input name="password" type="password" autocomplete="current-password" required></label><p class="form-error" id="login-error"></p><button class="button button-dark full-width" type="submit">دخول آمن</button><small>الزوار يمكنهم الاطلاع على محتوى المنصة دون تسجيل الدخول.</small></form></dialog>
+  <dialog id="record-dialog" class="dialog"><form id="record-form"><button type="button" class="dialog-close" id="record-close" aria-label="إغلاق">×</button><span class="eyebrow" id="record-kicker">إضافة</span><h2 id="record-title">سجل جديد</h2><label>العنوان<input name="title" required maxlength="180"></label><label>التصنيف<input name="category" maxlength="100"></label><label>النطاق أو الأولوية<input name="location" maxlength="160"></label><label>التفاصيل<textarea name="description" rows="5" required></textarea></label><label>صور أو مستندات داعمة<input name="attachments" type="file" accept="image/*,.pdf" multiple></label><button class="button button-dark full-width" type="submit">حفظ السجل</button></form></dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="firebase-config.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

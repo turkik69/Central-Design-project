@@ -20,6 +20,7 @@
     <div class="header-actions">
       <span class="sync-pill" id="sync-status"><i></i> وضع المعاينة</span>
       <span class="role-pill" id="role-label">زائر · اطلاع فقط</span>
+      <button class="button button-quiet" id="backup">نسخة JSON</button>
       <button class="button button-quiet" id="login-open">دخول فريق العمل</button>
       <button class="button button-quiet hidden" id="logout">خروج</button>
     </div>
@@ -77,9 +78,11 @@
     </section>
     <section class="view content-wrap" id="view-proposals">
       <div class="page-title"><span class="eyebrow">البند 03 · التدخلات الحضرية</span><h1>المقترحات والتصاميم</h1><p>حلول متكاملة لتطوير المدخل، والطرق، والبيئة العمرانية، ومجرى الوادي.</p></div>
-      <div class="proposal-feature panel"><div><span class="eyebrow">مقارنة الوضع الراهن والتصور</span><h2>من المدخل القائم إلى مدخل آمن ومستدام</h2><p>توسعة مسار الدخول والخروج وإضافة عبارة صندوقية لتصريف مياه الأمطار بأمان.</p></div><div class="compare-box"><div class="compare-before"><span>الوضع القائم</span></div><div class="compare-after"><span>التصور المقترح</span></div></div></div>
+      <div class="proposal-feature panel"><div><span class="eyebrow">مقارنة الوضع الراهن والتصور</span><h2>من المدخل القائم إلى مدخل آمن ومستدام</h2><p>توسعة مسار الدخول والخروج وإضافة عبارة صندوقية لتصريف مياه الأمطار بأمان.</p></div><div><div class="compare-box"><div class="compare-before"><span>الوضع القائم</span></div><div class="compare-after"><span>التصور المقترح</span></div></div><label class="compare-control">اسحب للمقارنة<input id="compare-slider" type="range" min="0" max="100" value="50" aria-label="مقارنة التصور المقترح والوضع القائم"></label></div></div>
       <div class="section-heading"><div><span class="eyebrow">محفظة التدخلات</span><h2>المشاريع المقترحة</h2></div><button class="button button-dark editor-only hidden" id="add-proposal">+ إضافة مقترح</button></div>
       <div class="proposal-grid" id="proposals"></div>
+      <div class="section-heading"><div><span class="eyebrow">التوثيق البصري</span><h2>معرض الصور والمخططات</h2></div><button class="button button-dark editor-only hidden" id="add-gallery">+ إضافة صورة أو مخطط</button></div>
+      <div class="gallery-grid" id="gallery"></div>
     </section>
     <section class="view content-wrap" id="view-recommendations">
       <div class="page-title"><span class="eyebrow">البند 04 · خارطة صناعة القرار</span><h1>التوصيات والاستراتيجيات</h1><p>مصفوفة أولويات وخارطة طريق تكاملية للفترة 2026–2031.</p></div>

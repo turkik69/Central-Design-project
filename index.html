@@ -1104,12 +1104,12 @@ const visitsRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','visi
 const meetingsRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','meetings');
 const myworksRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','myworks');
 const challengesRef = ()=> FB.collection(db,'artifacts',APP_ID,'public','data','challenges');
-const KIND_COLL={project:'projects', visit:'visits', meeting:'meetings'};
-const KIND_AR={project:'مشروع', visit:'زيارة', meeting:'اجتماع'};
+const KIND_COLL={project:'projects', visit:'visits', meeting:'meetings', challenge:'challenges'};
+const KIND_AR={project:'مشروع', visit:'زيارة', meeting:'اجتماع', challenge:'تحدٍ'};
 /* حذف عام: ينقل أي عنصر (مشروع/زيارة/اجتماع) إلى السلة مع نوعه ومن حذفه */
 async function softDelete(kind, id){
   try{
-    const src = kind==='project'?state.projects : kind==='visit'?state.visits : state.meetings;
+    const src = kind==='project'?state.projects : kind==='visit'?state.visits : kind==='challenge'?state.challenges : state.meetings;
     const item=src.find(x=>x.id===id);
     if(item){
       const {id:_omit,...rest}=item;
@@ -2980,13 +2980,21 @@ function openChallengesModal(){
         <div class="ch-meta">${esc(CHALLENGE_CATEGORY_AR[ch.category]||'أخرى')} · ${esc(CHALLENGE_NATURE_AR[ch.nature]||'—')} · ${esc(DEPT_MAP.find(([key])=>key===ch.dept)?.[1]||'الدائرة عامة')} · تأثير ${esc(ch.impact||'—')}</div>
         <p><b>التحدي:</b> ${esc(ch.description||'—')}</p><p><b>المعالجة:</b> ${esc(ch.treatment||'—')}</p>
         ${ch.owner?`<div class="ch-meta">المسؤول عن المتابعة: ${esc(ch.owner)}</div>`:''}
-        ${canEditChallenge(ch)?`<button class="btn btn-ghost ch-edit" data-ch-edit="${esc(ch.id)}">تعديل</button>`:''}</article>`).join('')||'<p class="ch-empty">لا توجد تحديات في هذه القائمة.</p>'}</div>`;
+        ${canEditChallenge(ch)?`<div class="ch-actions"><button class="btn btn-ghost ch-edit" data-ch-edit="${esc(ch.id)}">تعديل</button><button class="act act-del" data-ch-delete="${esc(ch.id)}" title="حذف التحدي" aria-label="حذف التحدي">${I.trash}</button></div>`:''}</article>`).join('')||'<p class="ch-empty">لا توجد تحديات في هذه القائمة.</p>'}</div>`;
     body.querySelector('#chFilter').onchange=e=>{filterStatus=e.target.value;fill();};
     const add=body.querySelector('#chAdd');if(add)add.onclick=()=>{editingId=null;showForm=true;fill();};
     body.querySelectorAll('[data-ch-edit]').forEach(btn=>btn.onclick=()=>{
       const ch=state.challenges.find(x=>x.id===btn.dataset.chEdit);
       if(!ch||!canEditChallenge(ch))return;
       editingId=ch.id;showForm=true;fill();
+    });
+    body.querySelectorAll('[data-ch-delete]').forEach(btn=>btn.onclick=async()=>{
+      const ch=state.challenges.find(x=>x.id===btn.dataset.chDelete);
+      if(!ch||!canEditChallenge(ch))return;
+      if(!confirm(`هل تريد نقل التحدي «${ch.title||'تحدٍ بلا عنوان'}» إلى سلة المحذوفات؟`))return;
+      btn.disabled=true;
+      await softDelete('challenge',ch.id);
+      btn.disabled=false;
     });
   }
   fill();overlay._refresh=()=>{if(!showForm)fill();};
@@ -3244,7 +3252,8 @@ function openTrashModal(){
   function fill(){
     const list=[...myTrash()].sort((a,b)=> new Date(b.deletedAt||0)-new Date(a.deletedAt||0));
     const isAdmin=state.appUser?.role==='admin';
-    const itemTitle=(t)=> t._kind==='meeting' ? (t.title||'اجتماع')
+    const itemTitle=(t)=> t._kind==='challenge' ? (t.title||'تحدٍ')
+                        : t._kind==='meeting' ? (t.title||'اجتماع')
                         : t._kind==='visit' ? (t.location||'زيارة موقع')
                         : (t.name||'مشروع');
     const kindBadge=(t)=>{ const k=t._kind||'project';
@@ -3259,7 +3268,7 @@ function openTrashModal(){
         <div style="background:var(--sand-50);border:1px solid var(--line);border-radius:11px;padding:12px;margin-bottom:10px">
           <div style="display:flex;justify-content:space-between;align-items:start;gap:10px">
             <div>
-              <div style="display:flex;align-items:center;gap:8px"><span style="font-weight:700;color:var(--ink)">${itemTitle(t)}</span>${kindBadge(t)}</div>
+              <div style="display:flex;align-items:center;gap:8px"><span style="font-weight:700;color:var(--ink)">${reportEsc(itemTitle(t))}</span>${kindBadge(t)}</div>
               <div style="font-size:11.5px;color:var(--muted);margin-top:3px">حُذف: ${fmtDate(t.deletedAt)} · بواسطة: ${t.deletedBy||'—'}</div>
             </div>
             <div style="display:flex;gap:6px;white-space:nowrap">

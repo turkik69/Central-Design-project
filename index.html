@@ -3093,15 +3093,20 @@ function attStatus(doc,username){
   if(attTuesday(doc?.date||doc?.id)&&(doc?.studyUsers||[]).includes(username))return 'study';
   return attTuesday(doc?.date||doc?.id)||(doc?.onsiteUsers||[]).includes(username)?'onsite':'remote';
 }
+function attDisplayName(u){
+  const name=String(u?.name||u?.username||'').trim();
+  if(!name||!['architectural','structural','services'].includes(u?.dept))return name;
+  return /^(?:م\s*[.．]|مهندس(?:ة)?\s)/.test(name)?name:`م. ${name}`;
+}
 function attNames(doc,dept,status){
   return attRoster(doc).filter(u=>(u.dept||'administration')===dept&&attStatus(doc,u.username)===status)
-    .sort((a,b)=>String(a.name).localeCompare(String(b.name),'ar')).map(u=>u.name||u.username);
+    .sort((a,b)=>String(a.name).localeCompare(String(b.name),'ar')).map(u=>attDisplayName(u));
 }
 function attSummary(rows,status){
   const result=new Map();
   rows.forEach(({date,doc})=>attRoster(doc).forEach(u=>{
     if(attStatus(doc,u.username)!==status)return;
-    const entry=result.get(u.username)||{name:u.name||u.username,dept:u.dept||'administration',dates:[]};
+    const entry=result.get(u.username)||{name:attDisplayName(u),dept:u.dept||'administration',dates:[]};
     entry.dates.push(date);result.set(u.username,entry);
   }));
   return [...result.values()].sort((a,b)=>a.name.localeCompare(b.name,'ar'));
@@ -3132,8 +3137,8 @@ function attendancePeriodText(mode,anchor){
     'الأسماء المذكورة حضورياً. يوم الثلاثاء حضوري للجميع، مع تمييز الإجازة الاعتيادية والدراسة الجامعية.',
     ...rows.map(({date,doc})=>[`\n${attLabel(date)} (${date})`,
       ...ATT_DEPTS.map(([key,label])=>`${label}: ${attNames(doc,key,'onsite').join('، ')||'لا يوجد'}`),
-      `إجازة اعتيادية: ${attRoster(doc).filter(u=>attStatus(doc,u.username)==='leave').map(u=>u.name||u.username).join('، ')||'لا يوجد'}`,
-      `دراسة جامعية: ${attRoster(doc).filter(u=>attStatus(doc,u.username)==='study').map(u=>u.name||u.username).join('، ')||'لا يوجد'}`].join('\n')),
+      `إجازة اعتيادية: ${attRoster(doc).filter(u=>attStatus(doc,u.username)==='leave').map(u=>attDisplayName(u)).join('، ')||'لا يوجد'}`,
+      `دراسة جامعية: ${attRoster(doc).filter(u=>attStatus(doc,u.username)==='study').map(u=>attDisplayName(u)).join('، ')||'لا يوجد'}`].join('\n')),
     ...(leaves.length?['\nالإجازات الاعتيادية خلال الفترة:',...leaves.map(u=>`${u.name} · ${ATT_DEPTS.find(([key])=>key===u.dept)?.[1]||'الإداريين'} · ${u.dates.join('، ')}`)]:[]),
     ...(studies.length?['\nالدراسة الجامعية يوم الثلاثاء:',...studies.map(u=>`${u.name} · ${ATT_DEPTS.find(([key])=>key===u.dept)?.[1]||'الإداريين'} · ${u.dates.join('، ')}`)]:[])
   ].join('\n');
@@ -3153,8 +3158,8 @@ function exportAttendanceExcel(mode,anchor){
     aoa.push([date,attLabel(date),...ATT_DEPTS.map(([key])=>attNames(doc,key,'onsite').join('\n')||'—'),
       roster.filter(u=>attStatus(doc,u.username)==='onsite').length,
       roster.filter(u=>attStatus(doc,u.username)==='remote').length,
-      roster.filter(u=>attStatus(doc,u.username)==='leave').map(u=>u.name||u.username).join('\n')||'—',
-      roster.filter(u=>attStatus(doc,u.username)==='study').map(u=>u.name||u.username).join('\n')||'—']);
+      roster.filter(u=>attStatus(doc,u.username)==='leave').map(u=>attDisplayName(u)).join('\n')||'—',
+      roster.filter(u=>attStatus(doc,u.username)==='study').map(u=>attDisplayName(u)).join('\n')||'—']);
   });
   const leaveHeading=leaves.length?aoa.length+1:-1;
   if(leaves.length)aoa.push([],['الإجازات الاعتيادية خلال الفترة'],['الموظف','القسم','الأيام'],...leaves.map(u=>[u.name,ATT_DEPTS.find(([key])=>key===u.dept)?.[1]||'الإداريين',u.dates.join('، ')]));
@@ -3190,7 +3195,7 @@ function printAttendance(mode,anchor){
   const esc=reportEsc,win=window.open('','_blank');
   if(!win){alert('اسمح بفتح نافذة الطباعة من المتصفح.');return;}
   const leaves=attLeaveSummary(rows),studies=attStudySummary(rows);
-  const body=rows.map(({date,doc})=>`<tr><td><b>${esc(attLabel(date))}</b><small>${date}</small></td>${ATT_DEPTS.map(([key])=>`<td>${attNames(doc,key,'onsite').map(n=>`<div>${esc(n)}</div>`).join('')||'—'}</td>`).join('')}<td class="leave-col">${attRoster(doc).filter(u=>attStatus(doc,u.username)==='leave').map(u=>`<div>${esc(u.name||u.username)}</div>`).join('')||'—'}</td><td class="study-col">${attRoster(doc).filter(u=>attStatus(doc,u.username)==='study').map(u=>`<div>${esc(u.name||u.username)}</div>`).join('')||'—'}</td></tr>`).join('');
+  const body=rows.map(({date,doc})=>`<tr><td><b>${esc(attLabel(date))}</b><small>${date}</small></td>${ATT_DEPTS.map(([key])=>`<td>${attNames(doc,key,'onsite').map(n=>`<div>${esc(n)}</div>`).join('')||'—'}</td>`).join('')}<td class="leave-col">${attRoster(doc).filter(u=>attStatus(doc,u.username)==='leave').map(u=>`<div>${esc(attDisplayName(u))}</div>`).join('')||'—'}</td><td class="study-col">${attRoster(doc).filter(u=>attStatus(doc,u.username)==='study').map(u=>`<div>${esc(attDisplayName(u))}</div>`).join('')||'—'}</td></tr>`).join('');
   const summary=(items,title,kind)=>items.length?`<section class="${kind}-section"><h2>${title}</h2><div class="summary-list">${items.map(u=>`<div><b>${esc(u.name)}</b><span>${esc(ATT_DEPTS.find(([key])=>key===u.dept)?.[1]||'الإداريين')} · ${esc(u.dates.join('، '))}</span></div>`).join('')}</div></section>`:'';
   const logo=reportBrandLogo();
   win.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>جدول الحضور</title><style>${reportViewStyles()}@page{size:A4 landscape;margin:12mm}body{font-family:'Tajawal',Arial,Tahoma,sans-serif;color:#173f34;background:#f7faf7;margin:0}.head{background:#16443a;color:#fff;border-bottom:5px solid #c9a24b;padding:17px 20px;border-radius:12px;display:flex;align-items:center;justify-content:space-between}.head h1{font-size:22px;color:#fff;margin:3px 0}.head small{color:#e7d49a}.head .report-brand-mark{width:150px;max-width:24%}.sub{color:#527160;margin:13px 0}table{border-collapse:collapse;width:100%;font-size:11px;background:#fff}th{background:#1f5d4c;color:white;border:1px solid #c7d5cb;padding:9px;text-align:right}td{border:1px solid #c7d5cb;padding:9px;text-align:right;vertical-align:top}tbody tr:nth-child(even){background:#f3f8f3}td div{margin:0 0 4px}td small{display:block;color:#687b70}.leave-col,.leave-section{background:#fff0df;color:#8c4c1b}.study-col,.study-section{background:#eeeafe;color:#4743a2}tr{page-break-inside:avoid}p{font-size:11px;color:#566e60}.leave-section,.study-section{border:1px solid #d6cde8;border-radius:10px;padding:12px;margin-top:18px;break-inside:avoid}h2{margin:0 0 9px;font-size:15px}.summary-list{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.summary-list div{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid #d6cde8;padding:4px}.summary-list span{font-size:11px}@media print{body{background:#fff}.head,th,.leave-col,.study-col,.leave-section,.study-section{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body><header class="head"><div><small>بلدية مسقط · المديرية العامة للشؤون الفنية</small><h1>دائرة التصميم المركزي · جدول الحضور</h1><small>${esc(attPeriodLabel(mode,dates))}</small></div>${logo}</header><p class="sub">الثلاثاء حضوري للجميع. تميّز الإجازة الاعتيادية والدراسة الجامعية كلٌّ في خانته.</p><table><thead><tr><th>اليوم</th>${ATT_DEPTS.map(([,label])=>`<th>${esc(label)}</th>`).join('')}<th>إجازة اعتيادية</th><th>دراسة جامعية</th></tr></thead><tbody>${body}</tbody></table>${summary(leaves,'الإجازات الاعتيادية خلال الفترة','leave')}${summary(studies,'الدراسة الجامعية يوم الثلاثاء','study')}</body></html>`);
@@ -3232,7 +3237,7 @@ function openAttendanceModal(){
       roster.forEach(u=>{
         const leave=manager&&draft.has(date)?personStatus(date,u.username)==='leave':doc&&attStatus(doc,u.username)==='leave';
         if(!leave)return;
-        const item=map.get(u.username)||{name:u.name||u.username,dept:u.dept||'administration',dates:[]};
+        const item=map.get(u.username)||{name:attDisplayName(u),dept:u.dept||'administration',dates:[]};
         item.dates.push(date);map.set(u.username,item);
       });
     });
@@ -3263,7 +3268,7 @@ function openAttendanceModal(){
       ${manager?`<div class="att-actions"><button class="btn btn-ghost" id="attAll">الجميع حضوري</button>${attTuesday(selectedDate)?'':'<button class="btn btn-ghost" id="attNone">الجميع عن بُعد</button>'}<button class="btn btn-ghost" id="attRepeat">كرر هذا اليوم في الأسابيع القادمة</button></div>`:''}
       <div class="att-roster">${ATT_DEPTS.map(([key,label])=>`<section class="att-panel"><h3>${label} · ${dayList(key).length}</h3>${dayList(key).map(u=>{
         const current=status(u),statusText={onsite:'حضوري',remote:'عن بُعد',leave:'إجازة اعتيادية',study:'دراسة جامعية'}[current];
-        return manager?`<div class="att-staff-row"><button class="att-person ${current}" data-att-person="${esc(u.username)}" title="اضغط لتعيين الحضور أو إلغائه"><b>${esc(u.name)}</b><small>${statusText}</small></button><button class="att-leave-btn ${current==='leave'?'active':''}" data-att-leave="${esc(u.username)}" title="إجازة اعتيادية لهذا اليوم">إجازة</button>${attTuesday(selectedDate)?`<button class="att-study-btn ${current==='study'?'active':''}" data-att-study="${esc(u.username)}" title="دراسة جامعية يوم الثلاثاء">دراسة</button>`:''}<button class="att-week-leave" data-att-week-leave="${esc(u.username)}" title="إجازة اعتيادية طوال الأسبوع">أسبوع</button></div>`:`<div class="att-person ${current}"><b>${esc(u.name)}</b>${review?`<small>${statusText}</small>`:''}</div>`;
+        return manager?`<div class="att-staff-row"><button class="att-person ${current}" data-att-person="${esc(u.username)}" title="اضغط لتعيين الحضور أو إلغائه"><b>${esc(attDisplayName(u))}</b><small>${statusText}</small></button><button class="att-leave-btn ${current==='leave'?'active':''}" data-att-leave="${esc(u.username)}" title="إجازة اعتيادية لهذا اليوم">إجازة</button>${attTuesday(selectedDate)?`<button class="att-study-btn ${current==='study'?'active':''}" data-att-study="${esc(u.username)}" title="دراسة جامعية يوم الثلاثاء">دراسة</button>`:''}<button class="att-week-leave" data-att-week-leave="${esc(u.username)}" title="إجازة اعتيادية طوال الأسبوع">أسبوع</button></div>`:`<div class="att-person ${current}"><b>${esc(attDisplayName(u))}</b>${review?`<small>${statusText}</small>`:''}</div>`;
       }).join('')||'<span class="att-note">لا يوجد حضور مسجل</span>'}</section>`).join('')}</div>
       ${review&&leaves.length?`<section class="att-week-leave-summary"><h3>الإجازات الاعتيادية هذا الأسبوع</h3>${leaves.map(u=>`<div><b>${esc(u.name)}</b> · ${esc(ATT_DEPTS.find(([key])=>key===u.dept)?.[1]||'الإداريين')} · ${esc(u.dates.map(date=>attLabel(date)).join('، '))}</div>`).join('')}</section>`:''}
       ${manager?`<div class="att-actions"><button class="btn btn-add" id="attPublish">نشر أيام النطاق</button><button class="btn btn-ghost" id="attExcel">تصدير Excel</button><button class="btn btn-ghost" id="attPrint">طباعة / PDF</button><button class="btn btn-ghost" id="attCopy">نسخ نص التعميم</button></div><p class="att-note">التصدير والتعميم يعتمدان على الأيام المنشورة فقط.</p>`:''}`;

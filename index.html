@@ -2722,17 +2722,31 @@ function canManageActivities(){
   const u=state.appUser; if(!u) return false;
   return u.role==='admin' || (u.jobTitle||'')==='تنسيق ومتابعة';
 }
-/* «أعمالي» — السجل التفصيلي لأسماء النوفلية في التنسيق والمتابعة. */
-function isCoordinatorUser(){
-  const u=state.appUser;
-  if(!u||u.role==='admin'||u.jobTitle!=='تنسيق ومتابعة')return false;
-  const name=String(u.name||'').normalize('NFKC')
+/* «أعمالي» — سجل مستقل لكل موظف، وتدخل أعمال أسماء وحدها في التقارير الإدارية. */
+function myWorkName(name){
+  return String(name||'').normalize('NFKC')
     .replace(/[\u064B-\u065F\u0670\u0640]/g,'').replace(/[أإآ]/g,'ا')
     .replace(/\s+/g,' ').trim();
-  return /^اسماء(?: .*)? النوفلية$/.test(name);
 }
-function canSeeMyWorks(){return isCoordinatorUser();}
-function canEditMyWorks(){return isCoordinatorUser();}
+function isAsmaName(name){return /^اسماء(?: .*)? النوفلي[ةه]$/.test(myWorkName(name));}
+function isCoordinatorUser(){
+  const u=state.appUser;
+  return !!u&&u.role!=='admin'&&u.jobTitle==='تنسيق ومتابعة'&&isAsmaName(u.name);
+}
+function canSeeMyWorks(){return !!state.appUser?.username;}
+function canEditMyWorks(){return canSeeMyWorks();}
+function myWorkBelongsTo(work,user=state.appUser){
+  if(!user?.username||!work)return false;
+  if(work.byUsername)return String(work.byUsername).toLowerCase()===String(user.username).toLowerCase();
+  if(work.by)return myWorkName(work.by)===myWorkName(user.name);
+  return isAsmaName(user.name); // سجلات التنسيق القديمة التي لم تُحفظ لها هوية منشئ
+}
+function myWorkCanMutate(id){return canEditMyWorks()&&myWorkBelongsTo(state.myworks.find(w=>w.id===id));}
+function isCoordinationWork(work){
+  if(isAsmaName(work.by))return true;
+  if(work.byUsername)return state.users.some(u=>String(u.username).toLowerCase()===String(work.byUsername).toLowerCase()&&isAsmaName(u.name));
+  return !work.by; // سجلات التنسيق القديمة بلا هوية منشئ
+}
 function challengeHeadDept(){
   const jt=state.appUser?.jobTitle||'';
   return Object.entries(HEAD_TITLES).find(([,title])=>title===jt)?.[0]||'';
@@ -3350,7 +3364,7 @@ function openMyWorksModal(){
   myWorksModalOpen=true;
   const canEdit=canEditMyWorks();
   const overlay=$(`<div class="overlay" id="myWorksOverlay"></div>`);
-  const modal=$(`<div class="modal modal-lg"><div class="modal-head"><h2>أعمالي — التنسيق والمتابعة</h2>
+  const modal=$(`<div class="modal modal-lg"><div class="modal-head"><h2>أعمالي${isCoordinatorUser()?' — التنسيق والمتابعة':''}</h2>
     <button class="icon-btn" id="x">${I.close}</button></div></div>`);
   const body=document.createElement('div');body.className='modal-body';
   modal.appendChild(body);overlay.appendChild(modal);
@@ -3360,8 +3374,8 @@ function openMyWorksModal(){
   let fFrom='', fTo='';       // فلتر التاريخ في الأرشيف
   let editingLogId=null;
 
-  function tasks(){ return state.myworks.filter(w=>w.type==='task'); }
-  function logs(){ return state.myworks.filter(w=>w.type==='log'); }
+  function tasks(){ return state.myworks.filter(w=>w.type==='task'&&myWorkBelongsTo(w)); }
+  function logs(){ return state.myworks.filter(w=>w.type==='log'&&myWorkBelongsTo(w)); }
 
   function tabsBar(){
     const t=(id,lbl)=>`<button class="mw-tab ${tab===id?'active':''}" data-tab="${id}">${lbl}</button>`;
@@ -3375,7 +3389,7 @@ function openMyWorksModal(){
       const done=(t.doneDates&&t.doneDates[selDate])?true:false;
       return `<div class="mw-taskrow ${done?'done':''}">
         ${canEdit?`<button class="mw-check ${done?'on':''}" data-toggle="${t.id}">${done?'✓':''}</button>`:`<span class="mw-check ${done?'on':''}">${done?'✓':''}</span>`}
-        <span class="mw-taskname">${t.title}</span>
+        <span class="mw-taskname">${reportEsc(t.title||"")}</span>
         ${canEdit?`<button class="mw-del" data-deltask="${t.id}" title="حذف المهمة">${I.trash}</button>`:''}
       </div>`;
     }).join('');
@@ -3386,7 +3400,7 @@ function openMyWorksModal(){
         <input type="date" id="mwDate" value="${selDate}" max="${todayISO()}">
         <span class="mw-daycount">${doneCount}/${ts.length} منجزة</span>
       </div>
-      ${ts.length? `<div class="mw-tasklist">${rows}</div>` : '<div class="mw-empty">لا توجد مهام يومية بعد. أضيفي مهامك المتكررة أدناه لتظهر كل يوم.</div>'}
+      ${ts.length? `<div class="mw-tasklist">${rows}</div>` : '<div class="mw-empty">لا توجد مهام يومية بعد. أضف مهامك المتكررة أدناه لتظهر كل يوم.</div>'}
       ${canEdit?`
       <div class="mw-addbox">
         <input type="text" id="mwNewTask" placeholder="مهمة يومية متكررة (مثال: مراجعة تسليمات المهندسين)">
@@ -3396,7 +3410,7 @@ function openMyWorksModal(){
 
   /* ── تبويب توثيق عمل (نموذج إضافة سجلّ) ── */
   function renderLogForm(){
-    if(!canEdit) return '<div class="mw-empty">التوثيق من صلاحية موظفة التنسيق فقط. يمكنك الاطلاع على السجلّ من تبويب «سجلّي».</div>';
+    if(!canEdit) return '<div class="mw-empty">سجّل الدخول لإضافة عمل.</div>';
     const editing=editingLogId?logs().find(w=>w.id===editingLogId):null;
     const esc=reportEsc;
     return `
@@ -3436,8 +3450,8 @@ function openMyWorksModal(){
         </div>
         <div class="mw-logtitle">${reportEsc(w.title||'—')} ${st}</div>
         ${canEdit?`<div class="mw-logacts"><button class="mw-edit" data-editlog="${w.id}" title="تعديل العمل">تعديل</button><button class="mw-del" data-dellog="${w.id}" title="حذف العمل">${I.trash}</button></div>`:''}
-        ${w.desc?`<div class="mw-logdesc">${w.desc}</div>`:''}
-        ${w.notes?`<div class="mw-lognotes">ملاحظات: ${w.notes}</div>`:''}
+        ${w.desc?`<div class="mw-logdesc">${reportEsc(w.desc)}</div>`:''}
+        ${w.notes?`<div class="mw-lognotes">ملاحظات: ${reportEsc(w.notes)}</div>`:''}
       </div>`;
     }).join('');
     return `
@@ -3460,7 +3474,7 @@ function openMyWorksModal(){
     // مهام يومية
     const dInp=body.querySelector('#mwDate'); if(dInp) dInp.onchange=()=>{ selDate=dInp.value||todayISO(); fill(); };
     body.querySelectorAll('[data-toggle]').forEach(b=>b.onclick=async()=>{ await toggleTask(b.getAttribute('data-toggle'), selDate); });
-    body.querySelectorAll('[data-deltask]').forEach(b=>b.onclick=async()=>{ if(!canEditMyWorks())return; if(confirm('حذف هذه المهمة اليومية نهائياً؟')){ await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','myworks',b.getAttribute('data-deltask'))); } });
+    body.querySelectorAll('[data-deltask]').forEach(b=>b.onclick=async()=>{ if(!myWorkCanMutate(b.getAttribute('data-deltask')))return; if(confirm('حذف هذه المهمة اليومية نهائياً؟')){ await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','myworks',b.getAttribute('data-deltask'))); } });
     const addT=body.querySelector('#mwAddTask'); if(addT) addT.onclick=async()=>{ if(!canEditMyWorks())return;
       const inp=body.querySelector('#mwNewTask'); const v=(inp.value||'').trim();
       if(!v){ inp.focus(); return; }
@@ -3479,6 +3493,7 @@ function openMyWorksModal(){
       save.disabled=true;
       try{
         if(editingLogId){
+          if(!myWorkCanMutate(editingLogId))return;
           await FB.updateDoc(FB.doc(db,'artifacts',APP_ID,'public','data','myworks',editingLogId),values);
           editingLogId=null;
         }else{
@@ -3492,11 +3507,11 @@ function openMyWorksModal(){
     const aff=body.querySelector('#afFrom'); if(aff) aff.onchange=()=>{ fFrom=aff.value; fill(); };
     const aft=body.querySelector('#afTo'); if(aft) aft.onchange=()=>{ fTo=aft.value; fill(); };
     const afx=body.querySelector('#afExport'); if(afx) afx.onclick=()=>exportMyWorks(fCat,fFrom,fTo);
-    body.querySelectorAll('[data-editlog]').forEach(b=>b.onclick=()=>{ if(!canEditMyWorks())return;
+    body.querySelectorAll('[data-editlog]').forEach(b=>b.onclick=()=>{ if(!myWorkCanMutate(b.getAttribute('data-editlog')))return;
       editingLogId=b.getAttribute('data-editlog'); tab='log'; fill();
       body.querySelector('#lgTitle')?.focus();
     });
-    body.querySelectorAll('[data-dellog]').forEach(b=>b.onclick=async()=>{ if(!canEditMyWorks())return; if(confirm('حذف هذا العمل الموثّق؟')){ await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','myworks',b.getAttribute('data-dellog'))); } });
+    body.querySelectorAll('[data-dellog]').forEach(b=>b.onclick=async()=>{ if(!myWorkCanMutate(b.getAttribute('data-dellog')))return; if(confirm('حذف هذا العمل الموثّق؟')){ await FB.deleteDoc(FB.doc(db,'artifacts',APP_ID,'public','data','myworks',b.getAttribute('data-dellog'))); } });
   }
   fill(); overlay._refresh=fill;
   modal.querySelector('#x').onclick=()=>{myWorksModalOpen=false;overlay.remove();};
@@ -3506,7 +3521,7 @@ function openMyWorksModal(){
 function refreshMyWorksModal(){ const ov=document.getElementById('myWorksOverlay'); if(ov&&ov._refresh) ov._refresh(); }
 async function toggleTask(id, date){
   if(!canEditMyWorks())return;
-  const t=state.myworks.find(w=>w.id===id); if(!t) return;
+  const t=state.myworks.find(w=>w.id===id); if(!myWorkBelongsTo(t)) return;
   const dd=Object.assign({}, t.doneDates||{});
   if(dd[date]) delete dd[date]; else dd[date]=true;
   try{ await FB.updateDoc(FB.doc(db,'artifacts',APP_ID,'public','data','myworks',id),{doneDates:dd}); }
@@ -3515,7 +3530,7 @@ async function toggleTask(id, date){
 function exportMyWorks(fCat,fFrom,fTo){
   if(!canSeeMyWorks())return;
   try{
-    let arr=state.myworks.filter(w=>w.type==='log');
+    let arr=state.myworks.filter(w=>w.type==='log'&&myWorkBelongsTo(w));
     if(fCat) arr=arr.filter(w=>w.category===fCat);
     if(fFrom) arr=arr.filter(w=>(w.date||'')>=fFrom);
     if(fTo) arr=arr.filter(w=>(w.date||'')<=fTo);
@@ -4532,7 +4547,7 @@ function administrativeWorkForPeriod(spec){
   const inRange=date=>!!date&&date>=spec.from&&date<=spec.to;
   const today=reportToday();
   const items=[];
-  for(const work of state.myworks){
+  for(const work of state.myworks.filter(isCoordinationWork)){
     if(work.type==='log'){
       if(inRange(work.date)) items.push({id:work.id,source:'log',title:work.title||'عمل إداري',
         category:MYWORK_CAT_AR[work.category]||'مهمة أخرى',date:work.date,
@@ -4584,7 +4599,7 @@ function reportPeriodOptions(kind){
   const months=new Set([reportToday().slice(0,7)]);
   state.projects.forEach(p=>{[p.startDate,p.endDate,...DEPT_MAP.filter(([k])=>p[k]?.status!=='لا يوجد').flatMap(([k])=>[p[k]?.startDate,p[k]?.endDate,p[k]?.actualDate]),...(p.ideaStages||[]).map(x=>x.date),...(p.opinionStages||[]).map(x=>x.date)].forEach(x=>{if(ym(x))months.add(ym(x));});});
   state.meetings.forEach(m=>{if(ym(m.date))months.add(ym(m.date));});state.visits.forEach(v=>{if(ym(v.date))months.add(ym(v.date));});
-  state.myworks.forEach(w=>{if(w.type==='log'&&ym(w.date))months.add(ym(w.date));if(w.type==='task')Object.keys(w.doneDates||{}).forEach(date=>{if(ym(date))months.add(ym(date));});});
+  state.myworks.filter(isCoordinationWork).forEach(w=>{if(w.type==='log'&&ym(w.date))months.add(ym(w.date));if(w.type==='task')Object.keys(w.doneDates||{}).forEach(date=>{if(ym(date))months.add(ym(date));});});
   return [...new Set([...months].map(m=>reportPeriodKey(kind,m)))].sort().reverse();
 }
 function reportVisualSummary(d,mode){

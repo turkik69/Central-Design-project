@@ -1349,7 +1349,7 @@ function renderApp(){
   toolbar.querySelector('#btnAttendance').onclick=openAttendanceModal;
   main.appendChild(toolbar);
   const attendanceHost=document.createElement('div');attendanceHost.id='attendanceTodayHost';
-  attendanceHost._refresh=()=>{attendanceHost.innerHTML=attendanceTodayHTML();attendanceHost.querySelector('section.att-today button')?.addEventListener('click',()=>openAttendanceModal());attendanceHost.querySelector('[data-att-open-next]')?.addEventListener('click',e=>openAttendanceModal(e.currentTarget.dataset.attOpenNext));};
+  attendanceHost._refresh=()=>{attendanceHost.innerHTML=attendanceTodayHTML();attendanceHost.querySelector('section.att-today button')?.addEventListener('click',()=>openAttendanceModal());attendanceHost.querySelector('[data-att-open-next]')?.addEventListener('click',e=>{const week=e.currentTarget.dataset.attOpenNext;markAttendanceNoticeSeen(week);openAttendanceModal(week);refreshAttendanceToday();});};
   attendanceHost._refresh();main.appendChild(attendanceHost);
 
   const gridHost=document.createElement('div');
@@ -3129,10 +3129,22 @@ function attSummary(rows,status){
 function attLeaveSummary(rows){return attSummary(rows,'leave');}
 function attStudySummary(rows){return attSummary(rows,'study');}
 function attStudyLeaveSummary(rows){return attSummary(rows,'study_leave');}
+const attendanceNoticeSeenInSession=new Set();
+function attendanceNoticeKey(week){return `attendance-next-seen:${state.appUser?.username||''}:${week}`;}
+function attendanceNoticeSeen(week){
+  const key=attendanceNoticeKey(week);
+  if(attendanceNoticeSeenInSession.has(key))return true;
+  try{return localStorage.getItem(key)==='1';}catch(e){return false;}
+}
+function markAttendanceNoticeSeen(week){
+  const key=attendanceNoticeKey(week);
+  attendanceNoticeSeenInSession.add(key);
+  try{localStorage.setItem(key,'1');}catch(e){}
+}
 function attendanceTodayHTML(){
   const date=reportToday(),doc=attDoc(date),esc=reportEsc,review=canManageAttendance();
   const nextWeek=attPeriodDates('week',attShift(date,7)),nextPublished=nextWeek.every(day=>attDoc(day));
-  const nextNotice=!review&&nextPublished?`<div class="att-next-notice"><div><b>نُشر جدول الحضور للأسبوع القادم</b><small>${esc(attPeriodLabel('week',nextWeek))}</small></div><button class="btn btn-add" data-att-open-next="${nextWeek[0]}">عرض الجدول</button></div>`:'';
+  const nextNotice=!review&&nextPublished&&!attendanceNoticeSeen(nextWeek[0])?`<div class="att-next-notice"><div><b>نُشر جدول الحضور للأسبوع القادم</b><small>${esc(attPeriodLabel('week',nextWeek))}</small></div><button class="btn btn-add" data-att-open-next="${nextWeek[0]}">عرض الجدول</button></div>`:'';
   if(!doc)return review?'<section class="att-today"><div class="att-today-head"><div><h3>حضور اليوم</h3><p>لم يُنشر جدول الحضور لهذا اليوم بعد.</p></div><button class="btn btn-ghost">عرض جدول الحضور</button></div></section>':nextNotice;
   const staff=attRoster(doc),count=kind=>staff.filter(u=>attStatus(doc,u.username)===kind).length;
   const me=staff.find(u=>u.username===state.appUser?.username);

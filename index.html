@@ -3073,6 +3073,9 @@ function attPeriodLabel(mode,dates){return mode==='week'?`الأسبوع ${dates
 function attArabicName(name){
   return String(name||'').normalize('NFKC').replace(/[\u064B-\u065F\u0670]/g,'').replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/\s+/g,' ').trim();
 }
+function attIsTurki(u){
+  return u?.username===ADMIN.user||attArabicName(String(u?.name||'').replace(/^م\s*[.．]\s*/,''))==='تركي بن خلفان اليحيائي';
+}
 function attExcludedAdmin(u){
   if(u.dept!=='administration')return false;
   const name=attArabicName(u.name);
@@ -3081,18 +3084,24 @@ function attExcludedAdmin(u){
 function attStaff(){
   const staff=state.users.filter(u=>u.role!=='admin'&&u.username&&u.active!==false)
     .map(u=>({username:u.username,name:u.name||u.username,dept:u.dept||'administration',jobTitle:u.jobTitle||''}))
-    .filter(u=>!attExcludedAdmin(u));
+    .filter(u=>attIsTurki(u)||!attExcludedAdmin(u));
+  const turki=staff.find(attIsTurki);
+  if(turki){turki.name='تركي بن خلفان اليحيائي';turki.dept='architectural';}
+  else staff.push({username:ADMIN.user,name:'تركي بن خلفان اليحيائي',dept:'architectural',jobTitle:'مهندس تصميم داخلي'});
   const yusuf=staff.find(u=>/^يوسف .*عيسي .*السيابي$/.test(attArabicName(u.name)));
   if(yusuf)yusuf.dept='administration';
   else staff.push({username:'attendance_yusuf_issa_siyabi',name:'يوسف بن عيسى السيابي',dept:'administration',jobTitle:''});
   return staff.sort((a,b)=>a.name.localeCompare(b.name,'ar'));
 }
 function attRoster(doc){
-  const roster=(doc?.roster||[]).filter(u=>!attExcludedAdmin(u)).map(u=>({...u}));
-  const currentYusuf=attStaff().find(u=>/^يوسف .*عيسي .*السيابي$/.test(attArabicName(u.name)));
+  const roster=(doc?.roster||[]).filter(u=>attIsTurki(u)||!attExcludedAdmin(u)).map(u=>({...u}));
+  const currentStaff=attStaff(),currentYusuf=currentStaff.find(u=>/^يوسف .*عيسي .*السيابي$/.test(attArabicName(u.name)));
   const index=roster.findIndex(u=>/^يوسف .*عيسي .*السيابي$/.test(attArabicName(u.name)));
   if(index>=0)roster[index].dept='administration';
   else if(currentYusuf)roster.push(currentYusuf);
+  const currentTurki=currentStaff.find(attIsTurki),turkiIndex=roster.findIndex(attIsTurki);
+  if(turkiIndex>=0){roster[turkiIndex].name='تركي بن خلفان اليحيائي';roster[turkiIndex].dept='architectural';}
+  else if(currentTurki)roster.push(currentTurki);
   return roster;
 }
 function attTuesday(date){return /^\d{4}-\d{2}-\d{2}$/.test(date||'')&&attUtc(date).getUTCDay()===2;}

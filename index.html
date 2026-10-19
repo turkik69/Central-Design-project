@@ -3118,7 +3118,7 @@ function attStatus(doc,username){
 function attDisplayName(u){
   const name=String(u?.name||u?.username||'').trim();
   const bare=name.replace(/^م\s*[.．]\s*/,'');
-  if(attArabicName(bare)==='محمد بن احمد العيسائي')return bare;
+  if(attIsTurki(u)||attArabicName(bare)==='محمد بن احمد العيسائي')return bare;
   if(!name||!['architectural','structural','services'].includes(u?.dept))return name;
   return /^(?:م\s*[.．]|مهندس(?:ة)?\s)/.test(name)?name:`م. ${name}`;
 }

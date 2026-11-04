@@ -1874,7 +1874,7 @@ function projectPresentationHTML(p){
     .toolbar .actions{display:flex;gap:8px}.toolbar button{font:inherit;border:1px solid #a9d1c1;background:white;color:var(--oasis-dark);border-radius:8px;padding:8px 15px;cursor:pointer;font-weight:700}
     .toolbar button:hover{background:var(--sand-2)}.toolbar small{font-size:12px}
     .page{width:420mm;height:297mm;margin:18px auto;background-color:#fff;background-image:linear-gradient(to bottom,rgba(255,255,255,.87),rgba(255,255,255,.94) 52%,#fff 88%),url("${buildingWatermark}");background-position:center top;background-size:cover,100% auto;background-repeat:no-repeat;box-shadow:0 12px 35px #0002;padding:12mm;display:flex;flex-direction:column;gap:5mm;overflow:hidden;position:relative;page-break-after:always;break-after:page}
-    .page:last-child{page-break-after:auto;break-after:auto}
+    .page:last-of-type{page-break-after:auto;break-after:auto}
     .mast{height:24mm;display:flex;align-items:center;justify-content:space-between;border-bottom:2mm solid var(--oasis);padding-bottom:4mm;gap:8mm}
     .brand{display:flex;align-items:center;gap:5mm}.brand img{width:17mm;height:19mm;object-fit:contain}.brand b{font-size:19pt;color:var(--oasis-dark)}.brand small{display:block;color:var(--muted);font-size:10pt}
     .page-no{color:var(--clay);font-size:11pt;font-weight:700}.headline{display:flex;justify-content:space-between;align-items:end;gap:10mm;padding:1mm 0 2mm}.headline h1{font-size:25pt;margin:0;color:var(--oasis-dark);line-height:1.25;max-width:70%}.headline .subtitle{font-size:12pt;color:var(--clay);font-weight:700}

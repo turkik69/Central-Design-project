@@ -1695,8 +1695,9 @@ function presentationRuntime(){
     image.onerror=()=>alert('تعذّر فتح الصورة للقص.');
     image.src=src;
   }
-  const frames=document.querySelectorAll('.image-frame');
-  frames.forEach(frame=>{
+  const initFrame=frame=>{
+    if(frame.dataset.ready==='1')return;
+    frame.dataset.ready='1';
     const slot=frame.querySelector('.image-slot');
     const input=slot.querySelector('input[type=file]');
     const img=slot.querySelector('img');
@@ -1711,7 +1712,7 @@ function presentationRuntime(){
     const resetButton=frame.querySelector('.image-reset');
     const pagePicker=frame.querySelector('.pdf-page');
     const status=frame.querySelector('.image-status');
-    let pdfDoc=null,renderSequence=0,originalImageUrl='';
+    let pdfDoc=null,renderSequence=0,originalImageUrl=img.dataset.original||img.getAttribute('src')||'';
     pagePicker.hidden=true;status.textContent='';
     let scale=Number(img.dataset.scale||1), x=Number(img.dataset.x||0), y=Number(img.dataset.y||0);
     let rotation=Number(img.dataset.rotation||0);
@@ -1726,7 +1727,7 @@ function presentationRuntime(){
     };
     apply();
     const setImage=(dataUrl,keepOriginal=false)=>{
-      if(!keepOriginal)originalImageUrl=dataUrl;
+      if(!keepOriginal){originalImageUrl=dataUrl;img.dataset.original=dataUrl;}
       img.setAttribute('src',dataUrl);
       slot.classList.add('has-image');
       frame.classList.add('has-image');
@@ -1802,10 +1803,51 @@ function presentationRuntime(){
     });
     const stop=()=>{dragging=false;};
     img.addEventListener('pointerup',stop);img.addEventListener('pointercancel',stop);
-  });
+  };
+  document.querySelectorAll(".image-frame").forEach(initFrame);
+  const gridLayout=grid=>{
+    const count=grid.querySelectorAll(":scope > .image-group").length;
+    const columns=count<=1?1:count<=4?2:count<=6?3:4;
+    grid.style.gridTemplateColumns="repeat("+columns+",minmax(0,1fr))";
+    grid.style.gridTemplateRows="repeat("+Math.max(1,Math.ceil(count/columns))+",minmax(0,1fr))";
+  };
+  const newDrawing=title=>{
+    const group=document.createElement("div");group.className="image-group";
+    group.innerHTML=document.getElementById("visual-template").innerHTML;
+    group.querySelector(".caption").textContent=title;
+    group.querySelector(".slot-hint strong").textContent="＋ "+title;
+    group.querySelector(".image-slot input").setAttribute("aria-label","إضافة "+title);
+    group.querySelector(".image-slot img").alt=title;
+    return group;
+  };
+  document.querySelectorAll(".visual-grid").forEach(grid=>gridLayout(grid));
+  document.querySelectorAll(".add-drawing").forEach(button=>button.addEventListener("click",()=>{
+    const grid=document.getElementById(button.dataset.target);
+    if(grid.children.length>=8){alert("الحد الأقصى ٨ مربعات في الشريحة للمحافظة على وضوحها.");return;}
+    const title=prompt("اسم المربع الجديد","قطاع أو واجهة أو منظور");
+    if(title===null)return;
+    const group=newDrawing(title.trim().slice(0,90)||"رسم جديد");
+    grid.appendChild(group);initFrame(group.querySelector(".image-frame"));gridLayout(grid);
+  }));
+  document.querySelectorAll(".visual-grid").forEach(grid=>grid.addEventListener("click",e=>{
+    const button=e.target.closest("button");if(!button)return;
+    const group=button.closest(".image-group");if(!group)return;
+    if(button.classList.contains("remove-drawing")){
+      if(!confirm("حذف المربع والمرفق بداخله؟"))return;
+      group.remove();gridLayout(grid);
+    }else if(button.classList.contains("rename-drawing")){
+      const caption=group.querySelector(".caption");
+      const name=prompt("اسم المربع",caption.textContent.trim());
+      if(name===null||!name.trim())return;
+      caption.textContent=name.trim().slice(0,90);
+      group.querySelector(".slot-hint strong").textContent="＋ "+caption.textContent;
+    }
+  }));
   document.getElementById('savePresentation').addEventListener('click',()=>{
     const clone=document.documentElement.cloneNode(true);
     clone.querySelectorAll('input[type=file]').forEach(el=>el.removeAttribute('value'));
+    clone.querySelectorAll('[data-ready]').forEach(el=>el.removeAttribute('data-ready'));
+    clone.querySelectorAll('.crop-overlay').forEach(el=>el.remove());
     const blob=new Blob(['<!DOCTYPE html>\n',clone.outerHTML],{type:'text/html;charset=utf-8'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');

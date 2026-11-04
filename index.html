@@ -4748,10 +4748,10 @@ function reportActivitySection(entries,kind,number){
 }
 
 function reportProjectGroups(d){
-  const groups=[{title:'مشاريع تتطلب إجراء',tone:'attention',projects:[]},{title:'جارية أو قيد التصميم',tone:'active',projects:[]},{title:'مكتملة',tone:'complete',projects:[]},{title:'حالات أخرى',tone:'other',projects:[]}];
+  const groups=[{title:'مشاريع جاري تنفيذها',tone:'attention',projects:[]},{title:'جارية أو قيد التصميم',tone:'active',projects:[]},{title:'مكتملة',tone:'complete',projects:[]},{title:'حالات أخرى',tone:'other',projects:[]}];
   d.projects.forEach(p=>{
     const overdue=d.planned.some(x=>x.p===p&&x.sec.status!=='مكتمل'&&x.sec.endDate<reportToday());
-    const group=p.riskLevel==='مرتفع'||p.blocker||p.decisionRequired||overdue||DEPT_MAP.some(([key])=>p[key]?.status!=='لا يوجد'&&p[key]?.delayReason)?groups[0]:isEffectivelyDone(p)?groups[2]:['متوقف الى اشعار اخر','الغي المشروع'].includes(p.overallStatus)?groups[3]:groups[1];
+    const group=isEffectivelyDone(p)?groups[2]:['متوقف الى اشعار اخر','الغي المشروع'].includes(p.overallStatus)?groups[3]:p.riskLevel==='مرتفع'||p.blocker||p.decisionRequired||overdue||DEPT_MAP.some(([key])=>p[key]?.status!=='لا يوجد'&&p[key]?.delayReason)?groups[0]:groups[1];
     group.projects.push(p);
   });
   groups.forEach(g=>g.projects.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ar')));

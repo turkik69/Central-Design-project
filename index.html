@@ -1748,7 +1748,6 @@ function presentationRuntime(){
       if(seq!==renderSequence)return;
       const pdfImage=canvas.toDataURL('image/jpeg',0.94);
        setImage(pdfImage);
-       openCropEditor(pdfImage,cropped=>setImage(cropped,true));
       status.textContent='صفحة '+number+' من '+pdfDoc.numPages;
     };
     pagePicker.addEventListener('change',()=>{if(pdfDoc)renderPdfPage(Number(pagePicker.value)).catch(()=>{status.textContent='تعذّر عرض الصفحة، حاول مرة أخرى.';});});
@@ -1774,7 +1773,6 @@ function presentationRuntime(){
       const reader=new FileReader();
       reader.onload=()=>{
         setImage(reader.result);
-        openCropEditor(reader.result,cropped=>setImage(cropped,true));
         status.textContent='';
         input.value='';
       };

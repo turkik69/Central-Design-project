@@ -1600,7 +1600,7 @@ function renderCard(p){
       ${p.overallStatus==='فكرة مبدئية'||p.structural?.status==='لا يوجد' ? '' : secRow('الإنشائي',p.structural)}
       ${p.overallStatus==='فكرة مبدئية'||p.services?.status==='لا يوجد' ? '' : secRow('الخدمات',p.services)}
     </div>
-    <div style="padding:0 16px 12px"><button type="button" class="btn btn-ghost act-template" style="width:100%;display:flex;justify-content:center;align-items:center;gap:8px;border:1px solid var(--oasis);color:var(--oasis-700);background:var(--oasis-50);border-radius:9px;padding:9px;font-weight:700">▣ إعداد العرض المرئي للمشروع</button></div>
+    <div style="padding:0 16px 12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px"><button type="button" class="btn btn-ghost act-template" style="min-width:0;border:1px solid var(--oasis);color:var(--oasis-700);background:var(--oasis-50);border-radius:9px;padding:9px 5px;font-weight:700;font-size:12px">▣ إعداد العرض المرئي</button><button type="button" class="btn btn-ghost act-poster" style="min-width:0;border:1px solid #b49451;color:var(--oasis-700);background:#faf7f1;border-radius:9px;padding:9px 5px;font-weight:700;font-size:12px">▤ إنشاء بوستر للمشروع</button></div>
     <div class="card-foot">
       <div class="upd">حدّثه: ${p.lastUpdatedBy||'النظام'}<br>${p.lastUpdatedAt||''}</div>
       <div class="acts">
@@ -1613,6 +1613,7 @@ function renderCard(p){
   card.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target===card){e.preventDefault();openProjectOverview(p);}});
   card.querySelector('.act-edit').onclick=()=>openProjectModal(p);
   card.querySelector('.act-template').onclick=()=>downloadProjectPresentation(p);
+  card.querySelector('.act-poster').onclick=()=>downloadProjectPoster(p);
   // روابط الشبكة المحلية: نسخ المسار للحافظة (المتصفح يمنع فتحها مباشرة)
   card.querySelectorAll('.work-link[data-copy]').forEach(a=>{
     a.onclick=(e)=>{
@@ -1928,6 +1929,65 @@ function projectPresentationHTML(p){
   <div class="page-footer"><span>بلدية مسقط - المديرية العامة للشؤون الفنية - دائرة التصميم المركزي</span><span contenteditable="true">${name} · لوحة ٣ من ٣</span></div></section>
   <template id="visual-template">${drawing("رسم جديد")}</template>
   <script>(${presentationRuntime.toString()})();<\/script></body></html>`;
+}
+
+function projectPosterHTML(p){
+  const esc=v=>String(v==null||v===''?'—':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const original=projectPresentationHTML(p);
+  const css=original.match(/<style>([\s\S]*?)<\/style>/)?.[1]||'';
+  const runtime=original.match(/<script>([\s\S]*?)<\/script>/)?.[1]||'';
+  const logo=original.match(/<img src="([^"]+)" alt="شعار بلدية مسقط">/)?.[1]||'';
+  const slot=t=>`<div class="image-frame"><label class="image-slot"><input type="file" accept="image/*,.pdf,application/pdf" aria-label="إضافة ${esc(t)}"><img alt="${esc(t)}"><span class="slot-hint"><strong>＋ ${esc(t)}</strong><small>ارفع صورة أو PDF</small></span></label><div class="image-tools"><button type="button" class="image-replace">تغيير الملف</button><button type="button" class="image-crop">✂ قص الصورة</button><select class="pdf-page" aria-label="صفحة PDF" hidden></select><button type="button" class="image-fit">إظهار كاملة</button><label>تكبير <input class="image-zoom" type="range" min="0.25" max="4" step="0.05" value="1"></label><button type="button" class="image-rotate-left">↺ 90°</button><label>زاوية <input class="image-rotation" type="range" min="-180" max="180" step="1" value="0"><output class="image-angle">0°</output></label><button type="button" class="image-rotate-right">↻ 90°</button><button type="button" class="image-reset">إعادة ضبط</button></div><span class="image-status" aria-live="polite"></span></div>`;
+  const drawing=t=>`<div class="image-group">${slot(t)}<div class="caption" contenteditable="true">${esc(t)} — اكتب وصف الصورة هنا</div><div class="drawing-actions"><button class="rename-drawing" type="button">تسمية</button><button class="remove-drawing" type="button">حذف المربع</button></div></div>`;
+  const fact=(k,v)=>`<div class="poster-fact"><small>${k}</small><strong contenteditable="true">${esc(v)}</strong></div>`;
+  const extraCSS=`
+   @page{size:A1 portrait;margin:0}
+   .page.poster-page{width:594mm;height:841mm;display:flex;flex-direction:column;gap:9mm;padding:20mm 23mm 16mm;overflow:hidden;background-image:none}
+   .poster-head{display:flex;align-items:center;justify-content:space-between;gap:9mm;border-bottom:3mm solid var(--clay);padding-bottom:8mm;min-height:55mm}
+   .poster-head .brand img{width:35mm;height:38mm}.poster-head .brand b{font-size:26pt}.poster-head .brand small{font-size:14pt}
+   .poster-mark{background:var(--oasis-dark);color:white;border-radius:3mm;padding:5mm 7mm;font-size:17pt}
+   .poster-title{background:var(--oasis-dark);color:white;border-radius:4mm;padding:9mm 12mm;min-height:63mm;overflow:hidden}
+   .poster-title h1{margin:0;font-size:41pt;line-height:1.3;overflow-wrap:anywhere}.poster-title p{margin:3mm 0 0;font-size:17pt;color:#e9d9a7}
+   .poster-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4mm}
+   .poster-fact{background:#f9f6ef;border-right:1.5mm solid var(--clay);padding:5mm;min-height:27mm;border-radius:3mm}
+   .poster-fact small{display:block;color:var(--muted);font-size:13pt}.poster-fact strong{font-size:18pt;color:var(--oasis-dark);display:block;overflow-wrap:anywhere}
+   .poster-hero{display:flex;flex-direction:column;height:273mm;min-height:0;gap:3mm}
+   .poster-hero .image-frame{flex:1 1 0;min-height:0}
+   .poster-hero-caption{font-size:16pt;color:var(--oasis-dark);background:#eaf2ed;border-radius:2mm;padding:3mm;min-height:14mm}
+   .poster-description{border-radius:3mm;background:#f4f8f5;border:1px solid var(--line);padding:6mm 8mm;min-height:65mm;max-height:84mm;overflow:hidden}
+   .poster-description b{font-size:21pt;color:var(--oasis-dark);display:block;margin-bottom:2mm}
+   .poster-description div{font-size:17pt;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+   .poster-gallery{display:flex;flex-direction:column;flex:1 1 0;min-height:0;gap:4mm}
+   .poster-gallery .visual-grid{flex:1 1 0;min-height:0}
+   .poster-gallery .image-group{height:100%;width:100%;overflow:hidden}
+   .poster-gallery .caption{font-size:13pt;line-height:1.4;min-height:13mm;max-height:25mm;overflow:hidden}
+   .poster-gallery .image-frame,.poster-hero .image-frame{width:100%;min-width:0;overflow:hidden}
+   .poster-gallery .image-slot,.poster-hero .image-slot{width:100%;height:100%;min-width:0;min-height:0;flex:1 1 0}
+   .poster-gallery .image-slot img,.poster-hero .image-slot img{position:absolute;inset:0}
+   .poster-gallery .image-group .image-frame{flex:1 1 0}
+   .poster-footer{display:flex;justify-content:space-between;color:var(--muted);font-size:12pt;border-top:1px solid var(--line);padding-top:3mm}
+   .poster-hero .section-title,.poster-gallery .section-title{font-size:20pt}
+   @media print{html,body{width:594mm}.page.poster-page{width:594mm;height:841mm;margin:0;box-shadow:none;page-break-after:avoid;break-after:avoid}}
+   @media screen and (max-width:1600px){.page.poster-page{zoom:.4}}
+   @media screen and (max-width:1150px){.page.poster-page{zoom:.3}}
+   @media screen and (max-width:750px){.page.poster-page{zoom:.23}}
+  `;
+  return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>بوستر ${esc(p.name)}</title><style>${css}${extraCSS}</style></head><body>
+  <div class="toolbar"><div><b>بوستر مشروع · A1 عمودي · صفحة واحدة</b><br><small>أضف الصور والمخططات والمناظير، واكتب الوصف أسفل كل صورة، ثم احفظ نسخة قابلة للتعديل أو اطبع PDF.</small></div><div class="actions"><button id="savePresentation" type="button">حفظ نسخة قابلة للتعديل</button><button id="printPresentation" type="button">طباعة / PDF</button></div></div>
+  <main class="page poster-page"><header class="poster-head"><div class="brand"><img src="${logo}" alt="شعار بلدية مسقط"><div><b>بلدية مسقط</b><small>المديرية العامة للشؤون الفنية · دائرة التصميم المركزي</small></div></div><span class="poster-mark">مشاريع التصميم المركزي</span></header>
+  <section class="poster-title"><h1 contenteditable="true">${esc(p.name)}</h1><p contenteditable="true">${esc(p.customType||p.type||'مشروع تصميم')}</p></section>
+  <div class="poster-facts">${fact('رقم المشروع',p.projectNo)}${fact('الموقع / الجهة',p.requestingEntity)}${fact('المساحة',p.area)}${fact('نوع المشروع',p.customType||p.type)}</div>
+  <section class="poster-hero"><div class="section-title">الصورة الرئيسية للمشروع</div>${slot('الصورة الرئيسية')}<div class="poster-hero-caption" contenteditable="true">اكتب هنا وصف الصورة الرئيسية وأبرز عناصر المشروع</div></section>
+  <section class="poster-description"><b>نبذة عن المشروع</b><div contenteditable="true">${esc(p.projectSummary||p.summary||p.description||'أضف هنا وصف المشروع وأهدافه وفكرته التصميمية والقيمة التي يقدمها للمجتمع والمشهد العمراني.')}</div></section>
+  <section class="poster-gallery"><div class="drawing-heading"><div class="section-title">المخططات والمناظير والتفاصيل</div><button type="button" class="add-drawing" data-target="posterGrid">＋ إضافة صورة</button></div><div class="visual-grid" id="posterGrid">${['المخطط العام','منظور ثلاثي الأبعاد','منظور جانبي','تفاصيل التصميم'].map(drawing).join('')}</div></section>
+  <footer class="poster-footer"><span>بلدية مسقط - المديرية العامة للشؤون الفنية - دائرة التصميم المركزي</span><span contenteditable="true">${esc(p.name)}</span></footer></main>
+  <template id="visual-template">${drawing('صورة إضافية')}</template><script>${runtime}<\/script></body></html>`;
+}
+function downloadProjectPoster(p){
+ const html=projectPosterHTML(p),blob=new Blob([html],{type:'text/html;charset=utf-8'});
+ const url=URL.createObjectURL(blob),link=document.createElement('a');
+ link.href=url;link.download='بوستر-مشروع-'+String(p.projectNo||p.name||'جديد').replace(/[\\/:*?"<>|]/g,'-').slice(0,65)+'.html';
+ document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 
 function downloadProjectPresentation(p){

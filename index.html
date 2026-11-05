@@ -1942,10 +1942,9 @@ function projectPosterHTML(p){
   const fact=(k,v)=>`<div class="poster-fact"><small>${k}</small><strong contenteditable="true">${esc(v)}</strong></div>`;
   const extraCSS=`
    @page{size:A1 portrait;margin:0}
-   .page.poster-page{width:594mm;height:841mm;display:flex;flex-direction:column;gap:9mm;padding:20mm 23mm 16mm;overflow:hidden;background-image:none}
-   .poster-head{display:flex;align-items:center;justify-content:space-between;gap:9mm;border-bottom:3mm solid var(--clay);padding-bottom:8mm;min-height:55mm}
+   .page.poster-page{width:594mm;height:841mm;display:flex;flex-direction:column;gap:9mm;padding:20mm 23mm 16mm;overflow:hidden}
+   .poster-head{display:flex;align-items:center;justify-content:flex-start;gap:9mm;border-bottom:3mm solid var(--clay);padding-bottom:8mm;min-height:55mm}
    .poster-head .brand img{width:35mm;height:38mm}.poster-head .brand b{font-size:26pt}.poster-head .brand small{font-size:14pt}
-   .poster-mark{background:var(--oasis-dark);color:white;border-radius:3mm;padding:5mm 7mm;font-size:17pt}
    .poster-title{background:var(--oasis-dark);color:white;border-radius:4mm;padding:9mm 12mm;min-height:63mm;overflow:hidden}
    .poster-title h1{margin:0;font-size:41pt;line-height:1.3;overflow-wrap:anywhere}.poster-title p{margin:3mm 0 0;font-size:17pt;color:#e9d9a7}
    .poster-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4mm}
@@ -1974,13 +1973,13 @@ function projectPosterHTML(p){
   `;
   return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>بوستر ${esc(p.name)}</title><style>${css}${extraCSS}</style></head><body>
   <div class="toolbar"><div><b>بوستر مشروع · A1 عمودي · صفحة واحدة</b><br><small>أضف الصور والمخططات والمناظير، واكتب الوصف أسفل كل صورة، ثم احفظ نسخة قابلة للتعديل أو اطبع PDF.</small></div><div class="actions"><button id="savePresentation" type="button">حفظ نسخة قابلة للتعديل</button><button id="printPresentation" type="button">طباعة / PDF</button></div></div>
-  <main class="page poster-page"><header class="poster-head"><div class="brand"><img src="${logo}" alt="شعار بلدية مسقط"><div><b>بلدية مسقط</b><small>المديرية العامة للشؤون الفنية · دائرة التصميم المركزي</small></div></div><span class="poster-mark">مشاريع التصميم المركزي</span></header>
+  <main class="page poster-page"><header class="poster-head"><div class="brand"><img src="${logo}" alt="شعار بلدية مسقط"><div><b>دائرة التصميم المركزي</b><small>المديرية العامة للشؤون الفنية</small></div></div></header>
   <section class="poster-title"><h1 contenteditable="true">${esc(p.name)}</h1><p contenteditable="true">${esc(p.customType||p.type||'مشروع تصميم')}</p></section>
   <div class="poster-facts">${fact('رقم المشروع',p.projectNo)}${fact('الموقع / الجهة',p.requestingEntity)}${fact('المساحة',p.area)}${fact('نوع المشروع',p.customType||p.type)}</div>
   <section class="poster-hero"><div class="section-title">الصورة الرئيسية للمشروع</div>${slot('الصورة الرئيسية')}<div class="poster-hero-caption" contenteditable="true">اكتب هنا وصف الصورة الرئيسية وأبرز عناصر المشروع</div></section>
   <section class="poster-description"><b>نبذة عن المشروع</b><div contenteditable="true">${esc(p.projectSummary||p.summary||p.description||'أضف هنا وصف المشروع وأهدافه وفكرته التصميمية والقيمة التي يقدمها للمجتمع والمشهد العمراني.')}</div></section>
   <section class="poster-gallery"><div class="drawing-heading"><div class="section-title">المخططات والمناظير والتفاصيل</div><button type="button" class="add-drawing" data-target="posterGrid">＋ إضافة صورة</button></div><div class="visual-grid" id="posterGrid">${['المخطط العام','منظور ثلاثي الأبعاد','منظور جانبي','تفاصيل التصميم'].map(drawing).join('')}</div></section>
-  <footer class="poster-footer"><span>بلدية مسقط - المديرية العامة للشؤون الفنية - دائرة التصميم المركزي</span><span contenteditable="true">${esc(p.name)}</span></footer></main>
+  <footer class="poster-footer"><span>دائرة التصميم المركزي - المديرية العامة للشؤون الفنية</span><span contenteditable="true">${esc(p.name)}</span></footer></main>
   <template id="visual-template">${drawing('صورة إضافية')}</template><script>${runtime}<\/script></body></html>`;
 }
 function downloadProjectPoster(p){

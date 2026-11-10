@@ -1538,7 +1538,7 @@ function secRow(title,data){
 
 function openProjectOverview(p){
   const old=document.getElementById('projectOverviewOverlay');if(old)old.remove();
-  const overlay=$(`<div class="overlay" id="projectOverviewOverlay" style="z-index:9999"><div class="modal" style="width:min(1100px,96vw);max-height:94vh;overflow:auto"><div class="modal-head"><h2>تفاصيل المشروع</h2><button type="button" class="btn btn-ghost ov-close">إغلاق ×</button></div><div class="modal-body"><style>${reportViewStyles()}</style>${reportProjectDossier(p)}</div><div class="modal-foot"><button type="button" class="btn btn-ghost ov-close">إغلاق</button><button type="button" class="btn btn-primary ov-edit">${isObserver()?'عرض سجل المشروع':'تحديث المشروع'}</button></div></div></div>`);
+  const overlay=$(`<div class="overlay" id="projectOverviewOverlay" style="z-index:9999"><div class="modal" style="width:min(1100px,96vw);max-height:94vh;overflow:auto"><div class="modal-head"><h2>تفاصيل المشروع</h2><button type="button" class="btn btn-ghost ov-close">إغلاق ×</button></div><div class="modal-body"><style>${reportViewStyles()}</style>${reportProjectDossier(p)}${projectAssignmentsHTML(p)}</div><div class="modal-foot"><button type="button" class="btn btn-ghost ov-close">إغلاق</button><button type="button" class="btn btn-primary ov-edit">${isObserver()?'عرض سجل المشروع':'تحديث المشروع'}</button></div></div></div>`);
   overlay.querySelectorAll('.ov-close').forEach(b=>b.onclick=()=>overlay.remove());
   overlay.querySelector('.ov-edit').onclick=()=>{overlay.remove();openProjectModal(p);};
   overlay.onclick=e=>{if(e.target===overlay)overlay.remove();};
@@ -1601,6 +1601,8 @@ function renderCard(p){
       ${p.overallStatus==='فكرة مبدئية'||p.services?.status==='لا يوجد' ? '' : secRow('الخدمات',p.services)}
     </div>
     <div style="padding:0 16px 12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px"><button type="button" class="btn btn-ghost act-template" style="min-width:0;border:1px solid var(--oasis);color:var(--oasis-700);background:var(--oasis-50);border-radius:9px;padding:9px 5px;font-weight:700;font-size:12px">▣ إعداد العرض المرئي</button><button type="button" class="btn btn-ghost act-poster" style="min-width:0;border:1px solid #b49451;color:var(--oasis-700);background:#faf7f1;border-radius:9px;padding:9px 5px;font-weight:700;font-size:12px">▤ إنشاء بوستر للمشروع</button></div>
+    ${projectAssignmentsHTML(p)}
+    ${canAssignProjectWork()?'<button type="button" class="btn btn-ghost act-assign">＋ تكليف مهندس بعمل</button>':''}
     <div class="card-foot">
       <div class="upd">حدّثه: ${p.lastUpdatedBy||'النظام'}<br>${p.lastUpdatedAt||''}</div>
       <div class="acts">
@@ -1611,6 +1613,7 @@ function renderCard(p){
   card.style.cursor='pointer';card.setAttribute('tabindex','0');card.setAttribute('role','button');card.setAttribute('aria-label','عرض تفاصيل '+(p.name||'المشروع'));
   card.addEventListener('click',e=>{if(e.target.closest('button,a,input,select,textarea,.confirm-pop'))return;openProjectOverview(p);});
   card.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target===card){e.preventDefault();openProjectOverview(p);}});
+  const assignButton=card.querySelector('.act-assign');if(assignButton)assignButton.onclick=()=>openProjectAssignment(p);
   card.querySelector('.act-edit').onclick=()=>openProjectModal(p);
   card.querySelector('.act-template').onclick=()=>downloadProjectPresentation(p);
   card.querySelector('.act-poster').onclick=()=>downloadProjectPoster(p);
@@ -1641,6 +1644,49 @@ function renderCard(p){
     };
   }
   return card;
+}
+
+/* التكليف الإضافي مستقل عن مهندسي الأقسام وحالاتها. */
+function canAssignProjectWork(user=state.appUser){
+  return !!user && (user.role==='admin'||user.jobTitle==='مدير الدائرة'||Object.values(HEAD_TITLES).includes(user.jobTitle));
+}
+function assignmentEngineer(user){
+  return !!user && user.role!=='admin' && Object.keys(HEAD_TITLES).includes(user.dept)
+    && !Object.values(HEAD_TITLES).includes(user.jobTitle) && !['مدير الدائرة','المدير العام','مدير عام مساعد','تنسيق ومتابعة'].includes(user.jobTitle);
+}
+function projectAssignmentsHTML(p){
+  const items=Array.isArray(p.projectAssignments)?p.projectAssignments:[];
+  return items.length?'<div style="padding:8px 16px;background:var(--oasis-50);font-size:12px"><b>تكليفات أعمال إضافية</b>'+items.map(a=>'<div>'+reportEsc(a.name||a.username)+' — '+reportEsc(DEPT_AR[a.dept]||a.dept)+' · '+reportEsc(a.task)+'</div>').join('')+'</div>':'';
+}
+async function saveProjectAssignment(projectId,username,task){
+  if(!canAssignProjectWork())throw Error('لا تملك صلاحية التكليف.');
+  const engineer=state.users.find(u=>u.username===username);
+  if(!assignmentEngineer(engineer))throw Error('اختر مهندساً مسجلاً في قسم فني.');
+  task=String(task||'').trim();
+  if(!task||task.length>500)throw Error('اكتب وصف العمل في حدود ٥٠٠ حرف.');
+  if(!CONFIGURED)throw Error('قاعدة البيانات غير متاحة.');
+  const actor=state.appUser.username;
+  const ref=FB.doc(db,'artifacts',APP_ID,'public','data','projects',projectId);
+  await FB.runTransaction(db,async tx=>{
+    if(!canAssignProjectWork()||state.appUser.username!==actor)throw Error('تغيرت جلسة المستخدم، أعد فتح التكليف.');
+    const snap=await tx.get(ref);
+    if(!snap.exists())throw Error('المشروع لم يعد موجوداً.');
+    const current=snap.data();
+    const items=Array.isArray(current.projectAssignments)?current.projectAssignments:[];
+    if(items.some(a=>a.username===username&&a.task===task))throw Error('هذا التكليف مسجل بالفعل.');
+    tx.update(ref,{projectAssignments:[...items,{username:engineer.username,name:engineer.name,dept:engineer.dept,task,assignedBy:actor,assignedAt:new Date().toISOString()}]});
+  });
+}
+function openProjectAssignment(p){
+  if(!canAssignProjectWork())return;
+  const overlay=$('<div class="overlay"><div class="modal"><div class="modal-head"><h2>تكليف مهندس بعمل في المشروع</h2><button type="button" class="icon-btn close">×</button></div><form class="modal-body"><p>'+reportEsc(p.name)+'</p><label class="lbl-sm">المهندس من أي قسم</label><select class="inp" name="engineer" required><option value="">اختر المهندس</option>'+state.users.filter(assignmentEngineer).map(u=>'<option value="'+reportEsc(u.username)+'">'+reportEsc(u.name)+' — '+reportEsc(DEPT_AR[u.dept]||u.dept)+'</option>').join('')+'</select><label class="lbl-sm">العمل المطلوب</label><textarea class="inp" name="task" required maxlength="500"></textarea><p>يُضاف التكليف دون تغيير المهندس المسؤول أو حالة أي قسم.</p><div class="assignment-error" role="alert"></div><button type="submit" class="btn btn-add">حفظ التكليف</button></form></div></div>');
+  overlay.querySelector('.close').onclick=()=>overlay.remove();
+  overlay.querySelector('form').onsubmit=async e=>{
+    e.preventDefault();const form=e.currentTarget,button=form.querySelector('[type=submit]');button.disabled=true;
+    try{await saveProjectAssignment(p.id,form.elements.engineer.value,form.elements.task.value);overlay.remove();}
+    catch(error){form.querySelector('.assignment-error').textContent=error.message;button.disabled=false;}
+  };
+  document.body.appendChild(overlay);
 }
 
 /* عرض المشروع: ملف مستقل قابل للتعبئة والحفظ والطباعة، دون رفع الصور إلى قاعدة البيانات. */
@@ -1829,7 +1875,7 @@ function presentationRuntime(){
   };
   const newDrawing=title=>{
     const group=document.createElement("div");group.className="image-group";
-    group.innerHTML=document.getElementById("visual-template").innerHTML;
+    group.innerHTML=document.getElementById("visual-template").content.firstElementChild.innerHTML;
     group.querySelector(".caption").textContent=title;
     group.querySelector(".slot-hint strong").textContent="＋ "+title;
     group.querySelector(".image-slot input").setAttribute("aria-label","إضافة "+title);
@@ -1837,15 +1883,17 @@ function presentationRuntime(){
     return group;
   };
   document.querySelectorAll(".visual-grid").forEach(grid=>gridLayout(grid));
-  document.querySelectorAll(".add-drawing").forEach(button=>button.addEventListener("click",()=>{
+  document.addEventListener("click",e=>{
+    const button=e.target.closest(".add-drawing");if(!button)return;
     const grid=document.getElementById(button.dataset.target);
     if(grid.children.length>=8){alert("الحد الأقصى ٨ مربعات في الشريحة للمحافظة على وضوحها.");return;}
     const title=prompt("اسم المربع الجديد","قطاع أو واجهة أو منظور");
     if(title===null)return;
     const group=newDrawing(title.trim().slice(0,90)||"رسم جديد");
     grid.appendChild(group);initFrame(group.querySelector(".image-frame"));gridLayout(grid);
-  }));
-  document.querySelectorAll(".visual-grid").forEach(grid=>grid.addEventListener("click",e=>{
+  });
+  document.addEventListener("click",e=>{
+    const grid=e.target.closest(".visual-grid");if(!grid)return;
     const button=e.target.closest("button");if(!button)return;
     const group=button.closest(".image-group");if(!group)return;
     if(button.classList.contains("remove-drawing")){
@@ -1858,9 +1906,29 @@ function presentationRuntime(){
       caption.textContent=name.trim().slice(0,90);
       group.querySelector(".slot-hint strong").textContent="＋ "+caption.textContent;
     }
-  }));
+  });
+  const addSlide=document.getElementById('addPresentationSlide');
+  if(addSlide)addSlide.onclick=()=>{
+    const title=prompt('اسم الشريحة الإضافية','تفاصيل المشروع');if(title===null||!title.trim())return;
+    const source=document.querySelector('.page:has(.visual-grid)');
+    const page=source.cloneNode(true),grid=page.querySelector('.visual-grid');
+    grid.id='extraGrid-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+    grid.replaceChildren(newDrawing('صورة ١'),newDrawing('صورة ٢'));
+    page.querySelector('.add-drawing').dataset.target=grid.id;
+    page.querySelector('.subtitle').textContent=title.trim().slice(0,90);
+    page.querySelector('.subtitle').setAttribute('contenteditable','true');
+    page.querySelector('.section-title').textContent=title.trim().slice(0,90);
+    page.querySelector('.section-title').setAttribute('contenteditable','true');
+    page.querySelector('.page-footer span:last-child').textContent=title.trim().slice(0,90);
+    const pages=[...document.querySelectorAll('.page')];pages.at(-1).after(page);
+    const all=[...document.querySelectorAll('.page')];
+    all.forEach((p,i)=>{p.querySelector('.page-no').textContent=(i+1)+' / '+all.length;});
+    grid.querySelectorAll('.image-frame').forEach(initFrame);gridLayout(grid);page.scrollIntoView();
+  };
   document.getElementById('savePresentation').addEventListener('click',()=>{
     const clone=document.documentElement.cloneNode(true);
+    clone.querySelectorAll('select').forEach((select,index)=>{const source=document.querySelectorAll('select')[index];[...select.options].forEach((option,i)=>option.toggleAttribute('selected',source.options[i].selected));});
+    clone.querySelectorAll('input:not([type=file])').forEach(input=>input.setAttribute('value',input.value));
     clone.querySelectorAll('input[type=file]').forEach(el=>el.removeAttribute('value'));
     clone.querySelectorAll('[data-ready]').forEach(el=>el.removeAttribute('data-ready'));
     clone.querySelectorAll('.crop-overlay').forEach(el=>el.remove());
@@ -1872,6 +1940,35 @@ function presentationRuntime(){
     document.body.appendChild(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),60000);
   });
+  const poster=document.querySelector('.poster-page');
+  if(poster){
+    const size=document.getElementById('posterSize'),direction=document.getElementById('posterDirection');
+    const width=document.getElementById('posterWidth'),height=document.getElementById('posterHeight');
+    const sizes={A0:[841,1189],A1:[594,841],A2:[420,594],A3:[297,420],A4:[210,297]};
+    const settings=document.getElementById('posterGeometry');
+    const applySize=()=>{
+      const custom=size.value==='custom';width.disabled=height.disabled=!custom;
+      if(!custom){[width.value,height.value]=sizes[size.value];}
+      const a=Number(width.value),b=Number(height.value);
+      const valid=Number.isFinite(a)&&Number.isFinite(b)&&a>=100&&b>=100&&a<=2000&&b<=2000;
+      width.setCustomValidity(valid?'':'المقاس من ١٠٠ إلى ٢٠٠٠ مم');
+      height.setCustomValidity(valid?'':'المقاس من ١٠٠ إلى ٢٠٠٠ مم');
+      document.getElementById('printPresentation').disabled=!valid;
+      document.getElementById('savePresentation').disabled=!valid;
+      if(!valid){width.reportValidity();return;}
+      const w=direction.value==='landscape'?Math.max(a,b):Math.min(a,b);
+      const h=direction.value==='landscape'?Math.min(a,b):Math.max(a,b);
+      // A1 artwork fits uniformly inside the chosen sheet; never crop or stretch it.
+      const landscape=direction.value==='landscape';
+      const baseW=landscape?841:594,baseH=landscape?594:841;
+      const scale=Math.min(w/baseW,h/baseH);
+      const left=(w-baseW*scale)/2,top=(h-baseH*scale)/2;
+      poster.classList.toggle('poster-landscape',landscape);
+      settings.textContent='.poster-sheet .page.poster-page{width:'+baseW+'mm;height:'+baseH+'mm}@page{size:'+w+'mm '+h+'mm;margin:0}.poster-sheet{position:relative;width:'+w+'mm;height:'+h+'mm;margin:18px auto;background:white;overflow:hidden}.poster-sheet .page.poster-page{position:absolute;top:'+top+'mm;left:'+left+'mm;margin:0;zoom:1;transform-origin:top left;transform:scale('+scale+')}.poster-sheet{zoom:'+Math.min(.4,(window.innerWidth-32)/(w*3.78))+'}@media print{html,body{width:'+w+'mm;height:'+h+'mm;margin:0;padding:0}.poster-sheet{zoom:1;margin:0;width:'+w+'mm;height:'+h+'mm;break-after:avoid}}';
+    };
+    [size,direction,width,height].forEach(control=>control.addEventListener('change',applySize));
+    window.addEventListener('resize',applySize);applySize();
+  }
   document.getElementById('printPresentation').addEventListener('click',()=>window.print());
 }
 
@@ -1911,7 +2008,7 @@ function projectPresentationHTML(p){
     @media screen and (max-width:1600px){.page{zoom:.8}}@media screen and (max-width:1150px){.page{zoom:.58}}@media screen and (max-width:750px){.page{zoom:.36;margin:10px auto}.toolbar{position:relative}}
   `;
   return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>عرض ${name} — التصميم المركزي</title><style>${css}</style></head><body>
-  <div class="toolbar"><div><b>قالب العرض المعماري · ثلاث صفحات A3</b><br><small>اختر صورة أو PDF وقص المنطقة المطلوبة، ثم عدل المربعات ومسمياتها داخل الشريحة.</small></div><div class="actions"><button id="savePresentation" type="button">حفظ نسخة قابلة للتعديل</button><button id="printPresentation" type="button">طباعة / PDF</button></div></div>
+  <div class="toolbar"><div><b>قالب العرض المعماري · صفحات A3</b><br><small>اختر صورة أو PDF وقص المنطقة المطلوبة، ثم عدل المربعات ومسمياتها داخل الشريحة.</small></div><div class="actions"><button id="addPresentationSlide" type="button">＋ إضافة شريحة</button><button id="savePresentation" type="button">حفظ نسخة قابلة للتعديل</button><button id="printPresentation" type="button">طباعة / PDF</button></div></div>
   <section class="page"><div class="mast"><div class="brand"><img src="${LOGO_DARK}" alt="شعار بلدية مسقط"><div><b>دائرة التصميم المركزي</b><small>المديرية العامة للشؤون الفنية</small></div></div><span class="page-no">01 / 03 · المخطط العام</span></div>
   <div class="headline"><h1 contenteditable="true">${name}</h1><span class="subtitle">الفكرة التصميمية والمخطط العام</span></div>
   <div class="facts">${field('رقم المشروع',p.projectNo)}${field('نوع المشروع',p.customType||p.type)}${field('الجهة الطالبة',p.requestingEntity)}${field('المساحة',p.area)}${field('المهندس المعماري',p.architectural?.engineer)}${field('المهندس الإنشائي',p.structural?.engineer)}${field('مهندس الخدمات',p.services?.engineer)}</div>
@@ -1966,20 +2063,27 @@ function projectPosterHTML(p){
    .poster-gallery .image-group .image-frame{flex:1 1 0}
    .poster-footer{display:flex;justify-content:space-between;color:var(--muted);font-size:12pt;border-top:1px solid var(--line);padding-top:3mm}
    .poster-hero .section-title,.poster-gallery .section-title{font-size:20pt}
+   .page.poster-landscape{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:55mm 63mm 37mm minmax(0,1fr) 70mm 12mm;gap:6mm}
+   .poster-landscape .poster-head,.poster-landscape .poster-title,.poster-landscape .poster-facts,.poster-landscape .poster-description,.poster-landscape .poster-footer{grid-column:1 / -1}
+   .poster-landscape .poster-hero{height:auto;grid-column:1;grid-row:4}
+   .poster-landscape .poster-gallery{grid-column:2;grid-row:4}
+   .poster-landscape .poster-description{grid-row:5;min-height:0;max-height:none}
+   .poster-landscape .poster-footer{grid-row:6}
    @media print{html,body{width:594mm}.page.poster-page{width:594mm;height:841mm;margin:0;box-shadow:none;page-break-after:avoid;break-after:avoid}}
    @media screen and (max-width:1600px){.page.poster-page{zoom:.4}}
    @media screen and (max-width:1150px){.page.poster-page{zoom:.3}}
    @media screen and (max-width:750px){.page.poster-page{zoom:.23}}
   `;
   return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>بوستر ${esc(p.name)}</title><style>${css}${extraCSS}</style></head><body>
-  <div class="toolbar"><div><b>بوستر مشروع · A1 عمودي · صفحة واحدة</b><br><small>أضف الصور والمخططات والمناظير، واكتب الوصف أسفل كل صورة، ثم احفظ نسخة قابلة للتعديل أو اطبع PDF.</small></div><div class="actions"><button id="savePresentation" type="button">حفظ نسخة قابلة للتعديل</button><button id="printPresentation" type="button">طباعة / PDF</button></div></div>
+  <div class="toolbar"><div><b>بوستر مشروع · صفحة واحدة</b><br><small>أضف الصور والمخططات والمناظير، واكتب الوصف أسفل كل صورة، ثم احفظ نسخة قابلة للتعديل أو اطبع PDF.</small></div><div class="actions"><button id="savePresentation" type="button">حفظ نسخة قابلة للتعديل</button><button id="printPresentation" type="button">طباعة / PDF</button></div></div>
+  <div class="toolbar" style="position:relative"><label>المقاس <select id="posterSize"><option>A0</option><option selected>A1</option><option>A2</option><option>A3</option><option>A4</option><option value="custom">مخصص</option></select></label><label>الاتجاه <select id="posterDirection"><option value="portrait">عمودي</option><option value="landscape">أفقي</option></select></label><label>العرض (مم) <input id="posterWidth" type="number" min="100" max="2000" value="594" disabled></label><label>الارتفاع (مم) <input id="posterHeight" type="number" min="100" max="2000" value="841" disabled></label><small>يُحفظ التصميم كاملاً بنسبة أبعاده داخل الورقة المختارة.</small></div><style id="posterGeometry"></style><div class="poster-sheet">
   <main class="page poster-page"><header class="poster-head"><div class="brand"><img src="${logo}" alt="شعار بلدية مسقط"><div><b>دائرة التصميم المركزي</b><small>المديرية العامة للشؤون الفنية</small></div></div></header>
   <section class="poster-title"><h1 contenteditable="true">${esc(p.name)}</h1><p contenteditable="true">${esc(p.customType||p.type||'مشروع تصميم')}</p></section>
   <div class="poster-facts">${fact('رقم المشروع',p.projectNo)}${fact('الموقع / الجهة',p.requestingEntity)}${fact('المساحة',p.area)}${fact('نوع المشروع',p.customType||p.type)}</div>
   <section class="poster-hero"><div class="section-title">الصورة الرئيسية للمشروع</div>${slot('الصورة الرئيسية')}<div class="poster-hero-caption" contenteditable="true">اكتب هنا وصف الصورة الرئيسية وأبرز عناصر المشروع</div></section>
   <section class="poster-description"><b>نبذة عن المشروع</b><div contenteditable="true">${esc(p.projectSummary||p.summary||p.description||'أضف هنا وصف المشروع وأهدافه وفكرته التصميمية والقيمة التي يقدمها للمجتمع والمشهد العمراني.')}</div></section>
   <section class="poster-gallery"><div class="drawing-heading"><div class="section-title">المخططات والمناظير والتفاصيل</div><button type="button" class="add-drawing" data-target="posterGrid">＋ إضافة صورة</button></div><div class="visual-grid" id="posterGrid">${['المخطط العام','منظور ثلاثي الأبعاد','منظور جانبي','تفاصيل التصميم'].map(drawing).join('')}</div></section>
-  <footer class="poster-footer"><span>دائرة التصميم المركزي - المديرية العامة للشؤون الفنية</span><span contenteditable="true">${esc(p.name)}</span></footer></main>
+  <footer class="poster-footer"><span>دائرة التصميم المركزي - المديرية العامة للشؤون الفنية</span><span contenteditable="true">${esc(p.name)}</span></footer></main></div>
   <template id="visual-template">${drawing('صورة إضافية')}</template><script>${runtime}<\/script></body></html>`;
 }
 function downloadProjectPoster(p){
@@ -2370,6 +2474,7 @@ function isEngineer(){
 /* هل المهندس الحالي مسنَد لأحد أقسام المشروع؟ */
 function projectHasMe(p){
   const u=state.appUser; if(!u) return false;
+  if((p.projectAssignments||[]).some(a=>a.username===u.username))return true;
   return DEPT_MAP.some(([key])=>{
     const sec=p[key]; if(!sec) return false;
     if(Array.isArray(sec.engineers)) return sec.engineers.some(e=>e.username===u.username);

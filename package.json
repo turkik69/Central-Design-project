@@ -1,0 +1,6 @@
+{
+  "name": "central-design-project-checks",
+  "private": true,
+  "scripts": { "test": "node tests/features.cjs" },
+  "devDependencies": { "acorn": "^8.15.0", "playwright": "^1.56.1" }
+}

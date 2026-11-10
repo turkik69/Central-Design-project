@@ -931,7 +931,7 @@ async function saveProject(data,editingId,prev){
   const todayStr=new Date().toISOString().slice(0,10);   // YYYY-MM-DD
   // سجّل تاريخ التسليم الفعلي لكل قسم: يُثبَّت عند أول اكتمال ولا يتغيّر بتعديل الاسم أو الملاحظات
   for(const key of ['architectural','structural','services']){
-    if(!data[key]) continue;
+    if(!data[key] || (editingId && !canEditDept(key))) continue;
     const nowSt=data[key].status;
     const prevActual = prev && prev[key] ? (prev[key].actualDate||'') : '';
     const prevSt = prev && prev[key] ? (prev[key].status||'') : '';
@@ -960,7 +960,7 @@ async function saveProject(data,editingId,prev){
   const endDateNotifTasks=[];
   try{
     for(const key of ['architectural','structural','services']){
-      if(!data[key] || data[key].status==='لا يوجد') continue;
+      if(!data[key] || (editingId && !canEditDept(key)) || data[key].status==='لا يوجد') continue;
       const prevSec = prev && prev[key] ? prev[key] : null;
       const newDate = (data[key].endDate||'').trim();
       const prevDate = (prevSec?.endDate||'').trim();
@@ -1602,7 +1602,6 @@ function renderCard(p){
     </div>
     <div style="padding:0 16px 12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px"><button type="button" class="btn btn-ghost act-template" style="min-width:0;border:1px solid var(--oasis);color:var(--oasis-700);background:var(--oasis-50);border-radius:9px;padding:9px 5px;font-weight:700;font-size:12px">▣ إعداد العرض المرئي</button><button type="button" class="btn btn-ghost act-poster" style="min-width:0;border:1px solid #b49451;color:var(--oasis-700);background:#faf7f1;border-radius:9px;padding:9px 5px;font-weight:700;font-size:12px">▤ إنشاء بوستر للمشروع</button></div>
     ${projectAssignmentsHTML(p)}
-    ${canAssignProjectWork()?'<button type="button" class="btn btn-ghost act-assign">＋ تكليف مهندس بعمل</button>':''}
     <div class="card-foot">
       <div class="upd">حدّثه: ${p.lastUpdatedBy||'النظام'}<br>${p.lastUpdatedAt||''}</div>
       <div class="acts">
@@ -1613,7 +1612,6 @@ function renderCard(p){
   card.style.cursor='pointer';card.setAttribute('tabindex','0');card.setAttribute('role','button');card.setAttribute('aria-label','عرض تفاصيل '+(p.name||'المشروع'));
   card.addEventListener('click',e=>{if(e.target.closest('button,a,input,select,textarea,.confirm-pop'))return;openProjectOverview(p);});
   card.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target===card){e.preventDefault();openProjectOverview(p);}});
-  const assignButton=card.querySelector('.act-assign');if(assignButton)assignButton.onclick=()=>openProjectAssignment(p);
   card.querySelector('.act-edit').onclick=()=>openProjectModal(p);
   card.querySelector('.act-template').onclick=()=>downloadProjectPresentation(p);
   card.querySelector('.act-poster').onclick=()=>downloadProjectPoster(p);
@@ -1647,48 +1645,10 @@ function renderCard(p){
 }
 
 /* التكليف الإضافي مستقل عن مهندسي الأقسام وحالاتها. */
-function canAssignProjectWork(user=state.appUser){
-  return !!user && (user.role==='admin'||user.jobTitle==='مدير الدائرة'||Object.values(HEAD_TITLES).includes(user.jobTitle));
-}
-function assignmentEngineer(user){
-  return !!user && user.role!=='admin' && Object.keys(HEAD_TITLES).includes(user.dept)
-    && !Object.values(HEAD_TITLES).includes(user.jobTitle) && !['مدير الدائرة','المدير العام','مدير عام مساعد','تنسيق ومتابعة'].includes(user.jobTitle);
-}
 function projectAssignmentsHTML(p){
   const items=Array.isArray(p.projectAssignments)?p.projectAssignments:[];
   return items.length?'<div style="padding:8px 16px;background:var(--oasis-50);font-size:12px"><b>تكليفات أعمال إضافية</b>'+items.map(a=>'<div>'+reportEsc(a.name||a.username)+' — '+reportEsc(DEPT_AR[a.dept]||a.dept)+' · '+reportEsc(a.task)+'</div>').join('')+'</div>':'';
 }
-async function saveProjectAssignment(projectId,username,task){
-  if(!canAssignProjectWork())throw Error('لا تملك صلاحية التكليف.');
-  const engineer=state.users.find(u=>u.username===username);
-  if(!assignmentEngineer(engineer))throw Error('اختر مهندساً مسجلاً في قسم فني.');
-  task=String(task||'').trim();
-  if(!task||task.length>500)throw Error('اكتب وصف العمل في حدود ٥٠٠ حرف.');
-  if(!CONFIGURED)throw Error('قاعدة البيانات غير متاحة.');
-  const actor=state.appUser.username;
-  const ref=FB.doc(db,'artifacts',APP_ID,'public','data','projects',projectId);
-  await FB.runTransaction(db,async tx=>{
-    if(!canAssignProjectWork()||state.appUser.username!==actor)throw Error('تغيرت جلسة المستخدم، أعد فتح التكليف.');
-    const snap=await tx.get(ref);
-    if(!snap.exists())throw Error('المشروع لم يعد موجوداً.');
-    const current=snap.data();
-    const items=Array.isArray(current.projectAssignments)?current.projectAssignments:[];
-    if(items.some(a=>a.username===username&&a.task===task))throw Error('هذا التكليف مسجل بالفعل.');
-    tx.update(ref,{projectAssignments:[...items,{username:engineer.username,name:engineer.name,dept:engineer.dept,task,assignedBy:actor,assignedAt:new Date().toISOString()}]});
-  });
-}
-function openProjectAssignment(p){
-  if(!canAssignProjectWork())return;
-  const overlay=$('<div class="overlay"><div class="modal"><div class="modal-head"><h2>تكليف مهندس بعمل في المشروع</h2><button type="button" class="icon-btn close">×</button></div><form class="modal-body"><p>'+reportEsc(p.name)+'</p><label class="lbl-sm">المهندس من أي قسم</label><select class="inp" name="engineer" required><option value="">اختر المهندس</option>'+state.users.filter(assignmentEngineer).map(u=>'<option value="'+reportEsc(u.username)+'">'+reportEsc(u.name)+' — '+reportEsc(DEPT_AR[u.dept]||u.dept)+'</option>').join('')+'</select><label class="lbl-sm">العمل المطلوب</label><textarea class="inp" name="task" required maxlength="500"></textarea><p>يُضاف التكليف دون تغيير المهندس المسؤول أو حالة أي قسم.</p><div class="assignment-error" role="alert"></div><button type="submit" class="btn btn-add">حفظ التكليف</button></form></div></div>');
-  overlay.querySelector('.close').onclick=()=>overlay.remove();
-  overlay.querySelector('form').onsubmit=async e=>{
-    e.preventDefault();const form=e.currentTarget,button=form.querySelector('[type=submit]');button.disabled=true;
-    try{await saveProjectAssignment(p.id,form.elements.engineer.value,form.elements.task.value);overlay.remove();}
-    catch(error){form.querySelector('.assignment-error').textContent=error.message;button.disabled=false;}
-  };
-  document.body.appendChild(overlay);
-}
-
 /* عرض المشروع: ملف مستقل قابل للتعبئة والحفظ والطباعة، دون رفع الصور إلى قاعدة البيانات. */
 function presentationRuntime(){
   let pdfLibPromise;
@@ -2350,7 +2310,7 @@ function openProjectModal(project, navCtx){
       return orig ? orig : get(pf+'_'+field);            // غير المخوّل: أول إدخال فقط
     };
     // يجمع المهندسين المختارين (checkboxes) لكل قسم → مصفوفة {username,name}
-    const engVal=(pf)=>{
+    const engVal=(pf,key)=>{
       const box=form.querySelector(`[name="${pf}_engBox"]`);
       const engineers=[];
       if(box){
@@ -2359,6 +2319,12 @@ function openProjectModal(project, navCtx){
           if(u) engineers.push({username:u.username,name:u.name});
         });
       }
+      const original=data[key]||{};
+      const shown=box?[...box.querySelectorAll('input[type=checkbox]')].map(cb=>cb.value):[];
+      const previous=sectionEngineerUsernames(original).filter(username=>shown.includes(username));
+      if(!box || (previous.length===engineers.length && previous.every(username=>engineers.some(e=>e.username===username))))return null;
+      const retained=(original.engineers||[]).filter(e=>!shown.includes(e.username));
+      engineers.push(...retained);
       // اسم العرض المجمّع + توافق رجعي مع الحقول القديمة
       const names=engineers.map(e=>e.name).join('، ');
       const firstUser=engineers.length?engineers[0].username:'';
@@ -2373,13 +2339,13 @@ function openProjectModal(project, navCtx){
       }
       return orig;
     };
-    const archEng=engVal('arch'), strEng=engVal('str'), srvEng=engVal('srv');
+    const archEng=engVal('arch','architectural'), strEng=engVal('str','structural'), srvEng=engVal('srv','services');
     // يبني بيانات القسم من النموذج إن كان المستخدم مخوّلاً بتعديله؛ وإلا يُبقي الأصل كما هو
     const sectionData=(pf,key,engObj)=>{
       if(!canEditDept(key)){
-        return (data[key]) ? {...data[key]} : {};   // قسم غير مخوّل ⇒ لا تغيير إطلاقاً
+        return mergeDeptEngineers(data[key]||{},key,engObj);   // يُسمح للرئيس باختيار المهندسين فقط في الأقسام الأخرى
       }
-      return {...engObj,
+      return {...data[key],...engObj,
         status:get(pf+'_status'), notes:get(pf+'_notes'), delayReason:get(pf+'_delayReason'), workLink:(get(pf+'_workLink')||'').trim(),
         startDate:dateVal(pf,key,'startDate'), endDate:dateVal(pf,key,'endDate'),
         actualDate:actualVal(pf,key), eval:buildEval(pf,key),
@@ -2454,6 +2420,14 @@ function canViewReports(){
 }
 /* هل يحق للمستخدم تعديل بيانات هذا القسم؟
    المشرف ومدير الدائرة: كل الأقسام. رئيس القسم: قسمه. المهندس: قسمه الذي ينتمي إليه فقط. */
+function canSelectDeptEngineers(prefixKey){
+  const user=state.appUser;
+  return !!user && (canEditDept(prefixKey)||Object.values(HEAD_TITLES).includes(user.jobTitle||''));
+}
+function mergeDeptEngineers(original,key,selection){
+  if(!selection || !canSelectDeptEngineers(key))return {...original};
+  return {...original,engineers:selection.engineers,engineer:selection.engineer,engineerUsername:selection.engineerUsername};
+}
 function canEditDept(prefixKey){
   const u=state.appUser; if(!u) return false;
   if(u.role==='admin') return true;
@@ -2577,6 +2551,7 @@ function starSelect(name,val){
 function deptCard(title,prefixKey,d){
   const pf={architectural:'arch',structural:'str',services:'srv'}[prefixKey];
   const canEdit=canEditDept(prefixKey);   // هل يعدّل هذا القسم؟
+  const canSelect=canSelectDeptEngineers(prefixKey);
   const DIS = canEdit ? '' : 'disabled';  // تعطيل عناصر القسم لغير المخوّل
   const sOpt=['قيد الانتظار','قيد العمل','مكتمل','لا يوجد'].map(o=>`<option ${o===(d.status||'قيد الانتظار')?'selected':''}>${o}</option>`).join('');
   const ev=d.eval||{};
@@ -2611,12 +2586,12 @@ function deptCard(title,prefixKey,d){
   // اسم قديم مكتوب يدوياً وغير مربوط بحساب
   const legacyName = (!selected.length && d.engineer && !deptEngineers.some(u=>u.name===d.engineer)) ? d.engineer : '';
   const engBox = deptEngineers.length
-    ? `<div class="eng-multi" name="${pf}_engBox" ${canEdit?'':'style="opacity:.6;pointer-events:none"'}>
-        ${deptEngineers.map(u=>`<label class="eng-opt"><input type="checkbox" value="${u.username}" ${selected.includes(u.username)?'checked':''} ${DIS}> ${u.name}</label>`).join('')}
+    ? `<div class="eng-multi" name="${pf}_engBox" ${canSelect?'':'style="opacity:.6;pointer-events:none"'}>
+        ${deptEngineers.map(u=>`<label class="eng-opt"><input type="checkbox" value="${u.username}" ${selected.includes(u.username)?'checked':''} ${canSelect?'':'disabled'}> ${u.name}</label>`).join('')}
        </div>`
     : `<div style="font-size:12px;color:var(--muted);padding:6px 0">لا يوجد مهندسون مسجّلون في هذا القسم بعد.</div>`;
   const legacyHint = legacyName ? `<div style="font-size:11px;color:var(--danger);margin-top:4px">مسجّل سابقاً: ${legacyName} (اختر المهندس من القائمة لربطه)</div>` : '';
-  const lockedHdr = canEdit ? '' : '<span style="color:var(--muted);font-size:11px;font-weight:600"> 🔒 قسم غير قابل للتعديل</span>';
+  const lockedHdr = canEdit ? '' : '<span style="color:var(--muted);font-size:11px;font-weight:600">'+(canSelect?' اختيار المهندسين متاح · بقية الحقول مقفلة':' 🔒 قسم غير قابل للتعديل')+'</span>';
   return `<div class="dept"><h4>${title}${lockedHdr}</h4>
     <label class="lbl-sm">المهندسون المسؤولون (يمكن اختيار أكثر من واحد)</label>
     ${engBox}${legacyHint}

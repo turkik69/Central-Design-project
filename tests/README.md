@@ -4,17 +4,16 @@ Run `npm ci` and `npm test` with Google Chrome installed. Alternatively set
 `CHROME_PATH` to a Chromium executable. Tests extract and parse the application
 module without starting Firebase. All database calls use an isolated mock.
 
-Coverage: additional assignment authorization, duplicate and input validation,
-preservation of existing section/unknown data, assigned-project visibility,
-escaped assignment display, adding multiple editable slides, naming image slots,
-saved HTML reopening and continued editing, slide print pagination, poster A1
-default, landscape/A3/custom PDF page dimensions, saved poster settings and invalid
-dimension handling. HTML download serialization is captured before the browser
-download to keep this test independent of download policies.
+Coverage: all three department heads can select engineers in any department's
+existing project form. Non-head permissions stay unchanged. Cross-department
+selection preserves status, dates, evaluation, notes and other stored values.
+Browser checks verify enabled engineer checkboxes beside locked status and notes.
+The separate work-assignment button has been removed. Any records already saved
+in projectAssignments remain visible and are not deleted or migrated.
 
-Additional assignments are stored only in `projectAssignments` using a transaction.
-Existing assignment fields, department status, dates and evaluations are untouched.
-Old records require no migration. Normal project updates preserve this new field.
+Additional coverage: multiple editable slides, saved HTML reopening, slide print
+pagination, A1 default, landscape/A3/custom PDF dimensions and saved settings.
+Tests capture HTML download serialization before the browser download.
 
 The repository contains only a static client and no Firestore security rules or
 trusted authentication service. Authorization checks follow the existing app-user
